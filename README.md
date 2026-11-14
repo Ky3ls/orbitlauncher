@@ -1,8 +1,10 @@
-# OrbitLauncher
+# Orbit Client
 
-Minecraft-Launcher für Windows im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS), als eine selbstständige `.exe`.
+Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`, dazu ein eigener Fabric-Mod für die Ingame-Features.
 
-![Start](docs/screenshots/01_start.png)
+![Client](docs/screenshots/20_client_module.png)
+
+![Ingame-Menü](docs/screenshots/30_ingame_menue.png)
 
 ## Was drin ist
 
@@ -12,8 +14,8 @@ Minecraft-Launcher für Windows im Design von OrbitTweak: C# .NET 8 WPF-Host + W
 | **Mod-Loader** | Fabric und Quilt über ihre Meta-APIs (Profile mit `inheritsFrom`), Forge und NeoForge über ihre offiziellen Installer (`--installClient`, headless). |
 | **Instanzen** | Eigener Ordner pro Instanz, eigene Version, Loader, RAM, Java, JVM-Argumente, Fenstergröße. Spielzeit, Konsole mit Log, Crash-Erkennung. |
 | **Modrinth** | Suche mit Filtern (Version, Loader, Kategorien, Sortierung), Detailansicht, 1-Klick-Install mit Abhängigkeiten, Updates (`version_files/update`), Entfernen/Deaktivieren. Mods, Modpacks, Ressourcenpakete, Shader. `.mrpack`-Import (Datei oder direkt von Modrinth). |
-| **Orbit Client** | PvP/QoL-Fabric-Setup per Klick aus offenen Modrinth-Mods (Sodium, Lithium, Iris, AxolotlClient-HUD, Zoomify, Freelook, AppleSkin …). Nichts davon ist eingebaut, alles wird zur Laufzeit von Modrinth geladen. |
-| **Andere Clients** | Erkennt installierte Lunar Client, LabyMod, Badlion, Feather und den offiziellen Launcher und startet deren eigene Programme. Keine Assets oder Code von denen. |
+| **Orbit Client (eigener Mod)** | `client-mod/`: eigener Fabric-Mod für 26.3 mit 21 Modulen: HUD (FPS, CPS pro Klick, Keystrokes, Koordinaten/Richtung/Biom, Rüstung mit Haltbarkeit, Effekte, Ping, Server, Uhrzeit, RAM, Tempo, Sitzung), PvP (Reichweite, Combo), Zoom (weich, Mausrad), Freelook, Fullbright, eigenes Fadenkreuz, Toggle Sprint, ruhige Kamera. Mod-Menü auf Rechts-Shift, HUD-Editor mit Drag & Drop, Einrasten und Größe per Mausrad, Chroma-Farben. |
+| **Client im Launcher** | Seite „Client“: Module an/aus und alle Einstellungen, HUD-Layout per Drag & Drop direkt im Launcher, Performance-Pakete (Sodium, Iris …) von Modrinth, Tastenbelegung. Launcher und Spiel teilen sich `config/orbitclient.json`, Änderungen greifen live im laufenden Spiel. Die Akzentfarbe des Launchers gilt auch im Ingame-Menü. |
 | **Microsoft-Login** | OAuth Device-Code-Flow (Microsoft identity platform) → Xbox Live → XSTS → Minecraft Services. Kein Passwort, nur das Refresh-Token, verschlüsselt per DPAPI (CurrentUser). Kein Offline-/Cracked-Modus. |
 | **Java** | Pro Version automatisch: Mojangs Java-Runtime-Manifest, Fallback Eclipse Temurin (Adoptium). Eigener Pfad pro Instanz oder global möglich. |
 
@@ -30,8 +32,13 @@ Ohne freigeschaltete App gibt die Minecraft-API beim Login einen Fehler zurück.
 ## Bauen
 
 ```bash
+# 1. Client-Mod (braucht JDK 25)
+cd client-mod && ./gradlew build && cp build/libs/orbitclient-1.0.0.jar ../Assets/orbitclient.jar && cd ..
+# 2. Launcher (bettet Web/ und Assets/orbitclient.jar ein)
 dotnet publish -c Release -o publish
 ```
+
+Der Launcher legt den Mod beim Installieren und vor jedem Start automatisch in die Orbit-Client-Instanz (und aktualisiert ihn nach Launcher-Updates).
 
 Ergebnis: `publish/OrbitLauncher.exe` (win-x64, self-contained, single file). Daten liegen unter `%APPDATA%\OrbitLauncher` (`versions`, `libraries`, `assets`, `runtime`, `instances`).
 
@@ -44,6 +51,7 @@ Ergebnis: `publish/OrbitLauncher.exe` (win-x64, self-contained, single file). Da
   dotnet run -c Release -- <datenordner> fabric 1.21.11
   dotnet run -c Release -- <datenordner> loader neoforge 1.21.1
   dotnet run -c Release -- <datenordner> orbit
+  dotnet run -c Release -- <datenordner> client <orbitclient.jar> menu,settings,editor   # Ingame-Screenshots per -Dorbit.autotest
   dotnet run -c Release -- <datenordner> mrpack fabulously-optimized
   ```
   Der Testmodus startet Java mit einer Platzhalter-Session, nur um Dateien und Kommandozeile zu prüfen. Die App selbst startet ausschließlich mit Microsoft-Session.
@@ -51,6 +59,7 @@ Ergebnis: `publish/OrbitLauncher.exe` (win-x64, self-contained, single file). Da
 ## Projektaufbau
 
 ```
+client-mod/    Orbit-Client-Fabric-Mod (Java 25, Mojang-Namen, Fabric API)
 Core/          Plattformunabhängige Logik (Downloads, Versionen, Start, Java, Loader, Modrinth, Auth, Orbit Client)
 Web/           Oberfläche (index.html, style.css, app.js, Schriften)
 MainWindow.*   WPF-Fenster + WebView2-Brücke ({id,cmd,args} ↔ {id,ok,data}, Events per Emit)
@@ -59,4 +68,4 @@ tests/CoreCheck Smoke-Test für den Core
 
 ## Rechtliches
 
-Nicht offiziell, nicht verbunden mit Mojang, Microsoft, Modrinth, Lunar Client oder LabyMod. Minecraft ist eine Marke von Mojang AB. Spieldateien kommen direkt von Mojang, Mods von Modrinth unter den Lizenzen ihrer Autoren. Schriften: Geist und Inter (SIL OFL). Icons im Stil von Lucide (ISC).
+Nicht offiziell, nicht verbunden mit Mojang, Microsoft oder Modrinth. Der Orbit-Client-Mod ist komplett eigener Code (MIT). Minecraft ist eine Marke von Mojang AB. Spieldateien kommen direkt von Mojang, Mods von Modrinth unter den Lizenzen ihrer Autoren. Schriften: Geist und Inter (SIL OFL). Icons im Stil von Lucide (ISC).

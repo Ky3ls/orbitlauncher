@@ -30,9 +30,11 @@
   <ItemGroup>
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />
-    <Compile Remove="tests/**" />
-    <None Remove="tests/**" />
+    <Compile Remove="tests/**;client-mod/**" />
+    <None Remove="tests/**;client-mod/**" />
     <Page Remove="tests/**" />
     <EmbeddedResource Include="Web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Orbit Client mod, built from client-mod/ (./gradlew build) and copied here -->
+    <EmbeddedResource Include="Assets\orbitclient.jar" LogicalName="mod/orbitclient.jar" />
   </ItemGroup>
 </Project>

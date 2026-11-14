@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OrbitLauncher</title>
+<title>Orbit Client</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,6 +61,8 @@
     <symbol id="monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="sword" viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/></symbol>
     <symbol id="star" viewBox="0 0 24 24"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></symbol>
+    <symbol id="activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+    <symbol id="target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
     <symbol id="filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
   </defs>
 </svg>
@@ -76,7 +78,7 @@
         <ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/>
         <circle cx="54" cy="12" r="4" fill="#fff"/>
       </svg>
-      <div data-drag><div class="wm" data-drag>Orbit<span>Launcher</span></div><div class="ed" data-drag>Minecraft Edition</div></div>
+      <div data-drag><div class="wm" data-drag>Orbit<span>Client</span></div><div class="ed" data-drag>Minecraft Launcher</div></div>
     </div>
     <div class="tb-mid" data-drag>
       <div class="pill"><i class="dot" id="tbDot"></i><span id="tbState">Bereit</span></div>
@@ -97,13 +99,12 @@
       <div class="nav-ind" id="navInd"></div>
       <div class="nav-h">Spielen</div>
       <button class="nav active" data-p="home"><svg class="i"><use href="#home"/></svg>Start</button>
+      <button class="nav" data-p="orbit"><svg class="i"><use href="#orbit"/></svg>Client<span class="badge">ORBIT</span></button>
       <button class="nav" data-p="instances"><svg class="i"><use href="#grid"/></svg>Instanzen<span class="badge hidden" id="navRun">LIVE</span></button>
-      <button class="nav" data-p="orbit"><svg class="i"><use href="#orbit"/></svg>Orbit Client<span class="badge">PVP</span></button>
       <div class="nav-h">Entdecken</div>
       <button class="nav" data-p="browse"><svg class="i"><use href="#compass"/></svg>Mods &amp; Packs</button>
       <button class="nav" data-p="versions"><svg class="i"><use href="#list"/></svg>Versionen</button>
       <div class="nav-h">Mehr</div>
-      <button class="nav" data-p="clients"><svg class="i"><use href="#rocket"/></svg>Andere Clients</button>
       <button class="nav" data-p="settings"><svg class="i"><use href="#settings"/></svg>Einstellungen</button>
     </div>
     <div class="side-cta">
@@ -143,7 +144,7 @@
         <div class="quick">
           <button class="card hov qt" onclick="newInstance()"><span class="qi"><svg class="i"><use href="#plus"/></svg></span><span><b>Neue Instanz</b><span>Version &amp; Loader wählen</span></span></button>
           <button class="card hov qt" onclick="go('browse')"><span class="qi"><svg class="i"><use href="#compass"/></svg></span><span><b>Mods finden</b><span>Modrinth durchsuchen</span></span></button>
-          <button class="card hov qt" onclick="go('orbit')"><span class="qi"><svg class="i"><use href="#orbit"/></svg></span><span><b>Orbit Client</b><span>PvP-Setup mit einem Klick</span></span></button>
+          <button class="card hov qt" onclick="go('orbit')"><span class="qi"><svg class="i"><use href="#orbit"/></svg></span><span><b>Orbit Client</b><span>Eigenes HUD, Zoom, Freelook</span></span></button>
           <button class="card hov qt" onclick="importPack()"><span class="qi"><svg class="i"><use href="#upload"/></svg></span><span><b>Modpack importieren</b><span>.mrpack-Datei laden</span></span></button>
         </div>
       </div>
@@ -192,10 +193,11 @@
     <section class="page" id="p-orbit">
       <div class="ohero card gb">
         <div class="oh-l">
-          <div class="kicker">Orbit Client</div>
-          <h1>Dein PvP-Client. <span class="grad">Ein Klick.</span></h1>
-          <p class="pd">Ein fertiges Fabric-Setup aus offenen Mods von Modrinth: mehr FPS, Shader, Keystrokes &amp; CPS-HUD, Zoom und Komfort. Alles wird frisch von Modrinth geladen, nichts ist eingebaut, und du kannst jederzeit Mods dazupacken oder rauswerfen.</p>
+          <div class="kicker">Orbit Client · Minecraft 26.3</div>
+          <h1>Dein Client. <span class="grad">Komplett eigener.</span></h1>
+          <p class="pd">Eigenes HUD mit Keystrokes, CPS, Reichweite und Combo, flüssiger Zoom, Freelook, Fullbright, eigenes Fadenkreuz und ein Mod-Menü auf Rechts-Shift. Dazu FPS-Boost und Shader-Support aus offenen Modrinth-Mods. Alles hier im Launcher einstellbar, auch während du spielst.</p>
           <div class="oh-stats" id="ohStats"></div>
+          <div class="oh-act" id="ohAct"></div>
         </div>
         <div class="oh-r">
           <div class="oh-orb"><svg viewBox="0 0 200 200"><defs><radialGradient id="og" cx=".35" cy=".3"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".25" style="stop-color:var(--b)"/><stop offset="1" style="stop-color:var(--a)"/></radialGradient></defs>
@@ -203,20 +205,37 @@
             <g class="ring r2"><ellipse cx="100" cy="100" rx="70" ry="20" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1.5" transform="rotate(30 100 100)"/></g></svg></div>
         </div>
       </div>
-      <div class="ogrid">
-        <div>
-          <div class="sech" style="margin-top:0"><h2>Module</h2><span class="muted" style="font-size:12px">Wähle aus, was rein soll</span></div>
-          <div class="mods-grid" id="oMods"></div>
+      <div class="tabs vtabs" data-tabs="orb">
+        <button class="tab on" data-tab="mods"><svg class="i"><use href="#grid"/></svg>Module<span class="vt-s" id="oCnt"></span></button>
+        <button class="tab" data-tab="hud"><svg class="i"><use href="#monitor"/></svg>HUD-Layout<span class="vt-s">Drag &amp; Drop</span></button>
+        <button class="tab" data-tab="packs"><svg class="i"><use href="#zap"/></svg>Pakete<span class="vt-s">Modrinth</span></button>
+        <button class="tab" data-tab="keys"><svg class="i"><use href="#keyboard"/></svg>Tasten</button>
+      </div>
+      <div data-pane="orb:mods">
+        <div class="ctool"><div class="seg" id="oCat"><button class="on" data-c="">Alle</button><button data-c="HUD">HUD</button><button data-c="PvP">PvP</button><button data-c="Grafik">Grafik</button><button data-c="Komfort">Komfort</button></div>
+          <span class="sp"></span><span class="muted" id="oSync" style="font-size:12px"></span><button class="btn sm" onclick="orbitReset()">Zurücksetzen</button></div>
+        <div class="omods" id="oMods"></div>
+      </div>
+      <div data-pane="orb:hud" class="hidden">
+        <div class="card hudc">
+          <div class="sh"><b>HUD-Layout</b><span class="muted" style="font-size:12px">Ziehen zum Verschieben · Mausrad = Größe · Doppelklick = automatisch</span><span class="sp"></span><button class="btn sm" onclick="hudAuto()">Alles automatisch</button></div>
+          <div class="stage" id="stage"><div class="stage-bg" id="stageBg"></div><div class="xh"></div></div>
+          <p class="fine">Die Vorschau entspricht einem 1920×1080-Fenster mit GUI-Skalierung 2. Im Spiel geht's genauso: Rechts-Shift → HUD bearbeiten.</p>
         </div>
-        <div class="card ocfg">
+      </div>
+      <div data-pane="orb:packs" class="hidden">
+        <div class="mods-grid" id="oPacks"></div>
+        <div class="card ocfg mt" id="oSetup">
           <div class="sh"><b>Setup</b></div>
-          <div class="srow"><div><b>Minecraft-Version</b><p>Neueste Version, für die alle Kern-Mods da sind</p></div><select class="in sel" id="oVer"></select></div>
+          <div class="srow"><div><b>Minecraft-Version</b><p>Version, für die der Orbit Client gebaut ist</p></div><select class="in sel" id="oVer"></select></div>
           <div class="srow"><div><b>Arbeitsspeicher</b><p id="oRamTxt">3 GB</p></div><input type="range" id="oRam" min="2" max="16" step="1" value="3" style="width:150px"></div>
           <div class="srow"><div><b>Loader</b><p>Fabric, automatisch die neueste stabile Version</p></div><span class="chip a">Fabric</span></div>
-          <div id="oExisting"></div>
           <button class="btn p lg oinstall" id="oInstall" onclick="orbitInstall()"><svg class="i"><use href="#download"/></svg>Orbit Client installieren</button>
-          <p class="fine">Alle Mods stammen von Modrinth und stehen unter ihren eigenen Lizenzen. Orbit Client ist nicht mit Lunar Client, LabyMod, Mojang oder Microsoft verbunden.</p>
+          <p class="fine">Der Orbit-Client-Mod ist im Launcher eingebaut. Die Pakete kommen von Modrinth und stehen unter den Lizenzen ihrer Autoren.</p>
         </div>
+      </div>
+      <div data-pane="orb:keys" class="hidden">
+        <div class="card keys" id="oKeys"></div>
       </div>
     </section>
 
@@ -264,16 +283,6 @@
       </div>
       <div class="vstats" id="vStats"></div>
       <div class="card vlist" id="vList"></div>
-    </section>
-
-    <!-- ================= OTHER CLIENTS ================= -->
-    <section class="page" id="p-clients">
-      <div class="ph">
-        <div><div class="kicker">Starthilfe</div><h1>Andere Clients</h1><p class="pd">Du nutzt zusätzlich Lunar Client, LabyMod oder einen anderen Launcher? OrbitLauncher findet installierte Clients und startet sie für dich. Dafür werden nur deren eigene Programme geöffnet.</p></div>
-        <div class="ph-r"><button class="btn" onclick="loadClients()"><svg class="i"><use href="#refresh"/></svg>Neu suchen</button></div>
-      </div>
-      <div class="cgrid" id="cgrid"></div>
-      <div class="card note"><svg class="i"><use href="#info"/></svg><div><b>Gut zu wissen</b><p>Diese Clients haben eigene Launcher, Konten und Updates. OrbitLauncher verändert an ihnen nichts. Wenn du das Gefühl von Lunar oder LabyMod willst, aber offen und anpassbar: Probier den <a href="#" onclick="go('orbit');return false">Orbit Client</a>.</p></div></div>
     </section>
 
     <!-- ================= SETTINGS ================= -->
@@ -330,7 +339,7 @@
 <div id="toasts"></div>
 <div class="pop hidden" id="pop"></div>
 <div class="modal" id="modal"><div class="card gb mbox" id="mbox"></div></div>
-<div class="splash" id="splash"><div class="sp-box"><svg class="sp-logo" viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg><div class="sp-name">Orbit<span>Launcher</span></div><div class="sp-sub">Lade Versionen…</div><div class="sp-bar"><i></i></div></div></div>
+<div class="splash" id="splash"><div class="sp-box"><svg class="sp-logo" viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg><div class="sp-name">Orbit<span>Client</span></div><div class="sp-sub">Lade Versionen…</div><div class="sp-bar"><i></i></div></div></div>
 <script src="app.js"></script>
 </body>
 </html>

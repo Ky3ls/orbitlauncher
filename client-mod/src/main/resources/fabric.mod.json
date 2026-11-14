@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "orbitclient",
+	"version": "${version}",
+	"name": "Orbit Client",
+	"description": "Der Client von OrbitLauncher: PvP-HUD, Keystrokes, CPS, Zoom, Freelook, Fullbright, eigenes Fadenkreuz und ein Mod-Menü auf Rechts-Shift.",
+	"authors": ["Ky3ls"],
+	"license": "MIT",
+	"icon": "assets/orbitclient/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["dev.orbit.client.OrbitClient"]
+	},
+	"mixins": ["orbitclient.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

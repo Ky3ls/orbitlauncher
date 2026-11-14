@@ -13,6 +13,7 @@ var mode = args.ElementAtOrDefault(1) ?? "vanilla";
 var prog = new Progress<Progress>(p => Console.WriteLine($"  [{p.Stage}] {p.Pct}% {p.Detail}"));
 var sw = Stopwatch.StartNew();
 var set = new Settings { RamMb = 2048 };
+var waitSec = 60;
 
 switch (mode)
 {
@@ -62,9 +63,24 @@ switch (mode)
     {
         var best = await OrbitClient.BestVersion();
         Console.WriteLine("Orbit Client Zielversion: " + best);
-        var (inst, ok, skipped) = await OrbitClient.Create(null, OrbitClient.Modules.Where(m => m.Default).Select(m => m.Id), 3072, prog);
+        var jar = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Assets/orbitclient.jar"));
+        OrbitClient.ModJar = () => File.Exists(jar) ? File.OpenRead(jar) : null;
+        var (inst, ok, skipped) = await OrbitClient.Create(null, OrbitClient.Packs.Where(m => m.Default).Select(m => m.Id), 3072, "#FF7A3D", prog);
+        Console.WriteLine("Orbit-Mod in Instanz: " + File.Exists(Path.Combine(inst.Dir, "mods", OrbitClient.ModFile)));
         Console.WriteLine($"Installiert ({ok.Count}): {string.Join(", ", ok)}");
         Console.WriteLine($"Übersprungen ({skipped.Count}): {string.Join(", ", skipped)}");
+        await Launch(inst);
+        break;
+    }
+    case "client":
+    {
+        // Orbit Client mod in an Orbit instance, with UI autotest (-Dorbit.autotest) for screenshots
+        var inst = Instances.All().First(i => i.Kind == "orbit");
+        var mods = Path.Combine(inst.Dir, "mods");
+        foreach (var f in Directory.GetFiles(mods, "orbitclient*.jar")) File.Delete(f);
+        File.Copy(args[2], Path.Combine(mods, Path.GetFileName(args[2])));
+        set.JvmArgs = "-Dorbit.autotest=" + (args.ElementAtOrDefault(3) ?? "menu,settings,editor");
+        waitSec = 75;
         await Launch(inst);
         break;
     }
@@ -88,7 +104,7 @@ async Task Launch(Instance inst)
     runner.State += (_, run, code) => { if (!run) exited.TrySetResult(code); };
     var proc = await runner.Launch(inst, s, set, prog);
     Console.WriteLine($"Java gestartet (PID {proc.Id}) nach {sw.Elapsed.TotalSeconds:0.0}s, warte auf Ausgabe…");
-    var done = await Task.WhenAny(exited.Task, Task.Delay(TimeSpan.FromSeconds(60)));
-    if (done != exited.Task) { Console.WriteLine("Läuft nach 60s noch – beende."); runner.Kill(inst.Id); }
+    var done = await Task.WhenAny(exited.Task, Task.Delay(TimeSpan.FromSeconds(waitSec)));
+    if (done != exited.Task) { Console.WriteLine($"Läuft nach {waitSec}s noch – beende."); runner.Kill(inst.Id); }
     else Console.WriteLine("Beendet mit Code " + exited.Task.Result);
 }

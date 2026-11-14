@@ -76,13 +76,14 @@ function blockSvg(key) {
 const instIcon = (i, cls = 'iic') => `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
 
 /* ======================= BANNER (original voxel landscape) ======================= */
-function bannerSvg() {
-  const W = 1200, H = 260, s = 12; let seed = 7;
+function bannerSvg(day = false) {
+  const W = 1200, H = day ? 675 : 260, s = 12, gid = day ? 'bskyd' : 'bsky'; let seed = 7;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const a = getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#FF7A3D';
-  let out = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="bsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B0B14"/><stop offset=".55" stop-color="#1C1626"/><stop offset="1" stop-color="${a}" stop-opacity=".55"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#bsky)"/>`;
-  for (let i = 0; i < 60; i++) out += `<rect x="${Math.floor(rnd() * W / 4) * 4}" y="${Math.floor(rnd() * 120 / 4) * 4}" width="3" height="3" fill="#fff" opacity="${(0.2 + rnd() * 0.6).toFixed(2)}"/>`;
-  out += `<rect x="930" y="70" width="60" height="60" fill="${a}" opacity=".9"/><rect x="920" y="60" width="80" height="80" fill="${a}" opacity=".18"/>`;
+  let out = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">${day ? '<stop offset="0" stop-color="#5E8FD6"/><stop offset="1" stop-color="#BFD8F2"/>' : `<stop offset="0" stop-color="#0B0B14"/><stop offset=".55" stop-color="#1C1626"/><stop offset="1" stop-color="${a}" stop-opacity=".55"/>`}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#${gid})"/>`;
+  if (!day) for (let i = 0; i < 60; i++) out += `<rect x="${Math.floor(rnd() * W / 4) * 4}" y="${Math.floor(rnd() * 120 / 4) * 4}" width="3" height="3" fill="#fff" opacity="${(0.2 + rnd() * 0.6).toFixed(2)}"/>`;
+  out += day ? '<rect x="900" y="40" width="50" height="50" fill="#FFF6C9"/><rect x="890" y="30" width="70" height="70" fill="#FFF6C9" opacity=".25"/>' + [[120, 50, 140], [420, 30, 180], [700, 70, 120]].map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="16" fill="#fff" opacity=".85"/><rect x="${x + 20}" y="${y - 10}" width="${w - 50}" height="12" fill="#fff" opacity=".85"/>`).join('')
+    : `<rect x="930" y="70" width="60" height="60" fill="${a}" opacity=".9"/><rect x="920" y="60" width="80" height="80" fill="${a}" opacity=".18"/>`;
   const layer = (base, amp, color, top, step) => {
     let h = base, g = '';
     for (let x = 0; x < W; x += s) {
@@ -92,7 +93,8 @@ function bannerSvg() {
     }
     return g;
   };
-  out += layer(150, 40, '#191825', null, 3) + layer(180, 26, '#1F2A22', '#2F4A2C', 2) + layer(215, 16, '#2A2018', '#3E6B2E', 2);
+  out += day ? layer(430, 50, '#8DB0D3', null, 3) + layer(500, 30, '#5F7F4A', '#6FAA4A', 2) + layer(590, 16, '#7A5634', '#5FA03A', 2)
+    : layer(150, 40, '#191825', null, 3) + layer(180, 26, '#1F2A22', '#2F4A2C', 2) + layer(215, 16, '#2A2018', '#3E6B2E', 2);
   return out + '</svg>';
 }
 
@@ -124,7 +126,7 @@ function go(p) {
   $$('.nav').forEach(n => n.classList.toggle('active', n.dataset.p === (NAV_OF[p] || p)));
   $$('.page').forEach(s => s.classList.toggle('show', s.id === 'p-' + p));
   moveInd(); enterPage($('#p-' + p));
-  ({ home: renderHome, instances: renderInstances, orbit: loadOrbit, browse: () => { browseInit(); }, versions: () => S.versions.length ? renderVersions() : loadVersions(), clients: loadClients, settings: renderSettings })[p]?.();
+  ({ home: renderHome, instances: renderInstances, orbit: loadOrbit, browse: () => { browseInit(); }, versions: () => S.versions.length ? renderVersions() : loadVersions(), settings: renderSettings })[p]?.();
 }
 window.go = go;
 $('#side').addEventListener('click', e => { const n = e.target.closest('.nav'); if (n) go(n.dataset.p); });
@@ -416,6 +418,7 @@ window.pickJava = async target => { try { const r = await api('java.pick'); if (
 function pageTab(group, k) {
   $$(`[data-tabs="${group}"] .tab`).forEach(b => b.classList.toggle('on', b.dataset.tab === k));
   $$(`[data-pane^="${group}:"]`).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== group + ':' + k));
+  if (group === 'orb' && k === 'hud') setTimeout(renderStage, 30);
   if (group === 'inst') { if (CTYPES[k]) loadContent(k); else if (k === 'console') renderLog(); else if (k === 'options') renderOpts(); }
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tabs] .tab'); if (b) pageTab(b.closest('[data-tabs]').dataset.tabs, b.dataset.tab); });
@@ -644,58 +647,242 @@ async function projDetail(id) {
 window.projDetail = projDetail;
 
 /* ======================= ORBIT CLIENT ======================= */
-S.orbit = { mods: null, info: null };
+// mirror of the in-game modules (client-mod/…/Modules.java); values are stored as strings like in the mod
+const COLORS = ['Weiß', 'Akzent', 'Chroma', 'Grün', 'Rot', 'Blau', 'Gelb', 'Pink'];
+const HUDSET = [['bg', 'Hintergrund', 'bool', true], ['shadow', 'Textschatten', 'bool', true], ['color', 'Farbe', 'choice', 'Weiß', COLORS], ['scale', 'Größe', 'num', 1, 0.5, 2.5, 0.1]];
+const OMODS = [
+  ['fps', 'FPS', 'Bilder pro Sekunde', 'HUD', 1, 1, [], 'activity'],
+  ['cps', 'CPS', 'Klicks pro Sekunde, links | rechts, jeder Klick zählt', 'PvP', 1, 1, [], 'sword'],
+  ['keystrokes', 'Keystrokes', 'WASD, Maustasten mit CPS und Leertaste live', 'PvP', 1, 1, [['mouse', 'Maustasten', 'bool', true], ['space', 'Leertaste', 'bool', true], ['cpsInKeys', 'CPS in Maustasten', 'bool', true]], 'keyboard'],
+  ['coords', 'Koordinaten', 'XYZ, Blickrichtung und Biom', 'HUD', 1, 1, [['biome', 'Biom anzeigen', 'bool', true], ['facing', 'Richtung anzeigen', 'bool', true]], 'compass'],
+  ['armor', 'Rüstung', 'Rüstung und Item in der Hand mit Haltbarkeit', 'PvP', 1, 1, [['dura', 'Haltbarkeit', 'choice', 'Prozent', ['Prozent', 'Zahl', 'Aus']], ['hand', 'Item in der Hand', 'bool', true]], 'shield'],
+  ['potions', 'Effekte', 'Aktive Tränke mit Restzeit', 'HUD', 1, 1, [], 'sparkle'],
+  ['ping', 'Ping', 'Latenz zum Server', 'HUD', 1, 1, [], 'globe'],
+  ['reach', 'Reichweite', 'Distanz deines letzten Treffers', 'PvP', 1, 1, [], 'target'],
+  ['combo', 'Combo', 'Treffer in Folge, ohne getroffen zu werden', 'PvP', 1, 1, [], 'zap'],
+  ['sprint', 'Sprint-Status', 'Zeigt Toggle-Sprint und Schleichen', 'Komfort', 1, 1, [], 'rocket'],
+  ['server', 'Server', 'Aktuelle Server-Adresse', 'HUD', 1, 0, [], 'link'],
+  ['clock', 'Uhrzeit', 'Echte Uhrzeit', 'HUD', 1, 0, [['seconds', 'Sekunden', 'bool', false]], 'clock'],
+  ['memory', 'Speicher', 'RAM-Verbrauch von Minecraft', 'HUD', 1, 0, [], 'ram'],
+  ['speed', 'Tempo', 'Geschwindigkeit in Blöcken pro Sekunde', 'HUD', 1, 0, [], 'zap'],
+  ['session', 'Sitzung', 'Spielzeit dieser Sitzung', 'HUD', 1, 0, [], 'clock'],
+  ['zoom', 'Zoom', 'C halten, Mausrad ändert die Stärke, weich animiert', 'PvP', 0, 1, [['factor', 'Zoomstärke', 'num', 4, 2, 12, 1], ['smooth', 'Weicher Zoom', 'bool', true], ['cinematic', 'Kamera glätten', 'bool', true], ['scroll', 'Mausrad-Zoom', 'bool', true]], 'search'],
+  ['freelook', 'Freelook', 'Linke Alt-Taste halten und frei umschauen', 'PvP', 0, 1, [['invert', 'Maus umkehren', 'bool', false]], 'eye'],
+  ['fullbright', 'Fullbright', 'Alles hell, auch in Höhlen (Taste G)', 'Grafik', 0, 0, [], 'sun'],
+  ['crosshair', 'Fadenkreuz', 'Eigenes Fadenkreuz: Form, Größe, Farbe', 'Grafik', 0, 0, [['style', 'Form', 'choice', 'Plus', ['Plus', 'Plus+Punkt', 'Punkt', 'Kreis', 'X', 'T']], ['size', 'Länge', 'num', 5, 1, 15, 1], ['gap', 'Abstand', 'num', 2, 0, 10, 1], ['thick', 'Dicke', 'num', 1, 1, 4, 1], ['ccolor', 'Farbe', 'choice', 'Weiß', ['Weiß', 'Akzent', 'Grün', 'Rot', 'Cyan', 'Gelb', 'Pink']], ['outline', 'Umrandung', 'bool', true]], 'target'],
+  ['togglesprint', 'Toggle Sprint', 'Sprinten einmal drücken statt halten', 'Komfort', 0, 1, [['sneak', 'Auch Schleichen umschalten', 'bool', false]], 'rocket'],
+  ['nobob', 'Ruhige Kamera', 'Kein Kamerawackeln und kein FOV-Effekt', 'Grafik', 0, 0, [], 'eye'],
+].map(([id, name, desc, cat, hud, def, extra, icon]) => ({ id, name, desc, cat, hud: !!hud, def: !!def, icon, settings: (hud ? HUDSET : []).concat(extra) }));
+const OM = Object.fromEntries(OMODS.map(m => [m.id, m]));
+const fmtNum = v => Number.isInteger(+v) ? String(+v) : (+v).toFixed(1);
+
+S.orbit = { packs: null, info: null, inst: null, cfg: null, cat: '' };
+const ocfg = id => (S.orbit.cfg.modules = S.orbit.cfg.modules || {})[id] = S.orbit.cfg.modules[id] || {};
+const oOn = id => { const c = S.orbit.cfg?.modules?.[id]; return c && c.enabled !== undefined ? !!c.enabled : OM[id].def; };
+const oGet = (id, key) => { const v = S.orbit.cfg?.modules?.[id]?.opts?.[key]; if (v !== undefined) return v; const s = OM[id].settings.find(x => x[0] === key); return s ? (s[2] === 'num' ? fmtNum(s[3]) : String(s[3])) : ''; };
+const oSet = (id, key, v) => { const c = ocfg(id); (c.opts = c.opts || {})[key] = String(v); oSave(); };
+let oSaveT = 0;
+function oSave() {
+  if (!S.orbit.inst) return;
+  $('#oSync').textContent = 'Speichert…';
+  clearTimeout(oSaveT);
+  oSaveT = setTimeout(async () => {
+    try { await api('orbit.config.set', { id: S.orbit.inst.id, config: S.orbit.cfg }); $('#oSync').textContent = S.running.has(S.orbit.inst.id) ? 'Live im Spiel übernommen' : 'Gespeichert'; }
+    catch (e) { $('#oSync').textContent = ''; fail('Speichern fehlgeschlagen', e); }
+  }, 250);
+}
+
 async function loadOrbit() {
   let info;
   try { info = S.orbit.info = await api('orbit.info'); } catch (e) { return fail('Orbit Client', e); }
-  if (!S.orbit.mods) S.orbit.mods = new Set(info.modules.filter(m => m.default).map(m => m.id));
-  $('#oMods').innerHTML = info.modules.map(m => `<div class="card mcard ${S.orbit.mods.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span class="ti">${ico(m.icon)}</span><div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p></div><span class="cb ${S.orbit.mods.has(m.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></div>`).join('');
-  const count = info.modules.filter(m => S.orbit.mods.has(m.id)).reduce((a, m) => a + m.mods, 2);
-  $('#ohStats').innerHTML = `<div><b>${esc(info.best || '…')}</b><span>Minecraft-Version</span></div><div><b>~${count}</b><span>Mods von Modrinth</span></div><div><b>1 Klick</b><span>statt 30 Minuten</span></div>`;
-  const vs = $('#oVer');
-  vs.innerHTML = (info.versions || []).map(v => `<option ${v === info.best ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  S.orbit.inst = (info.existing || []).find(i => i.id === S.sel) || (info.existing || [])[0] || null;
+  S.orbit.cfg = { modules: {} };
+  if (S.orbit.inst) { try { S.orbit.cfg = await api('orbit.config.get', { id: S.orbit.inst.id }); S.orbit.cfg.modules = S.orbit.cfg.modules || {}; } catch { } }
+  if (!S.orbit.packs) S.orbit.packs = new Set(info.packs.filter(m => m.default).map(m => m.id));
+  const i = S.orbit.inst, run = i && S.running.has(i.id);
+  const on = OMODS.filter(m => oOn(m.id)).length;
+  $('#ohStats').innerHTML = i
+    ? `<div><b>${OMODS.length}</b><span>eigene Module</span></div><div><b>${on}</b><span>aktiv</span></div><div><b>${i.mods}</b><span>Mods installiert</span></div><div><b>${ptime(i.playSeconds)}</b><span>gespielt</span></div>`
+    : `<div><b>${OMODS.length}</b><span>eigene Module</span></div><div><b>${esc(info.best)}</b><span>Minecraft</span></div><div><b>1 Klick</b><span>Installation</span></div>`;
+  $('#ohAct').innerHTML = i
+    ? `<button class="btn p lg" onclick="play('${i.id}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Orbit Client spielen'}</button><button class="btn lg" onclick="openInst('${i.id}')">${ico('settings')}Instanz</button>${(info.existing || []).length > 1 ? `<select class="in sel" onchange="S.sel=this.value;loadOrbit()">${info.existing.map(x => `<option value="${x.id}" ${x.id === i.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}`
+    : `<button class="btn p lg" onclick="pageTab('orb','packs')">${ico('download')}Orbit Client installieren</button><span class="muted" style="font-size:12.5px">Dauert etwa eine Minute</span>`;
+  $('#oCnt').textContent = on + '/' + OMODS.length;
+  renderOMods(); renderPacks(info); renderKeys();
+  if (!$('[data-pane="orb:hud"]').classList.contains('hidden')) renderStage();
+}
+
+function renderOMods() {
+  const list = OMODS.filter(m => !S.orbit.cat || m.cat === S.orbit.cat);
+  $('#oMods').innerHTML = list.map(m => `<div class="card mcard ${oOn(m.id) ? 'on' : ''}" data-om="${m.id}"><span class="ti">${ico(m.icon)}</span>
+    <div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.cat}${m.hud && m.cat !== 'HUD' ? ' · HUD' : ''}</span></div>
+    <div class="mact"><div class="tg sm ${oOn(m.id) ? 'on' : ''}" data-omt="${m.id}"></div>${m.settings.length ? `<button class="ib sm" title="Einstellungen" data-oms="${m.id}">${ico('settings')}</button>` : ''}</div></div>`).join('');
+  if (!S.orbit.inst) $('#oSync').textContent = 'Erst installieren, dann gilt es im Spiel';
+}
+$('#oCat').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.orbit.cat = b.dataset.c; $$('#oCat button').forEach(x => x.classList.toggle('on', x === b)); renderOMods(); });
+$('#oMods').addEventListener('click', e => {
+  const st = e.target.closest('[data-oms]'); if (st) return orbitSettings(st.dataset.oms);
+  const card = e.target.closest('[data-om]'); if (!card) return;
+  const id = card.dataset.om, on = !oOn(id);
+  ocfg(id).enabled = on; card.classList.toggle('on', on); card.querySelector('.tg').classList.toggle('on', on);
+  $('#oCnt').textContent = OMODS.filter(m => oOn(m.id)).length + '/' + OMODS.length;
+  oSave();
+});
+function orbitSettings(id) {
+  const m = OM[id];
+  const row = s => {
+    const [key, label, type] = s, v = oGet(id, key);
+    if (type === 'bool') return `<div class="srow"><div><b>${esc(label)}</b></div><div class="tg ${v === 'true' ? 'on' : ''}" data-ok="${key}" data-t="bool"></div></div>`;
+    if (type === 'choice') return `<div class="srow"><div><b>${esc(label)}</b></div><div class="seg" data-ok="${key}" data-t="choice">${s[4].map(c => `<button class="${c === v ? 'on' : ''}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div></div>`;
+    return `<div class="srow"><div><b>${esc(label)}</b><p><span data-nv="${key}">${esc(v)}</span>${key === 'scale' ? 'x' : ''}</p></div><input type="range" min="${s[4]}" max="${s[5]}" step="${s[6]}" value="${esc(v)}" data-ok="${key}" data-t="num" style="width:200px"></div>`;
+  };
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">${esc(m.cat)}${m.hud ? ' · HUD' : ''}</div><h1>${esc(m.name)}</h1><p class="sub" style="margin:4px 0 0;max-width:none">${esc(m.desc)}</p>
+    ${id === 'crosshair' ? '<div class="xprev"><canvas id="xhPrev" width="160" height="100"></canvas></div>' : ''}
+    <div class="osets">${m.settings.map(row).join('')}</div>
+    <div class="act" style="justify-content:flex-end"><button class="btn p" onclick="closeModal()">${ico('check')}Fertig</button></div>`, 'form');
+  $$('.osets input[type=range]').forEach(setRange);
+  const box = $('.osets');
+  box.addEventListener('click', e => {
+    const t = e.target.closest('[data-t]'); if (!t) return;
+    if (t.dataset.t === 'bool') { const on = !t.classList.contains('on'); t.classList.toggle('on', on); oSet(id, t.dataset.ok, on); }
+    if (t.dataset.t === 'choice') { const b = e.target.closest('button'); if (!b) return; t.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); oSet(id, t.dataset.ok, b.dataset.v); }
+    xhDraw();
+  });
+  box.addEventListener('input', e => { const t = e.target; if (t.dataset.t !== 'num') return; const v = fmtNum(t.value); box.querySelector(`[data-nv="${t.dataset.ok}"]`).textContent = v; oSet(id, t.dataset.ok, v); xhDraw(); });
+  S.modalClose = () => loadOrbit();
+  xhDraw();
+}
+window.orbitSettings = orbitSettings;
+function xhDraw() {
+  const c = $('#xhPrev'); if (!c) return;
+  const x = c.getContext('2d'), sc = 4; x.clearRect(0, 0, c.width, c.height);
+  const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, '#5b86c2'); g.addColorStop(.6, '#8fb3d9'); g.addColorStop(.6, '#3E6B2E'); g.addColorStop(1, '#2A2018'); x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+  const cols = { 'Weiß': '#fff', 'Akzent': getComputedStyle(document.documentElement).getPropertyValue('--a').trim(), 'Grün': '#4ADE9A', 'Rot': '#F87171', 'Cyan': '#67E8F9', 'Gelb': '#FDE047', 'Pink': '#F472B6' };
+  const col = cols[oGet('crosshair', 'ccolor')] || '#fff', size = +oGet('crosshair', 'size'), gap = +oGet('crosshair', 'gap'), t = Math.max(1, +oGet('crosshair', 'thick')), ol = oGet('crosshair', 'outline') === 'true', st = oGet('crosshair', 'style');
+  const cx = c.width / 2, cy = c.height / 2, h0 = Math.floor(t / 2), h1 = t - h0;
+  const R = (a, b, cc, d) => { if (ol) { x.fillStyle = 'rgba(0,0,0,.75)'; x.fillRect(cx + (a - 1) * sc, cy + (b - 1) * sc, (cc - a + 2) * sc, (d - b + 2) * sc); } x.fillStyle = col; x.fillRect(cx + a * sc, cy + b * sc, (cc - a) * sc, (d - b) * sc); };
+  const plus = top => { R(-gap - size, -h0, -gap, h1); R(gap + 1, -h0, gap + 1 + size, h1); if (top) R(-h0, -gap - size, h1, -gap); R(-h0, gap + 1, h1, gap + 1 + size); };
+  if (st === 'Punkt') R(-h0 - 1, -h0 - 1, h1 + 1, h1 + 1);
+  else if (st === 'Kreis') { const r = gap + Math.floor(size / 2) + 2; for (let a = 0; a < 360; a += 6) { const px = Math.round(Math.cos(a * Math.PI / 180) * r), py = Math.round(Math.sin(a * Math.PI / 180) * r); x.fillStyle = col; x.fillRect(cx + (px - h0) * sc, cy + (py - h0) * sc, t * sc, t * sc); } R(-1, -1, 1, 1); }
+  else if (st === 'X') { x.save(); x.translate(cx, cy); x.rotate(Math.PI / 4); x.translate(-cx, -cy); plus(true); x.restore(); }
+  else { plus(st !== 'T'); if (st === 'Plus+Punkt') R(-h0, -h0, h1, h1); }
+}
+async function orbitReset() {
+  if (!S.orbit.inst) return;
+  if (!await confirmBox('Alles zurücksetzen?', 'Alle Module, Einstellungen und HUD-Positionen gehen auf Standard zurück.', 'Zurücksetzen', true)) return;
+  S.orbit.cfg = { modules: {} }; oSave(); loadOrbit();
+}
+window.orbitReset = orbitReset;
+
+/* ---------- HUD layout stage (mirror of the in-game auto layout) ---------- */
+const HUDBOX = { fps: [52, 16, '60 FPS'], cps: [62, 16, '9 | 2 CPS'], coords: [150, 36, 'X 128.5  Y 64.0  Z -42.3\nRichtung Nord (-Z)\nBiom Plains'], keystrokes: [70, 108, 'keys'], armor: [52, 90, 'armor'],
+  potions: [116, 26, 'Stärke II  1:24\nSchnelligkeit  3:00'], ping: [42, 16, '23 ms'], server: [96, 16, 'play.example.net'], clock: [38, 16, '18:42'], memory: [126, 16, 'RAM 41%  1.2/3.0 GB'],
+  speed: [60, 16, '5.61 m/s'], reach: [46, 16, '3.12 m'], combo: [54, 16, '4 Combo'], sprint: [140, 16, '[Sprinten (umgeschaltet)]'], session: [104, 16, 'Sitzung 0:42:10'] };
+const ANCHOR = id => ['clock', 'memory', 'session', 'potions'].includes(id) ? 'tr' : ['keystrokes', 'sprint'].includes(id) ? 'bl' : id === 'armor' ? 'br' : ['reach', 'combo'].includes(id) ? 'c' : 'tl';
+const GW = 960, GH = 540;
+function hudLayout() {
+  const pos = {}, cur = { tl: 3, tr: 3, bl: GH - 3, br: GH - 27, c: GH / 2 + 14 };
+  const hud = OMODS.filter(m => m.hud && oOn(m.id));
+  for (const pass of [true, false]) for (const m of pass ? [...hud].reverse() : hud) {
+    const c = S.orbit.cfg.modules?.[m.id] || {}, sc = +oGet(m.id, 'scale') || 1, [bw, bh] = HUDBOX[m.id], w = bw * sc, h = bh * sc;
+    if (c.x !== undefined && c.y !== undefined) { if (pass) pos[m.id] = [Math.min(GW - w, c.x * GW), Math.min(GH - h, c.y * GH), w, h]; continue; }
+    const a = ANCHOR(m.id), up = a[0] === 'b'; if (up !== pass) continue;
+    const x = a === 'tr' || a === 'br' ? GW - 3 - w : a === 'c' ? (GW - w) / 2 : 3;
+    let y; if (up) { y = cur[a] - h; cur[a] = y - 2; } else { y = cur[a]; cur[a] = y + h + 2; }
+    pos[m.id] = [x, y, w, h];
+  }
+  return pos;
+}
+function renderStage() {
+  const st = $('#stage'); if (!st) return;
+  if (!$('#stageBg').innerHTML) $('#stageBg').innerHTML = bannerSvg(true);
+  const k = st.clientWidth / GW, pos = hudLayout();
+  st.querySelectorAll('.hb').forEach(e => e.remove());
+  for (const [id, [x, y, w, h]] of Object.entries(pos)) {
+    const sc = +oGet(id, 'scale') || 1, bg = oGet(id, 'bg') !== 'false';
+    const d = document.createElement('div');
+    d.className = 'hb' + (bg ? ' bg' : ''); d.dataset.id = id; d.title = OM[id].name;
+    d.style.cssText = `left:${x * k}px;top:${y * k}px;width:${w * k}px;height:${h * k}px;--fs:${8.4 * sc * k}px`;
+    const txt = HUDBOX[id][2];
+    d.innerHTML = txt === 'keys' ? `<div class="ks">${['', 'W', '', 'A', 'S', 'D'].map(t => `<i class="${t ? '' : 'e'}">${t}</i>`).join('')}<i class="w2">LMB 9</i><i class="w2">RMB 2</i><i class="w3">▬</i></div>`
+      : txt === 'armor' ? '<div class="arm"><i></i><i></i><i></i><i></i><i></i></div>'
+        : txt.split('\n').map(l => `<span>${esc(l)}</span>`).join('');
+    st.append(d);
+  }
+}
+let hbDrag = null;
+$('#stage').addEventListener('pointerdown', e => {
+  const b = e.target.closest('.hb'); if (!b || !S.orbit.inst) return;
+  const r = b.getBoundingClientRect();
+  hbDrag = { id: b.dataset.id, el: b, ox: e.clientX - r.left, oy: e.clientY - r.top };
+  b.classList.add('drag'); b.setPointerCapture(e.pointerId);
+});
+$('#stage').addEventListener('pointermove', e => {
+  if (!hbDrag) return;
+  const st = $('#stage').getBoundingClientRect(), b = hbDrag.el;
+  let x = e.clientX - st.left - hbDrag.ox, y = e.clientY - st.top - hbDrag.oy;
+  const w = b.offsetWidth, h = b.offsetHeight, sn = 6;
+  x = Math.max(0, Math.min(st.width - w, x)); y = Math.max(0, Math.min(st.height - h, y));
+  if (Math.abs(x + w / 2 - st.width / 2) < sn) x = st.width / 2 - w / 2;
+  if (Math.abs(y + h / 2 - st.height / 2) < sn) y = st.height / 2 - h / 2;
+  b.style.left = x + 'px'; b.style.top = y + 'px';
+  hbDrag.x = x / st.width; hbDrag.y = y / st.height;
+});
+$('#stage').addEventListener('pointerup', () => {
+  if (!hbDrag) return;
+  hbDrag.el.classList.remove('drag');
+  if (hbDrag.x !== undefined) { const c = ocfg(hbDrag.id); c.x = +hbDrag.x.toFixed(4); c.y = +hbDrag.y.toFixed(4); oSave(); }
+  hbDrag = null;
+});
+$('#stage').addEventListener('wheel', e => {
+  const b = e.target.closest('.hb'); if (!b || !S.orbit.inst) return; e.preventDefault();
+  const id = b.dataset.id, v = Math.max(0.5, Math.min(2.5, Math.round(((+oGet(id, 'scale') || 1) + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
+  oSet(id, 'scale', fmtNum(v)); renderStage();
+}, { passive: false });
+$('#stage').addEventListener('dblclick', e => { const b = e.target.closest('.hb'); if (!b) return; const c = ocfg(b.dataset.id); delete c.x; delete c.y; oSave(); renderStage(); });
+window.hudAuto = () => { Object.values(S.orbit.cfg.modules || {}).forEach(c => { delete c.x; delete c.y; }); oSave(); renderStage(); };
+window.addEventListener('resize', () => { if (curPage === 'orbit') renderStage(); });
+
+/* ---------- packs + install + keys ---------- */
+function renderPacks(info) {
+  const has = !!S.orbit.inst;
+  $('#oPacks').innerHTML = info.packs.map(m => `<div class="card mcard ${S.orbit.packs.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span class="ti">${ico(m.icon)}</span><div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.mods} Mod${m.mods > 1 ? 's' : ''}</span></div>
+    ${has ? `<button class="btn sm" onclick="event.stopPropagation();addPack('${m.id}',this)">${ico('download')}Hinzufügen</button>` : `<span class="cb ${S.orbit.packs.has(m.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>`}</div>`).join('');
+  $('#oVer').innerHTML = (info.versions || []).map(v => `<option ${v === info.best ? 'selected' : ''}>${esc(v)}</option>`).join('');
   const ram = $('#oRam'); setRange(ram); $('#oRamTxt').textContent = ram.value + ' GB';
   ram.oninput = () => $('#oRamTxt').textContent = ram.value + ' GB';
-  const ex = info.existing || [];
-  $('#oExisting').innerHTML = ex.map(i => `<div class="oex">${instIcon(i)}<div class="tx"><b>${esc(i.name)}</b><span>${esc(instSub(i))} · ${i.mods} Mods</span></div><button class="btn sm p" onclick="play('${i.id}')">${ico('play')}Spielen</button></div>`).join('');
-  $('#oInstall').innerHTML = ico('download') + (ex.length ? 'Weitere Orbit-Instanz installieren' : 'Orbit Client installieren');
+  $('#oInstall').innerHTML = ico('download') + (has ? 'Weitere Orbit-Instanz anlegen' : 'Orbit Client installieren');
 }
-$('#oMods').addEventListener('click', e => {
+$('#oPacks').addEventListener('click', e => {
+  if (S.orbit.inst) return;
   const c = e.target.closest('[data-m]'); if (!c) return;
-  const s = S.orbit.mods; s.has(c.dataset.m) ? s.delete(c.dataset.m) : s.add(c.dataset.m);
-  c.classList.toggle('on'); c.querySelector('.cb').classList.toggle('on');
-  const count = S.orbit.info.modules.filter(m => s.has(m.id)).reduce((a, m) => a + m.mods, 2);
-  $('#ohStats div:nth-child(2) b').textContent = '~' + count;
+  const s = S.orbit.packs; s.has(c.dataset.m) ? s.delete(c.dataset.m) : s.add(c.dataset.m);
+  c.classList.toggle('on'); c.querySelector('.cb')?.classList.toggle('on');
 });
+const PACK_MODS = { perf: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast', 'dynamic-fps', 'sodium-extra', 'reeses-sodium-options'], shaders: ['iris'], qol: ['appleskin', 'mouse-tweaks', 'betterf3', 'no-chat-reports'], visual: ['lambdynamiclights', 'continuity', '3dskinlayers'] };
+async function addPack(id, btn) {
+  const i = S.orbit.inst; btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
+  let n = 0;
+  for (const slug of PACK_MODS[id] || []) { try { await api('mr.install', { id: i.id, project: slug, type: 'mod' }); n++; } catch { } }
+  btn.disabled = false; btn.innerHTML = ico('check') + 'Installiert';
+  toast('Paket installiert', `${n} Mod${n === 1 ? '' : 's'} in ${i.name}`); refreshInstances();
+}
+window.addPack = addPack;
 async function orbitInstall() {
   const btn = $('#oInstall'); btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Wird eingerichtet…';
   try {
-    const r = await api('orbit.create', { mc: $('#oVer').value, modules: [...S.orbit.mods], ramMb: +$('#oRam').value * 1024 });
-    toast('Orbit Client bereit', `${r.installed.length} Mods installiert${r.skipped.length ? `, ${r.skipped.length} nicht für diese Version verfügbar` : ''}`);
-    await refreshInstances(); selectInstance(r.id); loadOrbit();
+    const r = await api('orbit.create', { mc: $('#oVer').value, packs: [...S.orbit.packs], ramMb: +$('#oRam').value * 1024 });
+    toast('Orbit Client bereit', `${r.installed.length} Teile installiert${r.skipped.length ? `, ${r.skipped.length} nicht verfügbar` : ''}`);
+    await refreshInstances(); selectInstance(r.id); await loadOrbit(); pageTab('orb', 'mods');
   } catch (e) { fail('Orbit Client fehlgeschlagen', e); }
   finally { btn.disabled = false; }
 }
 window.orbitInstall = orbitInstall;
-
-/* ======================= OTHER CLIENTS ======================= */
-const CLIENTS = [
-  ['lunar', 'Lunar Client', 'L', 'Beliebter PvP-Client mit eigenem Launcher und eigenen Mods.'],
-  ['labymod', 'LabyMod', 'LM', 'Client mit Addons, Emotes und eigenem Launcher.'],
-  ['badlion', 'Badlion Client', 'B', 'PvP-Client mit Anti-Cheat und eigenen Mods.'],
-  ['feather', 'Feather Client', 'F', 'Performance-Client mit eigenem Launcher.'],
-  ['mojang', 'Minecraft Launcher', 'M', 'Der offizielle Launcher von Mojang.'],
-];
-async function loadClients() {
-  let found = [];
-  try { found = await api('clients.detect'); } catch { }
-  $('#cgrid').innerHTML = CLIENTS.map(([id, name, ab, desc]) => {
-    const f = found.find(x => x.id === id);
-    return `<div class="card ccard ${f ? 'found' : ''}"><div class="top"><span class="ci">${ab}</span><div><b>${name}</b><span>${f ? 'Installiert' : 'Nicht gefunden'}</span></div></div><p>${desc}</p>
-      ${f ? `<code>${esc(f.path)}</code><button class="btn p sm" onclick="api('clients.start',{id:'${id}'}).then(()=>toast('${name} wird gestartet')).catch(e=>fail('Start fehlgeschlagen',e))">${ico('ext')}Starten</button>` : '<button class="btn sm" disabled>Nicht installiert</button>'}</div>`;
-  }).join('');
+function renderKeys() {
+  $('#oKeys').innerHTML = [['Rechts-Shift', 'Orbit-Menü öffnen', 'Module an/aus, Einstellungen, HUD bearbeiten'], ['C (halten)', 'Zoom', 'Mausrad ändert die Stärke'], ['Linke Alt (halten)', 'Freelook', 'Kamera dreht, du läufst geradeaus'], ['G', 'Fullbright', 'An/aus, auch wenn das Modul aus ist'], ['Strg (Sprint)', 'Toggle Sprint', 'Einmal drücken, bleibt an']]
+    .map(([k, n, d]) => `<div class="srow"><div><b>${esc(n)}</b><p>${esc(d)}</p></div><kbd>${esc(k)}</kbd></div>`).join('')
+    + '<p class="fine">Alle Tasten kannst du im Spiel unter Optionen → Steuerung → Kategorie „Orbit Client“ ändern.</p>';
 }
-window.loadClients = loadClients;
 
 /* ======================= SETTINGS ======================= */
 function setTab(k) {
@@ -788,10 +975,10 @@ async function boot() {
 
 /* ======================= MOCK BACKEND (browser preview) ======================= */
 const Mock = {
-  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', lastInstance: 'orbit-client-26-3' },
+  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', lastInstance: 'orbit-client' },
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
-    { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: new Date(Date.now() - 3600e3).toISOString(), mods: 19 },
+    { id: 'orbit-client', name: 'Orbit Client', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: new Date(Date.now() - 3600e3).toISOString(), mods: 19 },
     { id: 'survival-1-21-11', name: 'Survival mit Freunden', mcVersion: '1.21.11', loader: 'vanilla', kind: 'custom', icon: 'grass', ramMb: 0, playSeconds: 210000, lastPlayed: new Date(Date.now() - 86400e3 * 2).toISOString(), mods: 0 },
     { id: 'technik-abenteuer', name: 'Technik-Abenteuer', mcVersion: '1.21.1', loader: 'neoforge', loaderVersion: '21.1.266', kind: 'modpack', icon: 'ruby', ramMb: 8192, playSeconds: 92000, lastPlayed: new Date(Date.now() - 86400e3 * 5).toISOString(), mods: 214 },
     { id: 'pvp-1-8-9', name: 'PvP 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', kind: 'custom', icon: 'diamond', ramMb: 2048, playSeconds: 12000, lastPlayed: new Date(Date.now() - 86400e3 * 12).toISOString(), mods: 0 },
@@ -851,12 +1038,13 @@ const Mock = {
       case 'mr.install': await sleep(900); return { installed: ['Zoomify (Zoom)', 'Fabric API', 'YetAnotherConfigLib (YACL)'], skipped: [] };
       case 'mr.modpack': await sleep(800); return M.instances[0];
       case 'orbit.info': return {
-        best: '26.3', versions: ['26.3', '26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.4', '1.21.1', '1.20.1'],
-        modules: [['perf', 'FPS-Boost', 'Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast und Dynamic FPS', 'zap', 1, 8], ['shaders', 'Shader-Support', 'Iris für Shaderpacks wie Complementary oder BSL', 'sun', 1, 1], ['hud', 'PvP-HUD', 'AxolotlClient: Keystrokes, CPS, FPS, Rüstung, Koordinaten, Crosshair', 'keyboard', 1, 1], ['zoom', 'Zoom', 'Zoomify – flüssiger Zoom mit Mausrad', 'search', 1, 1], ['look', 'Freelook', 'Kamera frei drehen, ohne die Laufrichtung zu ändern', 'eye', 0, 1], ['qol', 'Komfort', 'Toggle Sprint, AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports', 'sparkle', 1, 5], ['visual', 'Optik', 'Dynamische Lichter, Connected Textures, 3D-Skin-Layer', 'layers', 0, 3]].map(([id, name, desc, icon, d, mods]) => ({ id, name, desc, icon, default: !!d, mods })),
-        existing: M.instances.filter(i => i.kind === 'orbit'),
+        best: '26.3', versions: ['26.3'],
+        packs: [['perf', 'FPS-Boost', 'Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, Dynamic FPS', 'zap', 1, 8], ['shaders', 'Shader-Support', 'Iris für Shaderpacks wie Complementary oder BSL', 'sun', 1, 1], ['qol', 'Komfort', 'AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports', 'sparkle', 1, 4], ['visual', 'Optik', 'Dynamische Lichter, Connected Textures, 3D-Skin-Layer', 'layers', 0, 3]].map(([id, name, desc, icon, d, mods]) => ({ id, name, desc, icon, default: !!d, mods })),
+        existing: /noorbit/.test(location.search) ? [] : M.instances.filter(i => i.kind === 'orbit'),
       };
-      case 'orbit.create': await sleep(1200); return { id: 'orbit-client-26-3', installed: Array(19).fill('x'), skipped: ['freelook'] };
-      case 'clients.detect': return [{ id: 'lunar', name: 'Lunar Client', path: 'C:\\Users\\Ky3ls\\AppData\\Local\\Programs\\lunarclient\\Lunar Client.exe' }, { id: 'mojang', name: 'Minecraft Launcher', path: 'C:\\Program Files (x86)\\Minecraft Launcher\\MinecraftLauncher.exe' }];
+      case 'orbit.create': await sleep(1200); return { id: 'orbit-client', installed: Array(16).fill('x'), skipped: [] };
+      case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true }, armor: { opts: { color: 'Akzent' } } } });
+      case 'orbit.config.set': M.ocfg = JSON.parse(JSON.stringify(a.config)); return {};
       case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\java.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\java.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\java.exe', major: 8, source: 'Mojang' }];
       case 'auth.start': return { userCode: 'K7Q2-M9XD', verificationUri: 'https://www.microsoft.com/link' };
       case 'auth.finish': await sleep(600000); return {};

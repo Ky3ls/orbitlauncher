@@ -26,44 +26,37 @@ public class Settings
     public void Save() => Net.SaveJson(FilePath, this);
 }
 
-/// <summary>The "Orbit Client": a curated, open Fabric setup from Modrinth (performance, shaders, HUD, zoom, QoL).
-/// Nothing is bundled – every mod is downloaded from Modrinth under its own license.</summary>
+/// <summary>
+/// Orbit Client = OrbitLauncher's own client: our Fabric mod (HUD, keystrokes, CPS, zoom, freelook, fullbright,
+/// crosshair, mod menu on Right Shift) plus optional performance/QoL packs downloaded from Modrinth.
+/// </summary>
 public static class OrbitClient
 {
-    public record Module(string Id, string Name, string Desc, string Icon, bool Default, string[] Mods);
+    public record Pack(string Id, string Name, string Desc, string Icon, bool Default, string[] Mods);
 
-    public static readonly Module[] Modules =
+    /// <summary>Minecraft versions the Orbit Client mod is built for.</summary>
+    public static readonly string[] Supported = { "26.3" };
+    public const string ModFile = "orbitclient.jar";
+    /// <summary>Provides the bundled mod jar (embedded resource in the app, a file in tests).</summary>
+    public static Func<Stream?>? ModJar { get; set; }
+
+    public static readonly Pack[] Packs =
     {
-        new("perf", "FPS-Boost", "Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast und Dynamic FPS", "zap", true,
+        new("perf", "FPS-Boost", "Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, Dynamic FPS", "zap", true,
             new[] { "sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "dynamic-fps", "sodium-extra", "reeses-sodium-options" }),
         new("shaders", "Shader-Support", "Iris für Shaderpacks wie Complementary oder BSL", "sun", true, new[] { "iris" }),
-        new("hud", "PvP-HUD", "AxolotlClient: Keystrokes, CPS, FPS, Rüstung, Koordinaten, Crosshair", "keyboard", true, new[] { "axolotlclient" }),
-        new("zoom", "Zoom", "Zoomify – flüssiger Zoom mit Mausrad", "search", true, new[] { "zoomify" }),
-        new("look", "Freelook", "Kamera frei drehen, ohne die Laufrichtung zu ändern", "eye", false, new[] { "freelook" }),
-        new("qol", "Komfort", "Toggle Sprint, AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports", "sparkle", true,
-            new[] { "toggle-sprint-display", "appleskin", "mouse-tweaks", "betterf3", "no-chat-reports" }),
+        new("qol", "Komfort", "AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports", "sparkle", true,
+            new[] { "appleskin", "mouse-tweaks", "betterf3", "no-chat-reports" }),
         new("visual", "Optik", "Dynamische Lichter, Connected Textures, 3D-Skin-Layer", "layers", false, new[] { "lambdynamiclights", "continuity", "3dskinlayers" }),
     };
 
-    /// <summary>Newest release for which the core mods (Fabric API, Sodium, Iris) are out.</summary>
-    public static async Task<string> BestVersion(CancellationToken ct = default)
-    {
-        var releases = (await Versions.All(false, ct)).Where(v => v.Type == "release").Select(v => v.Id).ToList();
-        HashSet<string>? common = null;
-        foreach (var slug in new[] { "fabric-api", "sodium", "iris" })
-        {
-            var vs = await Modrinth.ProjectVersions(slug, new[] { "fabric" }, null, ct);
-            var gv = vs.SelectMany(v => v!["game_versions"]!.AsArray().Select(x => (string)x!)).ToHashSet();
-            common = common == null ? gv : common.Intersect(gv).ToHashSet();
-        }
-        return releases.FirstOrDefault(r => common!.Contains(r)) ?? releases.First();
-    }
+    public static Task<string> BestVersion(CancellationToken ct = default) => Task.FromResult(Supported[0]);
 
-    public static async Task<(Instance inst, List<string> installed, List<string> skipped)> Create(string? mc, IEnumerable<string> modules, int ramMb, IProgress<Progress>? p, CancellationToken ct = default)
+    public static async Task<(Instance inst, List<string> installed, List<string> skipped)> Create(string? mc, IEnumerable<string> packs, int ramMb, string accent, IProgress<Progress>? p, CancellationToken ct = default)
     {
-        mc ??= await BestVersion(ct);
+        mc = mc != null && Supported.Contains(mc) ? mc : Supported[0];
         p?.Report(new Progress("Orbit Client wird eingerichtet", 0, 1, "Minecraft " + mc));
-        var inst = Instances.Create("Orbit Client " + mc, mc, "fabric", null, "orbit");
+        var inst = Instances.Create("Orbit Client", mc, "fabric", null, "orbit");
         inst.Icon = "orbit"; inst.RamMb = ramMb;
         inst.VersionId = await Loaders.Install("fabric", mc, null, p, ct);
         inst.LoaderVersion = inst.VersionId.Split('-').ElementAtOrDefault(2);
@@ -71,13 +64,13 @@ public static class OrbitClient
 
         var installed = new List<string>(); var skipped = new List<string>();
         var slugs = new List<string> { "fabric-api", "modmenu" };
-        var set = modules.ToHashSet();
-        slugs.AddRange(Modules.Where(m => set.Contains(m.Id)).SelectMany(m => m.Mods));
+        var set = packs.ToHashSet();
+        slugs.AddRange(Packs.Where(m => set.Contains(m.Id)).SelectMany(m => m.Mods));
         int i = 0;
         foreach (var slug in slugs.Distinct())
         {
             i++;
-            p?.Report(new Progress("Orbit Client: Mods", i, slugs.Count, slug));
+            p?.Report(new Progress("Orbit Client: Pakete", i, slugs.Count, slug));
             try
             {
                 var r = await Modrinth.Install(inst, slug, "mod", null, null, ct);
@@ -85,9 +78,38 @@ public static class OrbitClient
             }
             catch (Exception e) when (e is not OperationCanceledException) { skipped.Add(slug); }
         }
+        EnsureMod(inst);
+        installed.Insert(0, "Orbit Client");
+        var cfg = ReadConfig(inst) ?? new JsonObject();
+        cfg["accent"] = accent;
+        WriteConfig(inst, cfg);
         WriteDefaults(inst);
         return (inst, installed.Distinct().ToList(), skipped.Distinct().ToList());
     }
+
+    /// <summary>Puts the current Orbit Client mod into the instance (also updates it after launcher updates).</summary>
+    public static void EnsureMod(Instance inst)
+    {
+        if (inst.Kind != "orbit" || !Supported.Contains(inst.McVersion)) return;
+        using var src = ModJar?.Invoke();
+        if (src == null) return;
+        using var ms = new MemoryStream(); src.CopyTo(ms);
+        var bytes = ms.ToArray();
+        var mods = Path.Combine(inst.Dir, "mods");
+        Directory.CreateDirectory(mods);
+        var target = Path.Combine(mods, ModFile);
+        if (File.Exists(target + ".disabled")) return;   // user turned it off on purpose
+        if (File.Exists(target) && File.ReadAllBytes(target).AsSpan().SequenceEqual(bytes)) return;
+        File.WriteAllBytes(target, bytes);
+    }
+
+    public static string ConfigPath(Instance inst) => Path.Combine(inst.Dir, "config", "orbitclient.json");
+    public static JsonObject? ReadConfig(Instance inst)
+    {
+        try { var f = ConfigPath(inst); return File.Exists(f) ? JsonNode.Parse(File.ReadAllText(f)) as JsonObject : null; } catch { return null; }
+    }
+    /// <summary>The mod watches this file and reloads it while the game runs.</summary>
+    public static void WriteConfig(Instance inst, JsonObject cfg) => Net.SaveJson(ConfigPath(inst), cfg);
 
     /// <summary>Sensible vanilla options for PvP (only written once, never overwrites user settings).</summary>
     private static void WriteDefaults(Instance inst)
@@ -101,62 +123,6 @@ public static class OrbitClient
             "bobView:false", "autoJump:false", "toggleSprint:true", "rawMouseInput:true", "soundCategory_music:0.0", "lang:de_de",
         });
     }
-}
-
-/// <summary>Detects other installed launchers/clients so they can be started from here (no assets or code are used).</summary>
-public static class ExternalClients
-{
-    public record Found(string Id, string Name, string Path);
-
-    public static List<Found> Detect()
-    {
-        var r = new List<Found>();
-        if (!OperatingSystem.IsWindows()) return r;
-        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        var candidates = new (string id, string name, string[] paths, string reg)[]
-        {
-            ("lunar", "Lunar Client", new[] { $@"{local}\Programs\lunarclient\Lunar Client.exe", $@"{local}\Programs\launcher\Lunar Client.exe" }, "Lunar Client"),
-            ("labymod", "LabyMod", new[] { $@"{local}\Programs\LabyMod Launcher\LabyMod Launcher.exe", $@"{local}\Programs\labymodlauncher\LabyModLauncher.exe", $@"{local}\Programs\labymod-launcher\LabyMod Launcher.exe" }, "LabyMod"),
-            ("badlion", "Badlion Client", new[] { $@"{pf}\Badlion Client\Badlion Client.exe", $@"{local}\Programs\Badlion Client\Badlion Client.exe" }, "Badlion Client"),
-            ("feather", "Feather Client", new[] { $@"{local}\Programs\feather-launcher\Feather Launcher.exe" }, "Feather"),
-            ("mojang", "Minecraft Launcher", new[] { $@"{pf86}\Minecraft Launcher\MinecraftLauncher.exe", $@"{pf}\Minecraft Launcher\MinecraftLauncher.exe" }, "Minecraft Launcher"),
-        };
-        var reg = RegistryApps();
-        foreach (var c in candidates)
-        {
-            var path = c.paths.FirstOrDefault(File.Exists)
-                ?? reg.FirstOrDefault(x => x.name.StartsWith(c.reg, StringComparison.OrdinalIgnoreCase) && File.Exists(x.exe)).exe;
-            if (path != null) r.Add(new Found(c.id, c.name, path));
-        }
-        return r;
-    }
-
-    private static List<(string name, string exe)> RegistryApps()
-    {
-        var r = new List<(string, string)>();
-        if (!OperatingSystem.IsWindows()) return r;
-        try
-        {
-            foreach (var hive in new[] { Microsoft.Win32.Registry.CurrentUser, Microsoft.Win32.Registry.LocalMachine })
-            {
-                using var k = hive.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall");
-                if (k == null) continue;
-                foreach (var sub in k.GetSubKeyNames())
-                {
-                    using var s = k.OpenSubKey(sub);
-                    var name = s?.GetValue("DisplayName") as string;
-                    var icon = (s?.GetValue("DisplayIcon") as string)?.Split(',')[0].Trim('"');
-                    if (name != null && icon != null && icon.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) r.Add((name, icon));
-                }
-            }
-        }
-        catch { }
-        return r;
-    }
-
-    public static void Start(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(path) });
 }
 
 /// <summary>Official Java Edition patch notes (same feed the Mojang launcher shows).</summary>

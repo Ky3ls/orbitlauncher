@@ -21,6 +21,7 @@ public class Runner
             inst.VersionId = await Loaders.Install(inst.Loader, inst.McVersion, inst.LoaderVersion, p, ct);
             Instances.Save(inst);
         }
+        OrbitClient.EnsureMod(inst);
         var plan = await GameInstaller.Prepare(inst.VersionId, inst.Dir, p, ct);
         var java = !string.IsNullOrWhiteSpace(inst.JavaPath) && File.Exists(inst.JavaPath) ? inst.JavaPath!
                  : !string.IsNullOrWhiteSpace(set.JavaPath) && File.Exists(set.JavaPath) ? set.JavaPath!

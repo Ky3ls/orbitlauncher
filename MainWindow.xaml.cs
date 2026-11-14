@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     {
         Net.AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
         _auth = new Auth(S.ClientId);
+        OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
         InitializeComponent();
 
         var wa = SystemParameters.WorkArea;
@@ -233,6 +234,12 @@ public partial class MainWindow : Window
                 prop.SetValue(S, v);
                 S.Save();
                 if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = S.ClientId;
+                if (prop.Name == nameof(Settings.Accent))
+                    foreach (var oi in Instances.All().Where(i => i.Kind == "orbit"))
+                    {
+                        var cfg = OrbitClient.ReadConfig(oi);
+                        if (cfg != null) { cfg["accent"] = AccentHex(S.Accent); OrbitClient.WriteConfig(oi, cfg); }
+                    }
                 return new { };
             }
             case "news": return await News.Latest(6);
@@ -366,31 +373,33 @@ public partial class MainWindow : Window
             // ---------------- orbit client
             case "orbit.info":
             {
-                string? best = null;
-                try { best = await OrbitClient.BestVersion(); } catch { }
-                var releases = (await Versions.All()).Where(v => v.Type == "release").Select(v => v.Id).Take(30).ToList();
                 return new
                 {
-                    best, versions = releases,
-                    modules = OrbitClient.Modules.Select(m => new { m.Id, m.Name, m.Desc, m.Icon, @default = m.Default, mods = m.Mods.Length }),
+                    best = OrbitClient.Supported[0], versions = OrbitClient.Supported,
+                    packs = OrbitClient.Packs.Select(m => new { m.Id, m.Name, m.Desc, m.Icon, @default = m.Default, mods = m.Mods.Length }),
                     existing = Instances.All().Where(i => i.Kind == "orbit").Select(Dto),
                 };
             }
             case "orbit.create":
             {
-                var mods = (a["modules"] as JsonArray)?.Select(x => (string?)x ?? "").ToList() ?? new();
+                var packs = (a["packs"] as JsonArray)?.Select(x => (string?)x ?? "").ToList() ?? new();
                 var ram = Int(a, "ramMb");
-                var r = await WithTask(p => OrbitClient.Create(StrN(a, "mc"), mods, ram > 0 ? ram : 3072, p));
+                var r = await WithTask(p => OrbitClient.Create(StrN(a, "mc"), packs, ram > 0 ? ram : 3072, AccentHex(S.Accent), p));
                 _ = WithTask(async p => { try { await Runner.Prepare(r.inst, S, p); } catch { } return 0; });
                 return new { id = r.inst.Id, installed = r.installed, skipped = r.skipped };
             }
-
-            // ---------------- other clients
-            case "clients.detect": return ExternalClients.Detect().Select(f => new { f.Id, f.Name, f.Path });
-            case "clients.start":
+            case "orbit.config.get":
             {
-                var f = ExternalClients.Detect().FirstOrDefault(x => x.Id == Str(a, "id")) ?? throw new InvalidOperationException("Nicht installiert");
-                ExternalClients.Start(f.Path);
+                var inst = Inst(a);
+                return OrbitClient.ReadConfig(inst) ?? new JsonObject();
+            }
+            case "orbit.config.set":
+            {
+                var inst = Inst(a);
+                var cfg = a["config"] as JsonObject ?? new JsonObject();
+                cfg = (JsonObject)cfg.DeepClone();
+                cfg["accent"] = AccentHex(S.Accent);
+                OrbitClient.WriteConfig(inst, cfg);
                 return new { };
             }
 
@@ -427,6 +436,14 @@ public partial class MainWindow : Window
         }
         throw new InvalidOperationException("Unbekannter Befehl: " + cmd);
     }
+
+    /// <summary>Launcher accent theme → hex, so the in-game menu uses the same color.</summary>
+    private static string AccentHex(string theme) => theme switch
+    {
+        "rose" => "#FF5C8A", "violet" => "#8B7BFF", "ocean" => "#3D9BFF", "mint" => "#2DD4A0", "gold" => "#F5B53D", "mono" => "#E8E8EC",
+        "crimson" => "#FF3B4E", "sunset" => "#FF6B3D", "magenta" => "#E040FB", "sky" => "#38BDF8", "teal" => "#14B8A6", "lime" => "#84CC16",
+        "copper" => "#D97745", "ice" => "#93C5FD", _ => "#FF7A3D",
+    };
 
     private static void OpenUrl(string url)
     {

@@ -628,3 +628,44 @@ code.cc{font-family:var(--mono);font-size:12px;user-select:text}
 .ccard .btn{align-self:flex-start}
 .pd-head p{margin:4px 0 0 !important;max-width:none !important;text-align:left}
 .recent{grid-template-columns:repeat(4,minmax(0,1fr))}
+
+/* ===== Orbit Client page v2 ===== */
+.oh-act{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.oh-act select{height:46px}
+.ohero{margin-bottom:16px}
+.omods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.omods .mcard{align-items:center}
+.omods .mcard .tx p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.omods .mcard .chip{height:20px;font-size:10.5px;margin-top:7px}
+.mact{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.mact .tg.sm{transform:scale(.82);transform-origin:right center}
+#oPacks{grid-template-columns:repeat(4,minmax(0,1fr))}
+#oPacks .mcard{flex-direction:column}
+#oPacks .mcard .tx .chip{height:20px;font-size:10.5px;margin-top:7px}
+#oPacks .cb{position:absolute;right:14px;top:14px}
+.ocfg{position:static}
+.hudc{padding:18px}
+.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;border:1px solid var(--line2);background:#111;user-select:none;touch-action:none}
+.stage-bg{position:absolute;inset:0;opacity:.85}
+.stage-bg svg{width:100%;height:100%}
+.stage .xh{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;background:linear-gradient(#fff,#fff) center/2px 100% no-repeat,linear-gradient(#fff,#fff) center/100% 2px no-repeat;opacity:.8}
+.hb{position:absolute;cursor:grab;font-family:var(--mono);font-size:var(--fs);line-height:1.25;color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.6);display:flex;flex-direction:column;justify-content:center;padding:0 .45em;white-space:nowrap;overflow:hidden;outline:1px dashed rgba(255,255,255,.28);transition:outline-color .2s}
+.hb.bg{background:rgba(10,10,11,.55);box-shadow:inset 2px 0 0 var(--a)}
+.hb:hover{outline:1px solid var(--a)}
+.hb.drag{cursor:grabbing;outline:1.5px solid var(--a);z-index:2;box-shadow:inset 2px 0 0 var(--a),0 0 0 4px rgba(var(--a-rgb),.15)}
+.hb .ks{display:grid;grid-template-columns:repeat(6,1fr);gap:4%;height:92%;padding:0}
+.hb .ks i{font-style:normal;grid-column:span 2;display:grid;place-items:center;background:rgba(10,10,11,.6);font-size:calc(var(--fs)*.95)}
+.hb .ks i.e{background:none}
+.hb .ks i.w2{grid-column:span 3}
+.hb .ks i.w3{grid-column:span 6}
+.hb.bg:has(.ks){background:none;box-shadow:none;padding:0}
+.hb .arm{display:flex;flex-direction:column;gap:6%;height:90%;justify-content:center}
+.hb .arm i{display:block;height:15%;width:60%;border-radius:2px;background:linear-gradient(90deg,#9DB8FF,#5B7BD8)}
+.xprev{display:flex;justify-content:center;margin-top:14px}
+.xprev canvas{border-radius:12px;border:1px solid var(--line2);image-rendering:pixelated}
+.osets{margin-top:8px;max-height:52vh;overflow:auto;padding-right:4px}
+.osets .seg{max-width:360px;justify-content:flex-end}
+.osets .seg button{height:26px;padding:0 10px;font-size:11.5px}
+.keys{padding:6px 20px 14px}
+kbd{font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line2);border-bottom-width:3px;color:var(--text);white-space:nowrap}
+.stage-bg{opacity:1}
