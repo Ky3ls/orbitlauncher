@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OrbitLauncher</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--a)"/><stop offset="1" style="stop-color:var(--b)"/></linearGradient>
+    <symbol id="home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+    <symbol id="zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+    <symbol id="grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="cube" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12"/></symbol>
+    <symbol id="orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-28 12 12)"/></symbol>
+    <symbol id="compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></symbol>
+    <symbol id="list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+    <symbol id="settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9V3z"/></symbol>
+    <symbol id="stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+    <symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="square" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
+    <symbol id="folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></symbol>
+    <symbol id="user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></symbol>
+    <symbol id="link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="layers" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></symbol>
+    <symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="keyboard" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></symbol>
+    <symbol id="download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="sparkle" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></symbol>
+    <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+    <symbol id="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="puzzle" viewBox="0 0 24 24"><path d="M19.4 13.5a2 2 0 1 0 0-3H18V7a1 1 0 0 0-1-1h-3.5V4.6a2 2 0 1 0-3 0V6H7a1 1 0 0 0-1 1v3.5H4.6a2 2 0 1 0 0 3H6V17a1 1 0 0 0 1 1h3.5v1.4a2 2 0 1 0 3 0V18H17a1 1 0 0 0 1-1v-3.5z"/></symbol>
+    <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+    <symbol id="box" viewBox="0 0 24 24"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></symbol>
+    <symbol id="coffee" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/></symbol>
+    <symbol id="trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+    <symbol id="ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+    <symbol id="logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+    <symbol id="palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.96 6.01 17.46 2 12 2z"/></symbol>
+    <symbol id="info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="ram" viewBox="0 0 24 24"><path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M16 11V9M12 11V9M2 15h20M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.84V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.06a2 2 0 0 0 0-3.84z"/></symbol>
+    <symbol id="monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="sword" viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/></symbol>
+    <symbol id="star" viewBox="0 0 24 24"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></symbol>
+    <symbol id="filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+  </defs>
+</svg>
+
+<div class="amb"><i></i><i></i></div>
+<div class="app">
+  <header class="titlebar" data-drag>
+    <div class="brand" data-drag>
+      <svg class="logo" viewBox="0 0 64 64" data-drag>
+        <path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/>
+        <path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/>
+        <path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/>
+        <ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/>
+        <circle cx="54" cy="12" r="4" fill="#fff"/>
+      </svg>
+      <div data-drag><div class="wm" data-drag>Orbit<span>Launcher</span></div><div class="ed" data-drag>Minecraft Edition</div></div>
+    </div>
+    <div class="tb-mid" data-drag>
+      <div class="pill"><i class="dot" id="tbDot"></i><span id="tbState">Bereit</span></div>
+      <div class="pill tbtask hidden" id="tbTask"><svg class="i spin" style="width:13px;height:13px"><use href="#refresh"/></svg><span id="tbTaskTxt">Lädt…</span><div class="bar"><i id="tbTaskBar" style="width:0"></i></div></div>
+    </div>
+    <button class="acct" id="acctBtn" onclick="go('settings');setTab('account')">
+      <span class="head" id="acctHead"></span><span class="an"><b id="acctName">Anmelden</b><small id="acctSub">Microsoft-Konto</small></span><svg class="i"><use href="#chevd"/></svg>
+    </button>
+    <div class="wc">
+      <button onclick="api('win.min')"><svg class="i"><use href="#minus"/></svg></button>
+      <button onclick="api('win.max')"><svg class="i"><use href="#square"/></svg></button>
+      <button class="x" onclick="api('win.close')"><svg class="i"><use href="#x"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="side" id="side">
+    <div class="side-nav">
+      <div class="nav-ind" id="navInd"></div>
+      <div class="nav-h">Spielen</div>
+      <button class="nav active" data-p="home"><svg class="i"><use href="#home"/></svg>Start</button>
+      <button class="nav" data-p="instances"><svg class="i"><use href="#grid"/></svg>Instanzen<span class="badge hidden" id="navRun">LIVE</span></button>
+      <button class="nav" data-p="orbit"><svg class="i"><use href="#orbit"/></svg>Orbit Client<span class="badge">PVP</span></button>
+      <div class="nav-h">Entdecken</div>
+      <button class="nav" data-p="browse"><svg class="i"><use href="#compass"/></svg>Mods &amp; Packs</button>
+      <button class="nav" data-p="versions"><svg class="i"><use href="#list"/></svg>Versionen</button>
+      <div class="nav-h">Mehr</div>
+      <button class="nav" data-p="clients"><svg class="i"><use href="#rocket"/></svg>Andere Clients</button>
+      <button class="nav" data-p="settings"><svg class="i"><use href="#settings"/></svg>Einstellungen</button>
+    </div>
+    <div class="side-cta">
+      <div class="task hidden" id="task">
+        <div class="row"><b id="taskStage">Lädt…</b><span class="sp"></span><span class="num" id="taskPct">0%</span></div>
+        <small id="taskDetail"></small>
+        <div class="bar"><i id="taskBar" style="width:0"></i></div>
+      </div>
+      <button class="isel" id="isel" onclick="pickInstance(event)">
+        <span class="iic" id="iselIcon"></span>
+        <span class="tx"><b id="iselName">Keine Instanz</b><small id="iselSub">Lege eine Instanz an</small></span>
+        <svg class="i"><use href="#chevd"/></svg>
+      </button>
+      <button class="launch" id="launchBtn" onclick="play()">
+        <span class="pi"><svg class="i"><use href="#play"/></svg></span>
+        <span><b id="launchTxt">Spielen</b><small id="launchSub">Minecraft: Java Edition</small></span>
+      </button>
+      <div class="side-foot"><span id="verTxt">v0.1.0</span><span id="javaTxt">Java auto</span></div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <!-- ================= HOME ================= -->
+    <section class="page show" id="p-home">
+      <div class="banner">
+        <div class="bn-scene" id="bnScene"></div>
+        <div class="bn-shade"></div>
+        <div class="bn-txt">
+          <div class="kicker" id="bnKick">Minecraft · Java Edition</div>
+          <h1><span id="greet">Hey</span>, <span class="grad" id="uname">Spieler</span></h1>
+          <p class="pd">Alle Versionen, alle Loader, tausende Mods. Such dir eine Instanz aus und leg los.</p>
+        </div>
+        <div class="bn-r"><span class="bn-chip" id="bnLatest">Neueste Version …</span></div>
+      </div>
+      <div class="hgrid">
+        <div class="card gb cont" id="contCard"></div>
+        <div class="quick">
+          <button class="card hov qt" onclick="newInstance()"><span class="qi"><svg class="i"><use href="#plus"/></svg></span><span><b>Neue Instanz</b><span>Version &amp; Loader wählen</span></span></button>
+          <button class="card hov qt" onclick="go('browse')"><span class="qi"><svg class="i"><use href="#compass"/></svg></span><span><b>Mods finden</b><span>Modrinth durchsuchen</span></span></button>
+          <button class="card hov qt" onclick="go('orbit')"><span class="qi"><svg class="i"><use href="#orbit"/></svg></span><span><b>Orbit Client</b><span>PvP-Setup mit einem Klick</span></span></button>
+          <button class="card hov qt" onclick="importPack()"><span class="qi"><svg class="i"><use href="#upload"/></svg></span><span><b>Modpack importieren</b><span>.mrpack-Datei laden</span></span></button>
+        </div>
+      </div>
+      <div class="sech"><h2>Zuletzt gespielt</h2><span class="sp"></span><button class="btn sm" onclick="go('instances')">Alle Instanzen<svg class="i"><use href="#chev"/></svg></button></div>
+      <div class="recent" id="recent"></div>
+      <div class="sech"><h2>Neuigkeiten</h2><span class="muted" style="font-size:12px">Offizielle Patch Notes von Mojang</span></div>
+      <div class="news" id="news"></div>
+    </section>
+
+    <!-- ================= INSTANCES ================= -->
+    <section class="page" id="p-instances">
+      <div class="ph">
+        <div><div class="kicker">Bibliothek</div><h1>Instanzen</h1><p class="pd">Jede Instanz hat ihren eigenen Ordner, ihre Version, ihren Loader, eigene Mods, RAM und Java.</p></div>
+        <div class="ph-r"><button class="btn" onclick="importPack()"><svg class="i"><use href="#upload"/></svg>.mrpack importieren</button><button class="btn p" onclick="newInstance()"><svg class="i"><use href="#plus"/></svg>Neue Instanz</button></div>
+      </div>
+      <div class="addbar">
+        <div class="srch"><svg class="i"><use href="#search"/></svg><input class="in" id="instQ" placeholder="Instanzen durchsuchen…" oninput="renderInstances()"></div>
+        <div class="seg" id="instFilter"><button class="on" data-f="all">Alle</button><button data-f="vanilla">Vanilla</button><button data-f="modded">Modded</button><button data-f="modpack">Modpacks</button></div>
+      </div>
+      <div class="igrid" id="igrid"></div>
+    </section>
+
+    <!-- ================= INSTANCE DETAIL ================= -->
+    <section class="page" id="p-inst">
+      <div class="ihead card" id="ihead"></div>
+      <div class="tabs vtabs" data-tabs="inst">
+        <button class="tab on" data-tab="mods"><svg class="i"><use href="#puzzle"/></svg>Mods<span class="vt-s" id="cntMods">0</span></button>
+        <button class="tab" data-tab="resourcepack"><svg class="i"><use href="#image"/></svg>Ressourcenpakete<span class="vt-s" id="cntRp">0</span></button>
+        <button class="tab" data-tab="shader"><svg class="i"><use href="#sun"/></svg>Shader<span class="vt-s" id="cntSh">0</span></button>
+        <button class="tab" data-tab="console"><svg class="i"><use href="#terminal"/></svg>Konsole</button>
+        <button class="tab" data-tab="options"><svg class="i"><use href="#settings"/></svg>Einstellungen</button>
+      </div>
+      <div data-pane="inst:mods" class="ipane"></div>
+      <div data-pane="inst:resourcepack" class="ipane hidden"></div>
+      <div data-pane="inst:shader" class="ipane hidden"></div>
+      <div data-pane="inst:console" class="ipane hidden">
+        <div class="card">
+          <div class="sh"><b>Spiel-Log</b><button class="btn sm" onclick="copyLog()"><svg class="i"><use href="#copy"/></svg>Kopieren</button><button class="btn sm" onclick="openFolder('logs')"><svg class="i"><use href="#folder"/></svg>Log-Ordner</button></div>
+          <div class="logv" id="logv"><span class="muted">Noch keine Ausgabe. Starte die Instanz, dann erscheint hier das Log.</span></div>
+        </div>
+      </div>
+      <div data-pane="inst:options" class="ipane hidden" id="iopts"></div>
+    </section>
+
+    <!-- ================= ORBIT CLIENT ================= -->
+    <section class="page" id="p-orbit">
+      <div class="ohero card gb">
+        <div class="oh-l">
+          <div class="kicker">Orbit Client</div>
+          <h1>Dein PvP-Client. <span class="grad">Ein Klick.</span></h1>
+          <p class="pd">Ein fertiges Fabric-Setup aus offenen Mods von Modrinth: mehr FPS, Shader, Keystrokes &amp; CPS-HUD, Zoom und Komfort. Alles wird frisch von Modrinth geladen, nichts ist eingebaut, und du kannst jederzeit Mods dazupacken oder rauswerfen.</p>
+          <div class="oh-stats" id="ohStats"></div>
+        </div>
+        <div class="oh-r">
+          <div class="oh-orb"><svg viewBox="0 0 200 200"><defs><radialGradient id="og" cx=".35" cy=".3"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".25" style="stop-color:var(--b)"/><stop offset="1" style="stop-color:var(--a)"/></radialGradient></defs>
+            <circle cx="100" cy="100" r="42" fill="url(#og)"/><g class="ring"><ellipse cx="100" cy="100" rx="88" ry="28" fill="none" stroke="url(#rg)" stroke-width="3" transform="rotate(-24 100 100)"/><circle cx="182" cy="66" r="6" fill="#fff"/></g>
+            <g class="ring r2"><ellipse cx="100" cy="100" rx="70" ry="20" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1.5" transform="rotate(30 100 100)"/></g></svg></div>
+        </div>
+      </div>
+      <div class="ogrid">
+        <div>
+          <div class="sech" style="margin-top:0"><h2>Module</h2><span class="muted" style="font-size:12px">Wähle aus, was rein soll</span></div>
+          <div class="mods-grid" id="oMods"></div>
+        </div>
+        <div class="card ocfg">
+          <div class="sh"><b>Setup</b></div>
+          <div class="srow"><div><b>Minecraft-Version</b><p>Neueste Version, für die alle Kern-Mods da sind</p></div><select class="in sel" id="oVer"></select></div>
+          <div class="srow"><div><b>Arbeitsspeicher</b><p id="oRamTxt">3 GB</p></div><input type="range" id="oRam" min="2" max="16" step="1" value="3" style="width:150px"></div>
+          <div class="srow"><div><b>Loader</b><p>Fabric, automatisch die neueste stabile Version</p></div><span class="chip a">Fabric</span></div>
+          <div id="oExisting"></div>
+          <button class="btn p lg oinstall" id="oInstall" onclick="orbitInstall()"><svg class="i"><use href="#download"/></svg>Orbit Client installieren</button>
+          <p class="fine">Alle Mods stammen von Modrinth und stehen unter ihren eigenen Lizenzen. Orbit Client ist nicht mit Lunar Client, LabyMod, Mojang oder Microsoft verbunden.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BROWSE (MODRINTH) ================= -->
+    <section class="page" id="p-browse">
+      <div class="ph">
+        <div><div class="kicker">Modrinth</div><h1>Mods &amp; Packs</h1><p class="pd">Durchsuche Modrinth direkt im Launcher. Installiert wird mit allen benötigten Abhängigkeiten in die gewählte Instanz.</p></div>
+        <div class="ph-r"><div class="target"><span>Ziel</span><select class="in sel" id="bTarget" onchange="browseTarget()"></select></div></div>
+      </div>
+      <div class="tabs vtabs" id="bTabs">
+        <button class="tab on" data-bt="mod"><svg class="i"><use href="#puzzle"/></svg>Mods</button>
+        <button class="tab" data-bt="modpack"><svg class="i"><use href="#box"/></svg>Modpacks</button>
+        <button class="tab" data-bt="resourcepack"><svg class="i"><use href="#image"/></svg>Ressourcenpakete</button>
+        <button class="tab" data-bt="shader"><svg class="i"><use href="#sun"/></svg>Shader</button>
+      </div>
+      <div class="bwrap">
+        <aside class="bside card">
+          <div class="bs-h">Sortierung</div>
+          <div class="seg sortseg" id="bSort"><button class="on" data-s="relevance">Relevanz</button><button data-s="downloads">Downloads</button><button data-s="follows">Beliebt</button><button data-s="newest">Neu</button><button data-s="updated">Aktuell</button></div>
+          <div class="bs-h">Version</div>
+          <select class="in sel wide" id="bVer" onchange="browse(true)"></select>
+          <div class="bs-h" id="bLoaderH">Loader</div>
+          <div class="seg" id="bLoader"><button class="on" data-l="">Alle</button><button data-l="fabric">Fabric</button><button data-l="quilt">Quilt</button><button data-l="forge">Forge</button><button data-l="neoforge">NeoForge</button></div>
+          <div class="bs-h">Kategorien</div>
+          <div class="cats" id="bCats"></div>
+        </aside>
+        <div class="bmain">
+          <div class="srch big"><svg class="i"><use href="#search"/></svg><input class="in" id="bQ" placeholder="Mods suchen, z. B. Sodium, Create, JEI…"></div>
+          <div class="binfo" id="bInfo"></div>
+          <div class="blist" id="bList"></div>
+          <div class="bmore"><button class="btn hidden" id="bMore" onclick="browse(false)">Mehr laden</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VERSIONS ================= -->
+    <section class="page" id="p-versions">
+      <div class="ph">
+        <div><div class="kicker">Mojang Version Manifest</div><h1>Alle Versionen</h1><p class="pd">Jede Minecraft-Version, die es je gab: Releases, Snapshots, Beta und Alpha. Direkt starten oder als Instanz mit Loader anlegen.</p></div>
+        <div class="ph-r"><button class="btn" onclick="loadVersions(true)"><svg class="i"><use href="#refresh"/></svg>Aktualisieren</button></div>
+      </div>
+      <div class="addbar">
+        <div class="srch"><svg class="i"><use href="#search"/></svg><input class="in" id="vQ" placeholder="Version suchen, z. B. 1.8.9, 1.20.1, b1.7.3…" oninput="renderVersions()"></div>
+        <div class="seg" id="vType"><button class="on" data-t="release">Releases</button><button data-t="snapshot">Snapshots</button><button data-t="old_beta">Beta</button><button data-t="old_alpha">Alpha</button><button data-t="all">Alle</button></div>
+      </div>
+      <div class="vstats" id="vStats"></div>
+      <div class="card vlist" id="vList"></div>
+    </section>
+
+    <!-- ================= OTHER CLIENTS ================= -->
+    <section class="page" id="p-clients">
+      <div class="ph">
+        <div><div class="kicker">Starthilfe</div><h1>Andere Clients</h1><p class="pd">Du nutzt zusätzlich Lunar Client, LabyMod oder einen anderen Launcher? OrbitLauncher findet installierte Clients und startet sie für dich. Dafür werden nur deren eigene Programme geöffnet.</p></div>
+        <div class="ph-r"><button class="btn" onclick="loadClients()"><svg class="i"><use href="#refresh"/></svg>Neu suchen</button></div>
+      </div>
+      <div class="cgrid" id="cgrid"></div>
+      <div class="card note"><svg class="i"><use href="#info"/></svg><div><b>Gut zu wissen</b><p>Diese Clients haben eigene Launcher, Konten und Updates. OrbitLauncher verändert an ihnen nichts. Wenn du das Gefühl von Lunar oder LabyMod willst, aber offen und anpassbar: Probier den <a href="#" onclick="go('orbit');return false">Orbit Client</a>.</p></div></div>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="page" id="p-settings">
+      <div class="ph"><div><div class="kicker">OrbitLauncher</div><h1>Einstellungen</h1></div></div>
+      <div class="sgrid">
+        <div class="snav" id="setTabs">
+          <button class="tab on" data-st="account"><svg class="i"><use href="#user"/></svg><span>Konto<small>Microsoft-Anmeldung</small></span></button>
+          <button class="tab" data-st="game"><svg class="i"><use href="#cube"/></svg><span>Spiel<small>RAM, Auflösung, Start</small></span></button>
+          <button class="tab" data-st="java"><svg class="i"><use href="#coffee"/></svg><span>Java<small>Runtimes &amp; Pfade</small></span></button>
+          <button class="tab" data-st="design"><svg class="i"><use href="#palette"/></svg><span>Design<small>Akzentfarbe</small></span></button>
+          <button class="tab" data-st="about"><svg class="i"><use href="#info"/></svg><span>Über<small>Version &amp; Lizenzen</small></span></button>
+        </div>
+        <div class="sbody">
+          <div class="stab card" data-stp="account">
+            <div class="sh"><b>Microsoft-Konten</b><button class="btn sm p" onclick="login()"><svg class="i"><use href="#plus"/></svg>Konto hinzufügen</button></div>
+            <div id="accList"></div>
+            <div class="srow"><div><b>Azure-App (Client-ID)</b><p>Microsoft verlangt für Minecraft-Logins eine eigene, von Mojang freigeschaltete Azure-App. Trag hier ihre Client-ID ein.</p></div><input class="in" id="sClient" style="width:300px" placeholder="00000000-0000-0000-0000-000000000000"></div>
+            <div class="fine">Angemeldet wird nur über die offizielle Microsoft-Seite. OrbitLauncher sieht dein Passwort nie, gespeichert wird nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI) für deinen Benutzer. Ein Offline- oder Cracked-Modus ist nicht eingebaut.</div>
+          </div>
+          <div class="stab card hidden" data-stp="game">
+            <div class="srow"><div><b>Standard-Arbeitsspeicher</b><p id="sRamTxt">4 GB für neue Instanzen</p></div><input type="range" id="sRam" min="1" max="32" step="1" value="4" style="width:200px"></div>
+            <div class="srow"><div><b>Fenstergröße</b><p>Leer lassen für die Standardgröße von Minecraft</p></div><div class="row"><input class="in num" id="sW" style="width:90px" placeholder="Breite"><span class="muted">×</span><input class="in num" id="sH" style="width:90px" placeholder="Höhe"></div></div>
+            <div class="srow"><div><b>Nach dem Start</b><p>Was der Launcher macht, wenn Minecraft läuft</p></div><div class="seg" id="sOnLaunch"><button data-v="keep">Offen lassen</button><button data-v="minimize">Minimieren</button><button data-v="close">Schließen</button></div></div>
+            <div class="srow"><div><b>Snapshots anzeigen</b><p>Snapshots in der Versionsauswahl neuer Instanzen</p></div><div class="tg" id="sSnap"></div></div>
+            <div class="srow"><div><b>Beta &amp; Alpha anzeigen</b><p>Uralte Versionen von 2009 bis 2011</p></div><div class="tg" id="sOld"></div></div>
+            <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach Updates von Modrinth suchen</p></div><div class="tg" id="sAutoUp"></div></div>
+            <div class="srow"><div><b>Eigene JVM-Argumente</b><p>Leer lassen für Mojangs empfohlene Flags</p></div><input class="in" id="sJvm" style="width:300px" placeholder="-XX:+UseG1GC …"></div>
+          </div>
+          <div class="stab card hidden" data-stp="java">
+            <div class="sh"><b>Java-Runtimes</b><span class="chip a">automatisch</span></div>
+            <p class="sub" style="font-size:12.5px;margin-bottom:6px">OrbitLauncher lädt für jede Version das passende Java selbst: zuerst Mojangs offizielle Runtime, sonst Eclipse Temurin (Adoptium).</p>
+            <div id="javaList"></div>
+            <div class="srow"><div><b>Eigenes Java erzwingen</b><p>Pfad zu java.exe, gilt für alle Instanzen ohne eigenen Pfad</p></div><div class="row"><input class="in" id="sJava" style="width:260px" placeholder="automatisch"><button class="btn sm" onclick="pickJava('sJava')">Wählen</button></div></div>
+          </div>
+          <div class="stab card hidden" data-stp="design">
+            <div class="sh"><b>Akzentfarbe</b></div>
+            <div class="themes" id="themes"></div>
+          </div>
+          <div class="stab card hidden" data-stp="about">
+            <div class="supd"><span class="su-ic"><svg class="i"><use href="#orbit"/></svg></span><div><div class="su-v" id="aboutVer">OrbitLauncher 0.1.0</div><p class="sub" style="font-size:12.5px">Daten: <code id="aboutRoot" class="cc"></code></p></div><span class="sp"></span><button class="btn sm" onclick="api('folder.open',{what:'root'})"><svg class="i"><use href="#folder"/></svg>Ordner öffnen</button></div>
+            <div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang oder Microsoft verbunden.</p></div></div>
+            <div class="srow"><div><b>Modrinth</b><p>Mods, Modpacks, Shader und Ressourcenpakete über die öffentliche Modrinth-API, jeweils unter der Lizenz ihrer Autoren.</p></div></div>
+            <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
+            <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium), GPLv2 mit Classpath Exception.</p></div></div>
+            <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist und Inter (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toasts"></div>
+<div class="pop hidden" id="pop"></div>
+<div class="modal" id="modal"><div class="card gb mbox" id="mbox"></div></div>
+<div class="splash" id="splash"><div class="sp-box"><svg class="sp-logo" viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg><div class="sp-name">Orbit<span>Launcher</span></div><div class="sp-sub">Lade Versionen…</div><div class="sp-bar"><i></i></div></div></div>
+<script src="app.js"></script>
+</body>
+</html>
