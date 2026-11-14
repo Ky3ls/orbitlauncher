@@ -78,7 +78,7 @@
         <ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/>
         <circle cx="54" cy="12" r="4" fill="#fff"/>
       </svg>
-      <div data-drag><div class="wm" data-drag>Orbit<span>Client</span></div><div class="ed" data-drag>Minecraft Launcher</div></div>
+      <div data-drag><div class="wm" data-drag>Orbit<span>Client</span></div><div class="ed" data-drag>Minecraft Client</div></div>
     </div>
     <div class="tb-mid" data-drag>
       <div class="pill"><i class="dot" id="tbDot"></i><span id="tbState">Bereit</span></div>
@@ -97,14 +97,14 @@
   <nav class="side" id="side">
     <div class="side-nav">
       <div class="nav-ind" id="navInd"></div>
-      <div class="nav-h">Spielen</div>
-      <button class="nav active" data-p="home"><svg class="i"><use href="#home"/></svg>Start</button>
-      <button class="nav" data-p="orbit"><svg class="i"><use href="#orbit"/></svg>Client<span class="badge">ORBIT</span></button>
-      <button class="nav" data-p="instances"><svg class="i"><use href="#grid"/></svg>Instanzen<span class="badge hidden" id="navRun">LIVE</span></button>
+      <div class="nav-h">Orbit</div>
+      <button class="nav active" data-p="home"><svg class="i"><use href="#play"/></svg>Spielen<span class="badge hidden" id="navRun">LIVE</span></button>
+      <button class="nav" data-p="mods"><svg class="i"><use href="#grid"/></svg>Mods<span class="badge" id="navMods">16</span></button>
+      <button class="nav" data-p="hud"><svg class="i"><use href="#monitor"/></svg>HUD-Editor</button>
       <div class="nav-h">Entdecken</div>
-      <button class="nav" data-p="browse"><svg class="i"><use href="#compass"/></svg>Mods &amp; Packs</button>
-      <button class="nav" data-p="versions"><svg class="i"><use href="#list"/></svg>Versionen</button>
-      <div class="nav-h">Mehr</div>
+      <button class="nav" data-p="browse"><svg class="i"><use href="#compass"/></svg>Mod-Browser</button>
+      <button class="nav" data-p="shots"><svg class="i"><use href="#image"/></svg>Screenshots</button>
+      <div class="nav-h">Konto</div>
       <button class="nav" data-p="settings"><svg class="i"><use href="#settings"/></svg>Einstellungen</button>
     </div>
     <div class="side-cta">
@@ -113,45 +113,47 @@
         <small id="taskDetail"></small>
         <div class="bar"><i id="taskBar" style="width:0"></i></div>
       </div>
-      <button class="isel" id="isel" onclick="pickInstance(event)">
+      <button class="isel" id="isel" onclick="orbitPickVersion(event,'isel')">
         <span class="iic" id="iselIcon"></span>
-        <span class="tx"><b id="iselName">Keine Instanz</b><small id="iselSub">Lege eine Instanz an</small></span>
+        <span class="tx"><b id="iselName">Minecraft 26.3</b><small id="iselSub">Voller Client</small></span>
         <svg class="i"><use href="#chevd"/></svg>
       </button>
-      <button class="launch" id="launchBtn" onclick="play()">
+      <button class="launch" id="launchBtn" onclick="orbitPlay()">
         <span class="pi"><svg class="i"><use href="#play"/></svg></span>
-        <span><b id="launchTxt">Spielen</b><small id="launchSub">Minecraft: Java Edition</small></span>
+        <span><b id="launchTxt">Spielen</b><small id="launchSub">Orbit Client</small></span>
       </button>
       <div class="side-foot"><span id="verTxt">v0.1.0</span><span id="javaTxt">Java auto</span></div>
     </div>
   </nav>
 
   <main id="main">
-    <!-- ================= HOME ================= -->
+    <!-- ================= HOME (client main screen) ================= -->
     <section class="page show" id="p-home">
-      <div class="banner">
-        <div class="bn-scene" id="bnScene"></div>
-        <div class="bn-shade"></div>
-        <div class="bn-txt">
-          <div class="kicker" id="bnKick">Minecraft · Java Edition</div>
-          <h1><span id="greet">Hey</span>, <span class="grad" id="uname">Spieler</span></h1>
-          <p class="pd">Alle Versionen, alle Loader, tausende Mods. Such dir eine Instanz aus und leg los.</p>
+      <div class="chero">
+        <div class="ch-bg" id="bnScene"></div><div class="ch-shade"></div>
+        <div class="ch-in">
+          <div class="kicker" id="bnKick">Orbit Client</div>
+          <h1><span id="greet">Bereit</span>, <span class="grad" id="uname">Spieler</span>?</h1>
+          <p class="pd" id="chSub">Wähle eine Version und leg los. Deine Mods und dein HUD sind überall dabei.</p>
+          <div class="cplay">
+            <button class="cver" id="cver" onclick="orbitPickVersion(event,'cver')"><span>Version</span><b id="cverTxt">26.3</b><svg class="i"><use href="#chevd"/></svg></button>
+            <button class="cgo" id="oPlay" onclick="orbitPlay()"><svg class="i"><use href="#play"/></svg><span id="cgoTxt">Spielen</span></button>
+          </div>
+          <div class="cmode" id="cmode"></div>
         </div>
-        <div class="bn-r"><span class="bn-chip" id="bnLatest">Neueste Version …</span></div>
+        <div class="ch-stats" id="ohStats"></div>
       </div>
-      <div class="hgrid">
-        <div class="card gb cont" id="contCard"></div>
-        <div class="quick">
-          <button class="card hov qt" onclick="newInstance()"><span class="qi"><svg class="i"><use href="#plus"/></svg></span><span><b>Neue Instanz</b><span>Version &amp; Loader wählen</span></span></button>
-          <button class="card hov qt" onclick="go('browse')"><span class="qi"><svg class="i"><use href="#compass"/></svg></span><span><b>Mods finden</b><span>Modrinth durchsuchen</span></span></button>
-          <button class="card hov qt" onclick="go('orbit')"><span class="qi"><svg class="i"><use href="#orbit"/></svg></span><span><b>Orbit Client</b><span>Eigenes HUD, Zoom, Freelook</span></span></button>
-          <button class="card hov qt" onclick="importPack()"><span class="qi"><svg class="i"><use href="#upload"/></svg></span><span><b>Modpack importieren</b><span>.mrpack-Datei laden</span></span></button>
+      <div class="hgrid2">
+        <div>
+          <div class="sech" style="margin-top:0"><h2>Neuigkeiten</h2><span class="muted" style="font-size:12px">Offizielle Patch Notes</span></div>
+          <div class="news" id="news"></div>
+        </div>
+        <div class="card qtog">
+          <div class="sh"><b>Schnell an/aus</b><button class="btn sm" onclick="go('mods')">Alle Mods<svg class="i"><use href="#chev"/></svg></button></div>
+          <div id="qtog"></div>
+          <p class="fine" id="qsync">Wirkt sofort, auch im laufenden Spiel.</p>
         </div>
       </div>
-      <div class="sech"><h2>Zuletzt gespielt</h2><span class="sp"></span><button class="btn sm" onclick="go('instances')">Alle Instanzen<svg class="i"><use href="#chev"/></svg></button></div>
-      <div class="recent" id="recent"></div>
-      <div class="sech"><h2>Neuigkeiten</h2><span class="muted" style="font-size:12px">Offizielle Patch Notes von Mojang</span></div>
-      <div class="news" id="news"></div>
     </section>
 
     <!-- ================= INSTANCES ================= -->
@@ -189,39 +191,20 @@
       <div data-pane="inst:options" class="ipane hidden" id="iopts"></div>
     </section>
 
-    <!-- ================= ORBIT CLIENT ================= -->
-    <section class="page" id="p-orbit">
-      <div class="ohero card gb">
-        <div class="oh-l">
-          <div class="kicker">Orbit Client · jede Version</div>
-          <h1>Version wählen. <span class="grad">Spielen.</span></h1>
-          <p class="pd">Jede Minecraft-Version mit einem Klick starten, ohne Installieren vorher. Eigenes HUD mit Keystrokes, CPS, Reichweite und Combo, Zoom, Freelook, Fullbright und eigenem Fadenkreuz. Module an/aus und verschieben geht hier oder im Spiel, beides bleibt live synchron.</p>
-          <div class="oh-stats" id="ohStats"></div>
-          <div class="oh-act" id="ohAct"></div>
-        </div>
-        <div class="oh-r">
-          <div class="oh-orb"><svg viewBox="0 0 200 200"><defs><radialGradient id="og" cx=".35" cy=".3"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".25" style="stop-color:var(--b)"/><stop offset="1" style="stop-color:var(--a)"/></radialGradient></defs>
-            <circle cx="100" cy="100" r="42" fill="url(#og)"/><g class="ring"><ellipse cx="100" cy="100" rx="88" ry="28" fill="none" stroke="url(#rg)" stroke-width="3" transform="rotate(-24 100 100)"/><circle cx="182" cy="66" r="6" fill="#fff"/></g>
-            <g class="ring r2"><ellipse cx="100" cy="100" rx="70" ry="20" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="1.5" transform="rotate(30 100 100)"/></g></svg></div>
-        </div>
+    <!-- ================= MODS ================= -->
+    <section class="page" id="p-mods">
+      <div class="ph">
+        <div><div class="kicker">Orbit Client</div><h1>Mods</h1><p class="pd">21 eigene Module. Klick zum An- und Ausschalten, Zahnrad für Einstellungen. Gilt für alle Versionen und sofort im laufenden Spiel.</p></div>
+        <div class="ph-r"><span class="muted" id="oSync" style="font-size:12px"></span><button class="btn" onclick="orbitReset()"><svg class="i"><use href="#refresh"/></svg>Zurücksetzen</button></div>
       </div>
       <div class="tabs vtabs" data-tabs="orb">
         <button class="tab on" data-tab="mods"><svg class="i"><use href="#grid"/></svg>Module<span class="vt-s" id="oCnt"></span></button>
-        <button class="tab" data-tab="hud"><svg class="i"><use href="#monitor"/></svg>HUD-Layout<span class="vt-s">Drag &amp; Drop</span></button>
-        <button class="tab" data-tab="packs"><svg class="i"><use href="#zap"/></svg>Pakete<span class="vt-s">Modrinth</span></button>
+        <button class="tab" data-tab="packs"><svg class="i"><use href="#zap"/></svg>Performance<span class="vt-s">Sodium, Iris …</span></button>
         <button class="tab" data-tab="keys"><svg class="i"><use href="#keyboard"/></svg>Tasten</button>
       </div>
       <div data-pane="orb:mods">
-        <div class="ctool"><div class="seg" id="oCat"><button class="on" data-c="">Alle</button><button data-c="HUD">HUD</button><button data-c="PvP">PvP</button><button data-c="Grafik">Grafik</button><button data-c="Komfort">Komfort</button></div>
-          <span class="sp"></span><span class="muted" id="oSync" style="font-size:12px"></span><button class="btn sm" onclick="orbitReset()">Zurücksetzen</button></div>
+        <div class="ctool"><div class="seg" id="oCat"><button class="on" data-c="">Alle</button><button data-c="HUD">HUD</button><button data-c="PvP">PvP</button><button data-c="Grafik">Grafik</button><button data-c="Komfort">Komfort</button></div></div>
         <div class="omods" id="oMods"></div>
-      </div>
-      <div data-pane="orb:hud" class="hidden">
-        <div class="card hudc">
-          <div class="sh"><b>HUD-Layout</b><span class="muted" style="font-size:12px">Ziehen zum Verschieben · Mausrad = Größe · Doppelklick = automatisch</span><span class="sp"></span><button class="btn sm" onclick="hudAuto()">Alles automatisch</button></div>
-          <div class="stage" id="stage"><div class="stage-bg" id="stageBg"></div><div class="xh"></div></div>
-          <p class="fine">Die Vorschau entspricht einem 1920×1080-Fenster mit GUI-Skalierung 2. Im Spiel geht's genauso: Rechts-Shift → HUD bearbeiten.</p>
-        </div>
       </div>
       <div data-pane="orb:packs" class="hidden">
         <div class="mods-grid" id="oPacks"></div>
@@ -232,10 +215,28 @@
       </div>
     </section>
 
+    <!-- ================= HUD EDITOR ================= -->
+    <section class="page" id="p-hud">
+      <div class="ph">
+        <div><div class="kicker">Orbit Client</div><h1>HUD-Editor</h1><p class="pd">Ziehen zum Verschieben, Mausrad für die Größe, Doppelklick setzt ein Modul zurück. Im Spiel geht's genauso mit Rechts-Shift → HUD bearbeiten.</p></div>
+        <div class="ph-r"><span class="muted" id="hudSync" style="font-size:12px"></span><button class="btn" onclick="hudAuto()"><svg class="i"><use href="#refresh"/></svg>Alles automatisch</button></div>
+      </div>
+      <div class="card hudc"><div class="stage" id="stage"><div class="stage-bg" id="stageBg"></div><div class="xh"></div></div></div>
+    </section>
+
+    <!-- ================= SCREENSHOTS ================= -->
+    <section class="page" id="p-shots">
+      <div class="ph">
+        <div><div class="kicker">Galerie</div><h1>Screenshots</h1><p class="pd">Alle Screenshots aus deinen Orbit-Spielen (F2 im Spiel).</p></div>
+        <div class="ph-r"><button class="btn" onclick="loadShots()"><svg class="i"><use href="#refresh"/></svg>Aktualisieren</button></div>
+      </div>
+      <div class="sgal" id="sgal"></div>
+    </section>
+
     <!-- ================= BROWSE (MODRINTH) ================= -->
     <section class="page" id="p-browse">
       <div class="ph">
-        <div><div class="kicker">Modrinth</div><h1>Mods &amp; Packs</h1><p class="pd">Durchsuche Modrinth direkt im Launcher. Installiert wird mit allen benötigten Abhängigkeiten in die gewählte Instanz.</p></div>
+        <div><div class="kicker">Modrinth</div><h1>Mod-Browser</h1><p class="pd">Tausende Mods, Shader und Ressourcenpakete. Installiert wird mit allen Abhängigkeiten in deine Orbit-Version.</p></div>
         <div class="ph-r"><div class="target"><span>Ziel</span><select class="in sel" id="bTarget" onchange="browseTarget()"></select></div></div>
       </div>
       <div class="tabs vtabs" id="bTabs">
@@ -287,13 +288,13 @@
           <button class="tab" data-st="game"><svg class="i"><use href="#cube"/></svg><span>Spiel<small>RAM, Auflösung, Start</small></span></button>
           <button class="tab" data-st="java"><svg class="i"><use href="#coffee"/></svg><span>Java<small>Runtimes &amp; Pfade</small></span></button>
           <button class="tab" data-st="design"><svg class="i"><use href="#palette"/></svg><span>Design<small>Akzentfarbe</small></span></button>
+          <button class="tab" data-st="adv"><svg class="i"><use href="#layers"/></svg><span>Erweitert<small>Instanzen, Versionen</small></span></button>
           <button class="tab" data-st="about"><svg class="i"><use href="#info"/></svg><span>Über<small>Version &amp; Lizenzen</small></span></button>
         </div>
         <div class="sbody">
           <div class="stab card" data-stp="account">
-            <div class="sh"><b>Microsoft-Konten</b><button class="btn sm p" onclick="login()"><svg class="i"><use href="#plus"/></svg>Konto hinzufügen</button></div>
+            <div class="sh"><b>Microsoft-Konten</b><button class="btn sm p" onclick="login()"><svg class="i"><use href="#plus"/></svg>Weiteres Konto</button></div>
             <div id="accList"></div>
-            <div class="srow"><div><b>Azure-App (Client-ID)</b><p>Microsoft verlangt für Minecraft-Logins eine eigene, von Mojang freigeschaltete Azure-App. Trag hier ihre Client-ID ein.</p></div><input class="in" id="sClient" style="width:300px" placeholder="00000000-0000-0000-0000-000000000000"></div>
             <div class="fine">Angemeldet wird nur über die offizielle Microsoft-Seite. OrbitLauncher sieht dein Passwort nie, gespeichert wird nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI) für deinen Benutzer. Ein Offline- oder Cracked-Modus ist nicht eingebaut.</div>
           </div>
           <div class="stab card hidden" data-stp="game">
@@ -315,6 +316,15 @@
             <div class="sh"><b>Akzentfarbe</b></div>
             <div class="themes" id="themes"></div>
           </div>
+          <div class="stab card hidden" data-stp="adv">
+            <div class="sh"><b>Erweitert</b></div>
+            <div class="slinks">
+              <button onclick="go('instances')"><span class="qi"><svg class="i"><use href="#grid"/></svg></span><span><b>Instanzen</b><small>Eigene Profile mit Vanilla, Fabric, Quilt, Forge oder NeoForge</small></span><svg class="i ch"><use href="#chev"/></svg></button>
+              <button onclick="go('versions')"><span class="qi"><svg class="i"><use href="#list"/></svg></span><span><b>Alle Versionen</b><small>Releases, Snapshots, Beta und Alpha</small></span><svg class="i ch"><use href="#chev"/></svg></button>
+              <button onclick="importPack()"><span class="qi"><svg class="i"><use href="#upload"/></svg></span><span><b>Modpack importieren</b><small>.mrpack-Datei als eigene Instanz</small></span><svg class="i ch"><use href="#chev"/></svg></button>
+              <button onclick="api('folder.open',{what:'root'})"><span class="qi"><svg class="i"><use href="#folder"/></svg></span><span><b>Datenordner öffnen</b><small>Versionen, Java, Instanzen</small></span><svg class="i ch"><use href="#chev"/></svg></button>
+            </div>
+          </div>
           <div class="stab card hidden" data-stp="about">
             <div class="supd"><span class="su-ic"><svg class="i"><use href="#orbit"/></svg></span><div><div class="su-v" id="aboutVer">OrbitLauncher 0.1.0</div><p class="sub" style="font-size:12.5px">Daten: <code id="aboutRoot" class="cc"></code></p></div><span class="sp"></span><button class="btn sm" onclick="api('folder.open',{what:'root'})"><svg class="i"><use href="#folder"/></svg>Ordner öffnen</button></div>
             <div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang oder Microsoft verbunden.</p></div></div>
@@ -329,6 +339,18 @@
   </main>
 </div>
 
+<div class="gate hidden" id="gate">
+  <div class="g-bg" id="gateBg"></div><div class="g-shade"></div>
+  <div class="g-box">
+    <svg class="g-logo" viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg>
+    <div class="g-name">Orbit<span>Client</span></div>
+    <p>Melde dich mit dem Microsoft-Konto an, mit dem du Minecraft gekauft hast.</p>
+    <button class="g-ms" onclick="login()"><span class="msq"><i></i><i></i><i></i><i></i></span>Mit Microsoft anmelden</button>
+    <div class="g-err" id="gateErr"></div>
+    <button class="g-skip" onclick="gate(false)">Erst mal umsehen</button>
+    <small>Dein Passwort gibst du nur bei Microsoft ein. Orbit speichert es nie.</small>
+  </div>
+</div>
 <div id="toasts"></div>
 <div class="pop hidden" id="pop"></div>
 <div class="modal" id="modal"><div class="card gb mbox" id="mbox"></div></div>

@@ -80,7 +80,7 @@ function bannerSvg(day = false) {
   const W = 1200, H = day ? 675 : 260, s = 12, gid = day ? 'bskyd' : 'bsky'; let seed = 7;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const a = getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#FF7A3D';
-  let out = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">${day ? '<stop offset="0" stop-color="#5E8FD6"/><stop offset="1" stop-color="#BFD8F2"/>' : `<stop offset="0" stop-color="#0B0B14"/><stop offset=".55" stop-color="#1C1626"/><stop offset="1" stop-color="${a}" stop-opacity=".55"/>`}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#${gid})"/>`;
+  let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">${day ? '<stop offset="0" stop-color="#5E8FD6"/><stop offset="1" stop-color="#BFD8F2"/>' : `<stop offset="0" stop-color="#0B0B14"/><stop offset=".55" stop-color="#1C1626"/><stop offset="1" stop-color="${a}" stop-opacity=".55"/>`}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#${gid})"/>`;
   if (!day) for (let i = 0; i < 60; i++) out += `<rect x="${Math.floor(rnd() * W / 4) * 4}" y="${Math.floor(rnd() * 120 / 4) * 4}" width="3" height="3" fill="#fff" opacity="${(0.2 + rnd() * 0.6).toFixed(2)}"/>`;
   out += day ? '<rect x="900" y="40" width="50" height="50" fill="#FFF6C9"/><rect x="890" y="30" width="70" height="70" fill="#FFF6C9" opacity=".25"/>' + [[120, 50, 140], [420, 30, 180], [700, 70, 120]].map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="16" fill="#fff" opacity=".85"/><rect x="${x + 20}" y="${y - 10}" width="${w - 50}" height="12" fill="#fff" opacity=".85"/>`).join('')
     : `<rect x="930" y="70" width="60" height="60" fill="${a}" opacity=".9"/><rect x="920" y="60" width="80" height="80" fill="${a}" opacity=".18"/>`;
@@ -120,13 +120,13 @@ document.addEventListener('pointermove', e => {
 
 /* ======================= NAV ======================= */
 let curPage = 'home';
-const NAV_OF = { inst: 'instances' };
+const NAV_OF = { inst: 'settings', instances: 'settings', versions: 'settings' };
 function go(p) {
   curPage = p; closePop();
   $$('.nav').forEach(n => n.classList.toggle('active', n.dataset.p === (NAV_OF[p] || p)));
   $$('.page').forEach(s => s.classList.toggle('show', s.id === 'p-' + p));
   moveInd(); enterPage($('#p-' + p));
-  ({ home: renderHome, instances: renderInstances, orbit: loadOrbit, browse: () => { browseInit(); }, versions: () => S.versions.length ? renderVersions() : loadVersions(), settings: renderSettings })[p]?.();
+  ({ home: renderHome, instances: renderInstances, mods: loadOrbit, hud: () => loadOrbit().then(() => setTimeout(renderStage, 30)), browse: () => { browseInit(); }, shots: loadShots, versions: () => S.versions.length ? renderVersions() : loadVersions(), settings: renderSettings })[p]?.();
 }
 window.go = go;
 $('#side').addEventListener('click', e => { const n = e.target.closest('.nav'); if (n) go(n.dataset.p); });
@@ -170,13 +170,14 @@ function onEvent(ev, d) {
       toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report vorhanden' : ''}`, false);
     }
     refreshInstances(); runUI();
-    if (curPage === 'orbit') renderOrbitHero();
+    renderOrbitHero();
   }
   if (ev === 'instances') { S.instances = d; renderAllInstances(); }
   if (ev === 'orbitcfg') {
     if (hbDrag || JSON.stringify(d) === JSON.stringify(S.orbit.cfg)) return;
     S.orbit.cfg = d; S.orbit.cfg.modules = S.orbit.cfg.modules || {};
-    if (curPage === 'orbit') { renderOMods(); renderOrbitHero(); renderStage(); $('#oSync').textContent = 'Aus dem Spiel übernommen'; }
+    renderOMods(); renderOrbitHero(); renderQuick(); if (curPage === 'hud') renderStage();
+    $('#oSync').textContent = 'Aus dem Spiel übernommen'; $('#hudSync').textContent = 'Aus dem Spiel übernommen'; $('#qsync').textContent = 'Gerade aus dem Spiel übernommen';
   }
 }
 
@@ -210,20 +211,20 @@ function accountUI() {
 const selInst = () => S.instances.find(i => i.id === S.sel) || S.instances[0];
 function instSub(i) { return `${i.mcVersion} · ${LOADERS[i.loader]?.[0] || i.loader}`; }
 function runUI() {
-  const i = selInst(), run = i && S.running.has(i.id);
-  $('#iselIcon').outerHTML = (i ? instIcon(i) : '<span class="iic"></span>').replace('class="iic"', 'class="iic" id="iselIcon"');
-  $('#iselName').textContent = i ? i.name : 'Keine Instanz';
-  $('#iselSub').textContent = i ? instSub(i) : 'Lege eine Instanz an';
+  const v = S.orbit?.ver || '26.3', full = (S.orbit?.info?.supported || ['26.3']).includes(v);
+  const oi = orbitInstFor(v), run = oi && S.running.has(oi.id);
+  $('#iselIcon').outerHTML = `<span class="iic" id="iselIcon">${blockSvg('orbit')}</span>`;
+  $('#iselName').textContent = 'Minecraft ' + v;
+  $('#iselSub').textContent = full ? 'Voller Client' : 'Overlay-Client';
   $('#launchBtn').classList.toggle('run', !!run);
   $('#launchTxt').textContent = run ? 'Beenden' : 'Spielen';
-  $('#launchSub').textContent = run ? i.name + ' läuft' : i ? 'Minecraft ' + i.mcVersion : 'Minecraft: Java Edition';
+  $('#launchSub').textContent = run ? 'Orbit Client läuft' : 'Orbit Client · ' + v;
   $('#launchBtn .pi').innerHTML = ico(run ? 'stop' : 'play');
   const n = S.running.size;
   $('#tbDot').classList.toggle('on', n > 0);
-  $('#tbState').textContent = n ? (n > 1 ? `${n} Instanzen laufen` : 'Minecraft läuft') : 'Bereit';
+  $('#tbState').textContent = n ? 'Minecraft läuft' : 'Bereit';
   $('#navRun').classList.toggle('hidden', !n);
   if (curPage === 'inst' && S.cur) renderInstHead();
-  if (curPage === 'home') renderCont();
 }
 function selectInstance(id) { S.sel = id; api('settings.set', { key: 'lastInstance', value: id }); runUI(); closePop(); if (curPage === 'home') renderHome(); }
 window.selectInstance = selectInstance;
@@ -240,7 +241,7 @@ function pickInstance(e) {
 }
 window.pickInstance = pickInstance;
 function closePop() { $('#pop')?.classList.add('hidden'); }
-document.addEventListener('click', e => { if (!e.target.closest('#pop') && !e.target.closest('#isel')) closePop(); });
+document.addEventListener('click', e => { if (!e.target.closest('#pop') && !e.target.closest('#isel') && !e.target.closest('#cver')) closePop(); });
 
 async function play(id) {
   const i = id ? S.instances.find(x => x.id === id) : selInst();
@@ -254,7 +255,9 @@ async function play(id) {
   finally { $('#launchBtn').classList.remove('busy'); }
 }
 window.play = play;
-function needAccount() {
+function needAccount() { return gate(true);
+}
+function needAccountOld() {
   modal(`<div class="kicker">Konto</div><h1>Melde dich zuerst an</h1><p>Zum Spielen brauchst du ein Microsoft-Konto, das Minecraft: Java Edition besitzt. Die Anmeldung läuft über die offizielle Microsoft-Seite.</p>
     <div class="act"><button class="btn" onclick="closeModal()">Später</button><button class="btn p" onclick="closeModal();login()">${ico('user')}Mit Microsoft anmelden</button></div>`);
 }
@@ -262,24 +265,22 @@ function needAccount() {
 /* ======================= HOME ======================= */
 function renderHome() {
   const h = new Date().getHours();
-  $('#greet').textContent = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Hey' : 'Guten Abend';
-  $('#bnLatest').textContent = S.latest.release ? `Neueste Version ${S.latest.release}` : 'Minecraft: Java Edition';
+  $('#greet').textContent = h < 5 ? 'Noch wach' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Bereit' : 'Guten Abend';
   if (!$('#bnScene').innerHTML) $('#bnScene').innerHTML = bannerSvg();
-  renderCont();
-  const rec = S.instances.slice(0, 4);
-  $('#recent').innerHTML = rec.length ? rec.map(i => `<button class="card hov rc" onclick="openInst('${i.id}')">${instIcon(i)}<span class="tx"><b>${esc(i.name)}</b><span>${esc(instSub(i))} · ${ago(i.lastPlayed)}</span></span><span class="pb" onclick="event.stopPropagation();play('${i.id}')">${ico('play')}</span></button>`).join('')
-    : `<div class="empty">Noch nichts gespielt. <a href="#" onclick="newInstance();return false" style="color:var(--a)">Erste Instanz anlegen</a></div>`;
+  renderOrbitHero(); renderQuick();
   loadNews();
 }
-function renderCont() {
-  const i = selInst(), c = $('#contCard'); if (!c) return;
-  if (!i) { c.innerHTML = `<span class="iic xl">${blockSvg('grass')}</span><div class="tx"><div class="kicker">Los geht's</div><h2>Erste Instanz anlegen</h2><p class="pd" style="margin-top:4px">Wähle eine Version und optional einen Mod-Loader.</p></div><button class="btn p" onclick="newInstance()">${ico('plus')}Neue Instanz</button>`; return; }
-  const run = S.running.has(i.id);
-  c.innerHTML = `${instIcon(i, 'iic xl')}<div class="tx"><div class="kicker">${run ? 'Läuft gerade' : 'Weiterspielen'}</div><h2>${esc(i.name)}</h2>
-    <div class="chips"><span class="chip m">${esc(i.mcVersion)}</span>${loaderChip(i.loader)}${i.kind === 'orbit' ? '<span class="chip a">Orbit Client</span>' : i.kind === 'modpack' ? '<span class="chip m">Modpack</span>' : ''}</div>
-    <div class="meta"><div><b>${ptime(i.playSeconds)}</b>Spielzeit</div><div><b>${i.mods ?? 0}</b>Mods</div><div><b>${((i.ramMb || S.settings.ramMb || 4096) / 1024).toFixed(0)} GB</b>RAM</div></div></div>
-    <div class="col" style="gap:8px"><button class="btn p" onclick="play()">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button><button class="btn sm" onclick="openInst('${i.id}')">${ico('settings')}Verwalten</button></div>`;
+const QUICK = ['keystrokes', 'cps', 'zoom', 'freelook', 'fullbright', 'crosshair', 'togglesprint', 'coords'];
+function renderQuick() {
+  if (!S.orbit.cfg) return;
+  $('#qtog').innerHTML = QUICK.map(id => `<div class="qrow" data-q="${id}"><span class="qi">${ico(OM[id].icon)}</span><span class="tx"><b>${esc(OM[id].name)}</b><small>${(S.orbit.info?.overlay || []).includes(id) ? 'alle Versionen' : 'voller Client'}</small></span><div class="tg sm ${oOn(id) ? 'on' : ''}"></div></div>`).join('');
 }
+$('#qtog').addEventListener('click', e => {
+  const r = e.target.closest('[data-q]'); if (!r) return;
+  const id = r.dataset.q, on = !oOn(id);
+  ocfg(id).enabled = on; r.querySelector('.tg').classList.toggle('on', on);
+  oSave(); renderOrbitHero();
+});
 async function loadNews() {
   if (S.news) return renderNews();
   try { S.news = await api('news'); renderNews(); } catch { $('#news').innerHTML = '<div class="empty">Neuigkeiten konnten nicht geladen werden.</div>'; }
@@ -424,7 +425,6 @@ window.pickJava = async target => { try { const r = await api('java.pick'); if (
 function pageTab(group, k) {
   $$(`[data-tabs="${group}"] .tab`).forEach(b => b.classList.toggle('on', b.dataset.tab === k));
   $$(`[data-pane^="${group}:"]`).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== group + ':' + k));
-  if (group === 'orb' && k === 'hud') setTimeout(renderStage, 30);
   if (group === 'inst') { if (CTYPES[k]) loadContent(k); else if (k === 'console') renderLog(); else if (k === 'options') renderOpts(); }
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tabs] .tab'); if (b) pageTab(b.closest('[data-tabs]').dataset.tabs, b.dataset.tab); });
@@ -535,7 +535,7 @@ function fillTargets() {
 }
 async function browseInit() {
   const b = S.browse;
-  if (b.target === null) b.target = selInst()?.id || '';
+  if (b.target === null) b.target = orbitInstFor(S.orbit.ver)?.id || selInst()?.id || '';
   fillTargets();
   $$('#bTabs .tab').forEach(t => t.classList.toggle('on', t.dataset.bt === b.type));
   try { await ensureVersions(); } catch { }
@@ -692,7 +692,7 @@ function oSave() {
   $('#oSync').textContent = 'Speichert…';
   clearTimeout(oSaveT);
   oSaveT = setTimeout(async () => {
-    try { await api('orbit.config.set', { config: S.orbit.cfg }); $('#oSync').textContent = [...S.running].some(id => S.instances.find(i => i.id === id)?.kind === 'orbit') ? 'Live im Spiel übernommen' : 'Gespeichert · gilt für alle Versionen'; }
+    try { await api('orbit.config.set', { config: S.orbit.cfg }); const t = [...S.running].some(id => S.instances.find(i => i.id === id)?.kind === 'orbit') ? 'Live im Spiel übernommen' : 'Gespeichert · gilt für alle Versionen'; $('#oSync').textContent = t; $('#hudSync').textContent = t; }
     catch (e) { $('#oSync').textContent = ''; fail('Speichern fehlgeschlagen', e); }
   }, 250);
 }
@@ -702,49 +702,57 @@ async function loadOrbit() {
   try { info = S.orbit.info = await api('orbit.info'); } catch (e) { return fail('Orbit Client', e); }
   try { S.orbit.cfg = await api('orbit.config.get'); } catch { S.orbit.cfg = {}; }
   S.orbit.cfg.modules = S.orbit.cfg.modules || {};
-  S.orbit.ver = S.orbit.ver || info.last;
+  S.orbit.ver = S.orbit.ver || S.settings.orbitVersion || info.last;
   S.orbit.packs = new Set((info.selPacks || 'perf,shaders,qol').split(',').filter(Boolean));
-  renderOrbitHero(); renderOMods(); renderPacks(info); renderKeys();
-  if (!$('[data-pane="orb:hud"]').classList.contains('hidden')) renderStage();
+  renderOrbitHero(); renderOMods(); renderPacks(info); renderKeys(); renderQuick();
+  if (curPage === 'hud') renderStage();
 }
 function orbitInstFor(v) { return (S.orbit.info?.existing || []).find(i => i.mcVersion === v) || S.instances.find(i => i.kind === 'orbit' && i.mcVersion === v); }
 function renderOrbitHero() {
-  const info = S.orbit.info; if (!info) return;
+  const info = S.orbit.info; if (!info || !$('#cverTxt')) return;
   const v = S.orbit.ver, full = info.supported.includes(v), inst = orbitInstFor(v), run = inst && S.running.has(inst.id);
-  const on = OMODS.filter(m => oOn(m.id)).length, rel = info.versions.filter(x => x.type === 'release').length;
-  $('#ohStats').innerHTML = `<div><b>${rel}</b><span>Versionen spielbar</span></div><div><b>${on}/${OMODS.length}</b><span>Module aktiv</span></div><div><b>${(info.existing || []).length}</b><span>Orbit-Versionen installiert</span></div><div><b>Live</b><span>Sync mit dem Spiel</span></div>`;
-  $('#ohAct').innerHTML = `<button class="vpk" id="vpk" onclick="orbitPickVersion(event)"><span>Version</span><b>${esc(v)}</b>${ico('chevd')}</button>
-    <button class="btn p lg ${run ? 'd' : ''}" id="oPlay" onclick="orbitPlay()">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
-    <div class="omode ${full ? 'full' : ''}">${ico(full ? 'sparkle' : 'layers')}<span><b>${full ? 'Voller Client im Spiel' : 'Overlay-Client'}</b><small>${full ? 'Alle 21 Module, Menü auf Rechts-Shift' : 'Keystrokes, CPS, Fadenkreuz, Uhr über dem Spiel'}${inst ? '' : ' · wird beim ersten Start eingerichtet'}</small></span></div>`;
-  $('#oCnt').textContent = on + '/' + OMODS.length;
+  const on = OMODS.filter(m => oOn(m.id)).length;
+  $('#cverTxt').textContent = v;
+  const go = $('#oPlay'); go.classList.toggle('run', !!run);
+  if (!go.disabled) go.innerHTML = `${ico(run ? 'stop' : 'play')}<span>${run ? 'Beenden' : 'Spielen'}</span>`;
+  $('#cmode').innerHTML = `<span class="omode ${full ? 'full' : ''}">${ico(full ? 'sparkle' : 'layers')}<span><b>${full ? 'Voller Client im Spiel' : 'Overlay-Client'}</b><small>${full ? 'Alle 21 Mods, Menü auf Rechts-Shift' : 'Keystrokes, CPS, Fadenkreuz und Uhr über dem Spiel'}${inst ? '' : ' · erster Start richtet alles ein'}</small></span></span>`;
+  $('#ohStats').innerHTML = `<div><b>${on}/${OMODS.length}</b><span>Mods aktiv</span></div><div><b>${ptime(S.instances.filter(i => i.kind === 'orbit').reduce((a, i) => a + (i.playSeconds || 0), 0))}</b><span>gespielt</span></div><div><b>${info.versions.filter(x => x.type === 'release').length}</b><span>Versionen</span></div>`;
+  if ($('#oCnt')) $('#oCnt').textContent = on + '/' + OMODS.length;
+  $('#navMods').textContent = on;
+  runUI();
 }
-function orbitPickVersion(e) {
+function orbitPickVersion(e, anchor = 'cver') {
   e.stopPropagation();
+  if (!S.orbit.info) return;
   const pop = $('#pop'), info = S.orbit.info;
   if (!pop.classList.contains('hidden')) return closePop();
-  const r = $('#vpk').getBoundingClientRect();
+  const r = $('#' + anchor).getBoundingClientRect();
   const types = ['release'].concat(S.settings.showSnapshots ? ['snapshot'] : [], S.settings.showOld ? ['old_beta', 'old_alpha'] : []);
   const list = info.versions.filter(x => types.includes(x.type));
   const has = new Set((info.existing || []).map(i => i.mcVersion));
   pop.innerHTML = `<div class="vps"><input class="in" id="vpq" placeholder="Version suchen…"></div><div id="vpl">${list.map(x => `<button data-v="${esc(x.id)}" class="${x.id === S.orbit.ver ? 'on' : ''}"><span class="tx"><b>${esc(x.id)}</b><small>${info.supported.includes(x.id) ? 'Voller Client' : 'Overlay-Client'}${has.has(x.id) ? ' · installiert' : ''}</small></span>${info.supported.includes(x.id) ? '<span class="chip a">MOD</span>' : x.type !== 'release' ? vtypeChip(x.type) : ''}</button>`).join('')}</div>`;
-  pop.style.left = r.left + 'px'; pop.style.width = '300px'; pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = r.left + 'px'; pop.style.width = '300px';
   pop.classList.remove('hidden');
+  pop.style.top = (anchor === 'isel' ? Math.max(60, r.top - pop.offsetHeight - 8) : r.bottom + 6) + 'px';
   $('#vpq').focus();
   $('#vpq').oninput = ev => { const q = ev.target.value.trim(); $$('#vpl button').forEach(b => b.classList.toggle('hidden', !!q && !b.dataset.v.includes(q))); };
-  $('#vpl').onclick = ev => { const b = ev.target.closest('[data-v]'); if (!b) return; S.orbit.ver = b.dataset.v; closePop(); renderOrbitHero(); };
+  $('#vpl').onclick = ev => { const b = ev.target.closest('[data-v]'); if (!b) return; S.orbit.ver = b.dataset.v; setS('orbitVersion', b.dataset.v); closePop(); renderOrbitHero(); };
 }
 window.orbitPickVersion = orbitPickVersion;
 async function orbitPlay() {
   const v = S.orbit.ver, inst = orbitInstFor(v);
   if (inst && S.running.has(inst.id)) return play(inst.id);
-  if (!S.accounts.length) return needAccount();
-  const btn = $('#oPlay'); btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + (inst ? 'Startet…' : 'Wird eingerichtet…');
+  if (!S.accounts.length) return gate(true);
+  const btns = [$('#oPlay'), $('#launchBtn')];
+  btns.forEach(b => b.classList.add('busy'));
+  $('#oPlay').disabled = true; $('#oPlay').innerHTML = ico('refresh', 'i spin') + `<span>${inst ? 'Startet…' : 'Richte ein…'}</span>`;
   try {
     const r = await api('orbit.play', { mc: v });
     toast('Orbit Client startet', `Minecraft ${v} · ${r.mod ? 'voller Client' : 'Overlay-Client'}`);
-    await refreshInstances(); S.sel = r.id; runUI();
-    S.orbit.info = await api('orbit.info'); renderOrbitHero();
-  } catch (e) { fail('Start fehlgeschlagen', e); renderOrbitHero(); }
+    await refreshInstances();
+    S.orbit.info = await api('orbit.info');
+  } catch (e) { fail('Start fehlgeschlagen', e); }
+  finally { btns.forEach(b => b.classList.remove('busy')); $('#oPlay').disabled = false; renderOrbitHero(); }
 }
 window.orbitPlay = orbitPlay;
 
@@ -876,7 +884,7 @@ $('#stage').addEventListener('wheel', e => {
 }, { passive: false });
 $('#stage').addEventListener('dblclick', e => { const b = e.target.closest('.hb'); if (!b) return; const c = ocfg(b.dataset.id); delete c.x; delete c.y; oSave(); renderStage(); });
 window.hudAuto = () => { Object.values(S.orbit.cfg.modules || {}).forEach(c => { delete c.x; delete c.y; }); oSave(); renderStage(); };
-window.addEventListener('resize', () => { if (curPage === 'orbit') renderStage(); });
+window.addEventListener('resize', () => { if (curPage === 'hud') renderStage(); });
 
 /* ---------- packs + install + keys ---------- */
 function renderPacks(info) {
@@ -906,6 +914,23 @@ function renderKeys() {
     + '<p class="fine">Alle Tasten kannst du im Spiel unter Optionen → Steuerung → Kategorie „Orbit Client“ ändern.</p>';
 }
 
+/* ======================= SCREENSHOTS ======================= */
+async function loadShots() {
+  let list = [];
+  try { list = await api('screenshots.list'); } catch { }
+  $('#sgal').innerHTML = list.length ? list.map((x, i) => `<button class="card hov shot" data-i="${i}"><i style="background-image:url('${esc(x.url)}')"></i><span><b>${esc(x.version)}</b><small>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</small></span></button>`).join('')
+    : `<div class="empty">${ico('image')}<p style="margin-top:8px">Noch keine Screenshots. Drück im Spiel F2.</p></div>`;
+  S.shots = list;
+}
+window.loadShots = loadShots;
+$('#sgal').addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  const x = S.shots[+b.dataset.i];
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><img class="shotbig" src="${esc(x.url)}" alt="">
+    <div class="act" style="justify-content:space-between"><span class="muted" style="font-size:12px">${esc(x.file)} · Minecraft ${esc(x.version)}</span>
+    <span class="row"><button class="btn" onclick="api('screenshots.open',{id:'${esc(x.id)}',file:'${esc(x.file)}'})">${ico('folder')}Im Ordner zeigen</button><button class="btn d" onclick="api('screenshots.delete',{id:'${esc(x.id)}',file:'${esc(x.file)}'}).then(()=>{closeModal();loadShots();})">${ico('trash')}Löschen</button></span></div>`, 'form wide');
+});
+
 /* ======================= SETTINGS ======================= */
 function setTab(k) {
   $$('#setTabs .tab').forEach(b => b.classList.toggle('on', b.dataset.st === k));
@@ -918,7 +943,6 @@ const setS = (key, value) => { S.settings[key] = value; return api('settings.set
 function renderSettings() {
   const s = S.settings;
   renderAccounts();
-  $('#sClient').value = s.clientId || '';
   const ram = $('#sRam'); ram.value = (s.ramMb || 4096) / 1024; setRange(ram); $('#sRamTxt').textContent = ram.value + ' GB für neue Instanzen';
   $('#sW').value = s.width || ''; $('#sH').value = s.height || '';
   $$('#sOnLaunch button').forEach(b => b.classList.toggle('on', b.dataset.v === (s.onLaunch || 'minimize')));
@@ -928,7 +952,6 @@ function renderSettings() {
   $('#aboutVer').textContent = 'OrbitLauncher ' + S.version; $('#aboutRoot').textContent = S.root;
 }
 window.renderSettings = renderSettings;
-$('#sClient').addEventListener('change', e => setS('clientId', e.target.value.trim()));
 $('#sRam').addEventListener('input', e => { $('#sRamTxt').textContent = e.target.value + ' GB für neue Instanzen'; });
 $('#sRam').addEventListener('change', e => setS('ramMb', +e.target.value * 1024));
 $('#sW').addEventListener('change', e => setS('width', +e.target.value || 0));
@@ -950,24 +973,23 @@ window.removeAccount = async (uuid, name) => {
   const r = await api('auth.remove', { uuid }); S.accounts = r.accounts; S.active = r.active; renderAccounts(); accountUI();
 };
 async function login() {
-  let dc;
-  try { dc = await api('auth.start'); } catch (e) {
-    return modal(`<div class="kicker">Microsoft-Anmeldung</div><h1>Azure-App fehlt</h1><p>${esc(e.message)}</p><p style="font-size:12.5px">So geht's: App auf portal.azure.com registrieren (persönliche Microsoft-Konten, „Public client flows“ an), dann über Mojangs Formular für die Minecraft-API freischalten lassen. Die Client-ID trägst du unter Einstellungen → Konto ein.</p>
-      <div class="act"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn p" onclick="closeModal();go('settings');setTab('account');$('#sClient').focus()">Client-ID eintragen</button></div>`);
-  }
-  let cancelled = false; S.modalClose = () => { cancelled = true; api('auth.cancel'); };
-  modal(`<div class="kicker">Microsoft-Anmeldung</div><h1>Bestätige im Browser</h1><p>Öffne <b>${esc(dc.verificationUri)}</b> und gib diesen Code ein. Dein Passwort tippst du nur bei Microsoft ein.</p>
-    <div class="code"><b>${esc(dc.userCode)}</b><button class="ib" title="Kopieren" onclick="navigator.clipboard?.writeText('${esc(dc.userCode)}');toast('Code kopiert')">${ico('copy')}</button></div>
-    <div class="act"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" onclick="navigator.clipboard?.writeText('${esc(dc.userCode)}');api('open.url',{url:'${esc(dc.verificationUri)}'})">${ico('ext')}Code kopieren &amp; öffnen</button></div>
-    <div class="wait">${ico('refresh', 'i spin')}Warte auf Bestätigung…</div>`);
+  const err = $('#gateErr'); if (err) err.textContent = '';
+  const btn = $('.g-ms'); if (btn) { btn.disabled = true; btn.classList.add('busy'); }
   try {
-    const r = await api('auth.finish');
-    if (cancelled) return;
-    S.modalClose = null; closeModal();
+    const r = await api('auth.login');
+    if (!r) return;   // window closed
     S.accounts = r.accounts; S.active = r.active; accountUI(); renderAccounts();
+    gate(false);
     toast('Angemeldet', `Willkommen, ${r.account.name}!`);
-  } catch (e) { if (!cancelled) { S.modalClose = null; closeModal(); fail('Anmeldung fehlgeschlagen', e); } }
+  } catch (e) {
+    if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message; else fail('Anmeldung fehlgeschlagen', e);
+  } finally { if (btn) { btn.disabled = false; btn.classList.remove('busy'); } }
 }
+function gate(show) {
+  $('#gate').classList.toggle('hidden', !show);
+  if (show && !$('#gateBg').innerHTML) $('#gateBg').innerHTML = bannerSvg();
+}
+window.gate = gate;
 window.login = login;
 async function loadJava() {
   try {
@@ -987,7 +1009,11 @@ async function boot() {
   S.sel = S.settings.lastInstance && S.instances.find(i => i.id === S.settings.lastInstance) ? S.settings.lastInstance : S.instances[0]?.id;
   applyTheme(S.settings.accent || 'ember');
   $('#verTxt').textContent = 'v' + S.version;
-  accountUI(); runUI();
+  accountUI();
+  S.orbit.ver = S.settings.orbitVersion || '26.3';
+  try { await loadOrbit(); } catch { }
+  runUI();
+  if (!S.accounts.length) gate(true);
   api('versions.list', {}).then(r => { S.versions = r.versions; S.latest = r.latest; if (curPage === 'home') $('#bnLatest').textContent = `Neueste Version ${r.latest.release}`; }).catch(() => { });
   renderHome();
   requestAnimationFrame(moveInd);
@@ -1014,7 +1040,7 @@ const Mock = {
   async call(cmd, a) {
     await sleep(60); const M = this;
     switch (cmd) {
-      case 'init': return { version: '0.1.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0].uuid, running: [] };
+      case 'init': if (/gate/.test(location.search)) M.accounts = []; return { version: '0.1.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
       case 'versions.list': {
@@ -1070,6 +1096,8 @@ const Mock = {
       case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true }, armor: { opts: { color: 'Akzent' } } } });
       case 'orbit.config.set': M.ocfg = JSON.parse(JSON.stringify(a.config)); return {};
       case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\java.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\java.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\java.exe', major: 8, source: 'Mojang' }];
+      case 'auth.login': await sleep(900); M.accounts = [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }]; return { account: M.accounts[0], accounts: M.accounts, active: M.accounts[0].uuid };
+      case 'screenshots.list': return ['26.3', '26.3', '1.8.9', '1.21.11', '26.3', '1.21.11'].map((v, i) => ({ id: 'orbit-client-26-3', version: v, file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0)), date: new Date(Date.now() - i * 86400e3 / 2).toISOString() }));
       case 'auth.start': return { userCode: 'K7Q2-M9XD', verificationUri: 'https://www.microsoft.com/link' };
       case 'auth.finish': await sleep(600000); return {};
       case 'auth.remove': M.accounts = M.accounts.filter(x => x.uuid !== a.uuid); return { accounts: M.accounts, active: M.accounts[0]?.uuid };

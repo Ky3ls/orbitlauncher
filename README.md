@@ -1,8 +1,10 @@
 # Orbit Client
 
-Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`, dazu ein eigener Fabric-Mod für die Ingame-Features.
+Eigener Minecraft-Client für Windows, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`, dazu ein eigener Fabric-Mod für die Ingame-Features.
 
-![Client](docs/screenshots/40_client_start.png)
+![Spielen](docs/screenshots/51_spielen.png)
+
+![Anmelden](docs/screenshots/50_login.png)
 
 ![Ingame-Menü](docs/screenshots/30_ingame_menue.png)
 
@@ -10,6 +12,7 @@ Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C#
 
 | Bereich | Umsetzung |
 |---|---|
+| **Client-Oberfläche** | Anmeldebildschirm, Hauptscreen mit Versionswahl + großem „Spielen“, Schnell-Schalter, Mods, HUD-Editor, Mod-Browser, Screenshot-Galerie. Instanzen und Versionslisten liegen unter Einstellungen → Erweitert. |
 | **Alle Versionen** | Mojang Version Manifest (piston-meta): Releases, Snapshots, Beta, Alpha. Client, Bibliotheken, Natives, Assets (inkl. Legacy/virtual) und Log-Config werden geladen, SHA-1 geprüft, die Startargumente werden wie beim offiziellen Launcher gebaut (Rules, Features, `default-user-jvm`, alte `minecraftArguments`). |
 | **Mod-Loader** | Fabric und Quilt über ihre Meta-APIs (Profile mit `inheritsFrom`), Forge und NeoForge über ihre offiziellen Installer (`--installClient`, headless). |
 | **Instanzen** | Eigener Ordner pro Instanz, eigene Version, Loader, RAM, Java, JVM-Argumente, Fenstergröße. Spielzeit, Konsole mit Log, Crash-Erkennung. |
@@ -18,26 +21,29 @@ Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C#
 | **Jede Version, direkt spielen** | Auf der Client-Seite Version wählen und „Spielen“ drücken, kein Installieren vorher. Die Orbit-Instanz für die Version wird beim ersten Start automatisch angelegt: 26.3 mit vollem Ingame-Client (Mod), andere Fabric-Versionen mit Performance-Paketen, alle übrigen Vanilla. Auf Versionen ohne Mod zeichnet die exe ein Overlay-HUD über das Spiel (Keystrokes, CPS, Fadenkreuz, Uhr, Sitzung, RAM), nur sichtbar im Spiel, nicht in Menüs. |
 | **Live-Sync** | Eine gemeinsame `orbitclient.json` im Launcher-Ordner (der Mod bekommt sie per `-Dorbit.config`). Änderungen im Launcher sind nach unter einer Sekunde im Spiel, Änderungen im Spiel (Menü, HUD-Editor) erscheinen per Dateiüberwachung sofort im Launcher und im Overlay. |
 | **Client im Launcher** | Seite „Client“: Module an/aus und alle Einstellungen, HUD-Layout per Drag & Drop direkt im Launcher, Performance-Pakete (Sodium, Iris …) von Modrinth, Tastenbelegung. Launcher und Spiel teilen sich `config/orbitclient.json`, Änderungen greifen live im laufenden Spiel. Die Akzentfarbe des Launchers gilt auch im Ingame-Menü. |
-| **Microsoft-Login** | OAuth Device-Code-Flow (Microsoft identity platform) → Xbox Live → XSTS → Minecraft Services. Kein Passwort, nur das Refresh-Token, verschlüsselt per DPAPI (CurrentUser). Kein Offline-/Cracked-Modus. |
+| **Microsoft-Login** | Anmeldebildschirm beim Start, offizielles Microsoft-Fenster in der App (Auth-Code + PKCE) → Xbox Live → XSTS → Minecraft Services. Kein Passwort, nur das Refresh-Token, verschlüsselt per DPAPI (CurrentUser). Mehrere Konten. Kein Offline-/Cracked-Modus. |
 | **Java** | Pro Version automatisch: Mojangs Java-Runtime-Manifest, Fallback Eclipse Temurin (Adoptium). Eigener Pfad pro Instanz oder global möglich. |
 
-## Azure-App für den Login
+## Microsoft-Login (einmalig für dich als Entwickler)
 
-Microsoft lässt Minecraft-Logins nur mit einer **eigenen, von Mojang freigeschalteten Azure-App** zu:
+Spieler klicken nur auf **„Mit Microsoft anmelden“**: Es öffnet sich die offizielle Microsoft-Anmeldeseite in einem Fenster der App (Authorization Code + PKCE), danach Xbox Live → XSTS → Minecraft. Kein Code-Abtippen, kein Azure-Feld, kein Passwort im Client.
 
-1. Auf portal.azure.com eine App registrieren (Kontotyp: *Persönliche Microsoft-Konten*), unter *Authentifizierung* „Öffentliche Clientflows zulassen“ aktivieren.
-2. Über Mojangs Formular Zugriff auf die Minecraft-API für diese App-ID beantragen.
-3. Die Client-ID im Launcher unter *Einstellungen → Konto* eintragen.
+Wie bei jedem Client (Lunar, Feather …) braucht die App dafür **eine eigene, von Mojang freigeschaltete Microsoft-App-ID**. Das machst nur du, einmal:
 
-Ohne freigeschaltete App gibt die Minecraft-API beim Login einen Fehler zurück. Eine fremde Client-ID (z. B. die des offiziellen Launchers) wird bewusst nicht benutzt.
+1. Auf portal.azure.com eine App registrieren, Kontotyp *Persönliche Microsoft-Konten*.
+2. Unter *Authentifizierung* eine Plattform *Mobile und Desktop* mit der Redirect-URI `https://login.microsoftonline.com/common/oauth2/nativeclient` hinzufügen und „Öffentliche Clientflows“ erlauben.
+3. Über Mojangs Formular Zugriff auf die Minecraft-API für diese App-ID beantragen (dauert ein paar Tage).
+4. Die ID fest in die exe bauen: `dotnet publish -c Release -o publish -p:OrbitClientId=<deine-app-id>`
+
+Die App-ID des offiziellen Minecraft-Launchers wird bewusst nicht benutzt.
 
 ## Bauen
 
 ```bash
 # 1. Client-Mod (braucht JDK 25)
 cd client-mod && ./gradlew build && cp build/libs/orbitclient-1.0.0.jar ../Assets/orbitclient.jar && cd ..
-# 2. Launcher (bettet Web/ und Assets/orbitclient.jar ein)
-dotnet publish -c Release -o publish
+# 2. Client-exe (bettet Web/, Assets/orbitclient.jar und die Microsoft-App-ID ein)
+dotnet publish -c Release -o publish -p:OrbitClientId=<deine-app-id>
 ```
 
 Der Launcher legt den Mod beim Installieren und vor jedem Start automatisch in die Orbit-Client-Instanz (und aktualisiert ihn nach Launcher-Updates).

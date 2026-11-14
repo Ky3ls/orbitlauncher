@@ -35,7 +35,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         Net.AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
-        _auth = new Auth(S.ClientId);
+        _auth = new Auth(ClientIdFor(S));
         OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
         InitializeComponent();
 
@@ -104,6 +104,7 @@ public partial class MainWindow : Window
             c.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith("https://orbit.local/")) { e.Cancel = true; OpenUrl(e.Uri); } };
             var webDir = ExtractWeb(Path.Combine(data, "web"));
             c.SetVirtualHostNameToFolderMapping("orbit.local", webDir, CoreWebView2HostResourceAccessKind.Allow);
+            c.SetVirtualHostNameToFolderMapping("shots.orbit", Paths.Instances, CoreWebView2HostResourceAccessKind.Allow);
             c.WebMessageReceived += OnMessage;
             Web.ZoomFactor = _zoom;
             c.Navigate("https://orbit.local/index.html");
@@ -246,7 +247,7 @@ public partial class MainWindow : Window
                 object? v = val == null ? null : prop.PropertyType == typeof(int) ? (int)val.GetValue<double>() : prop.PropertyType == typeof(bool) ? val.GetValue<bool>() : (object?)(string?)val;
                 prop.SetValue(S, v);
                 S.Save();
-                if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = S.ClientId;
+                if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = ClientIdFor(S);
                 if (prop.Name == nameof(Settings.Accent))
                 {
                     var cfg = OrbitClient.ReadConfig() ?? new JsonObject();
@@ -438,6 +439,26 @@ public partial class MainWindow : Window
                 return new { };
             }
 
+            // ---------------- screenshots
+            case "screenshots.list":
+                return await Task.Run(() => Instances.All().SelectMany(i =>
+                {
+                    var d = Path.Combine(i.Dir, "screenshots");
+                    if (!Directory.Exists(d)) return Enumerable.Empty<object>();
+                    return new DirectoryInfo(d).GetFiles("*.png").Select(f => (object)new
+                    {
+                        id = i.Id, version = i.McVersion, file = f.Name, date = f.LastWriteTimeUtc, size = f.Length,
+                        url = $"https://shots.orbit/{Uri.EscapeDataString(i.Id)}/screenshots/{Uri.EscapeDataString(f.Name)}",
+                    });
+                }).OrderByDescending(x => ((dynamic)x).date).Take(300).ToList());
+            case "screenshots.open":
+            {
+                var f = ShotPath(a);
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{f}\"") { UseShellExecute = true });
+                return null;
+            }
+            case "screenshots.delete": { var f = ShotPath(a); File.Delete(f); return new { }; }
+
             // ---------------- java
             case "java.list": return Java.Installed().Select(j => new { j.Path, j.Major, j.Source });
             case "java.pick":
@@ -452,7 +473,7 @@ public partial class MainWindow : Window
             // ---------------- microsoft account
             case "auth.start":
             {
-                _auth.ClientId = S.ClientId;
+                _auth.ClientId = ClientIdFor(S);
                 _dcCts?.Cancel();
                 _dcCts = new CancellationTokenSource();
                 _dc = await _auth.StartDeviceCode(_dcCts.Token);
@@ -463,6 +484,17 @@ public partial class MainWindow : Window
                 if (_dc == null || _dcCts == null) throw new InvalidOperationException("Keine Anmeldung gestartet.");
                 var acc = await _auth.FinishDeviceCode(_dc, _dcCts.Token);
                 _dc = null;
+                return new { account = new { acc.Uuid, acc.Name }, accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }), active = _auth.Active?.Uuid };
+            }
+            case "auth.login":
+            {
+                // Microsoft sign-in window inside the app → auth code (PKCE) → Xbox → Minecraft
+                _auth.ClientId = ClientIdFor(S);
+                var req = _auth.StartLogin(_auth.Accounts.Count > 0);
+                var env = Web.CoreWebView2.Environment;
+                var win = new LoginWindow(this, env, req.Url);
+                if (win.ShowDialog() != true || win.Result == null) return null;
+                var acc = await _auth.FinishLogin(req, win.Result);
                 return new { account = new { acc.Uuid, acc.Name }, accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }), active = _auth.Active?.Uuid };
             }
             case "auth.cancel": _dcCts?.Cancel(); _dc = null; return new { };
@@ -501,6 +533,18 @@ public partial class MainWindow : Window
             Emit("orbitcfg", JsonNode.Parse(json)!);
         });
     }
+
+    private string ShotPath(JsonObject a)
+    {
+        var inst = Inst(a);
+        var dir = Path.GetFullPath(Path.Combine(inst.Dir, "screenshots"));
+        var f = Path.GetFullPath(Path.Combine(dir, Path.GetFileName(Str(a, "file"))));
+        if (!f.StartsWith(dir) || !File.Exists(f)) throw new InvalidOperationException("Screenshot nicht gefunden");
+        return f;
+    }
+
+    /// <summary>Built-in app id from the build; settings.json may override it for development.</summary>
+    private static string ClientIdFor(Settings s) => string.IsNullOrWhiteSpace(s.ClientId) ? Auth.BuiltInClientId : s.ClientId;
 
     /// <summary>Launcher accent theme → hex, so the in-game menu uses the same color.</summary>
     private static string AccentHex(string theme) => theme switch

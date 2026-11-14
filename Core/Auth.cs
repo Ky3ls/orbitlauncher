@@ -45,11 +45,57 @@ public class Auth
     public void Save() => Net.SaveJson(_file, new Store { Accounts = Accounts, Active = ActiveUuid });
     public Account? Active => Accounts.FirstOrDefault(a => a.Uuid == ActiveUuid) ?? Accounts.FirstOrDefault();
 
+    /// <summary>App id baked into the exe at build time: dotnet publish -p:OrbitClientId=&lt;id&gt; (see README). Players never see it.</summary>
+    public static string BuiltInClientId =>
+        System.Reflection.Assembly.GetEntryAssembly()?.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "OrbitClientId")?.Value ?? "";
+
     private void NeedClient()
     {
         if (string.IsNullOrWhiteSpace(ClientId))
-            throw new InvalidOperationException("Keine Azure-App-ID hinterlegt. Trage in den Einstellungen unter „Konto“ die Client-ID deiner für Minecraft freigeschalteten Azure-App ein.");
+            throw new InvalidOperationException("Diese Version wurde ohne Microsoft-App-ID gebaut. Entwickler: mit -p:OrbitClientId=… bauen (siehe README).");
     }
+
+    // ------------------------------------------------------------------ browser login (authorization code + PKCE)
+    /// <summary>Redirect for native/desktop apps; must be added to the app registration as "Mobile and desktop" redirect URI.</summary>
+    public const string RedirectUri = "https://login.microsoftonline.com/common/oauth2/nativeclient";
+
+    public record LoginRequest(string Url, string Verifier, string State);
+
+    /// <summary>URL for the Microsoft sign-in page shown in the app's login window.</summary>
+    public LoginRequest StartLogin(bool selectAccount)
+    {
+        NeedClient();
+        var verifier = B64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+        var challenge = B64(System.Security.Cryptography.SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        var state = B64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        var url = $"https://login.microsoftonline.com/{Tenant}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(ClientId)}&response_type=code" +
+                  $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}&response_mode=query&scope={Uri.EscapeDataString(Scope)}" +
+                  $"&code_challenge={challenge}&code_challenge_method=S256&state={state}" + (selectAccount ? "&prompt=select_account" : "");
+        return new LoginRequest(url, verifier, state);
+    }
+
+    /// <summary>Called with the redirect URL the login window landed on.</summary>
+    public async Task<Account> FinishLogin(LoginRequest req, string redirectedUrl, CancellationToken ct = default)
+    {
+        var q = System.Web.HttpUtility.ParseQueryString(new Uri(redirectedUrl).Query);
+        if (q["error"] != null) throw new InvalidOperationException(q["error"] == "access_denied" ? "Anmeldung abgebrochen." : q["error_description"] ?? q["error"]);
+        if (q["state"] != req.State) throw new InvalidOperationException("Ungültige Antwort von Microsoft.");
+        var code = q["code"] ?? throw new InvalidOperationException("Microsoft hat keinen Code geliefert.");
+        var r = await Net.PostForm($"https://login.microsoftonline.com/{Tenant}/oauth2/v2.0/token", new()
+        {
+            ["grant_type"] = "authorization_code",
+            ["client_id"] = ClientId,
+            ["code"] = code,
+            ["redirect_uri"] = RedirectUri,
+            ["code_verifier"] = req.Verifier,
+            ["scope"] = Scope,
+        }, ct);
+        if (r["error"] != null) throw new InvalidOperationException((string?)r["error_description"] ?? (string?)r["error"]);
+        return await FromMsa((string)r["access_token"]!, (string)r["refresh_token"]!, ct);
+    }
+
+    private static string B64(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     public async Task<DeviceCode> StartDeviceCode(CancellationToken ct = default)
     {
