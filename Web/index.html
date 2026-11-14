@@ -347,6 +347,11 @@
     <p>Melde dich mit dem Microsoft-Konto an, mit dem du Minecraft gekauft hast.</p>
     <button class="g-ms" onclick="login()"><span class="msq"><i></i><i></i><i></i><i></i></span>Mit Microsoft anmelden</button>
     <div class="g-err" id="gateErr"></div>
+    <div class="g-dev hidden" id="gateDev">
+      <b>Einmalige Einrichtung (nur du als Entwickler)</b>
+      <p>In dieser exe steckt noch keine Microsoft-App-ID. Füg die Anwendungs-ID deiner Azure-App ein. Spieler sehen dieses Feld nie, wenn du mit <code>-p:OrbitClientId</code> baust.</p>
+      <div class="row"><input class="in" id="gateAppId" placeholder="00000000-0000-0000-0000-000000000000"><button class="btn p" onclick="saveAppId()">Speichern</button></div>
+    </div>
     <button class="g-skip" onclick="gate(false)">Erst mal umsehen</button>
     <small>Dein Passwort gibst du nur bei Microsoft ein. Orbit speichert es nie.</small>
   </div>

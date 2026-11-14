@@ -233,6 +233,7 @@ public partial class MainWindow : Window
             {
                 return new
                 {
+                    needAppId = string.IsNullOrWhiteSpace(ClientIdFor(S)),
                     version = Net.AppVersion, root = Paths.Root, settings = S,
                     instances = Instances.All().Select(Dto).ToList(),
                     accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }),
@@ -496,6 +497,14 @@ public partial class MainWindow : Window
                 if (win.ShowDialog() != true || win.Result == null) return null;
                 var acc = await _auth.FinishLogin(req, win.Result);
                 return new { account = new { acc.Uuid, acc.Name }, accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }), active = _auth.Active?.Uuid };
+            }
+            case "auth.appid":
+            {
+                // one-time developer setup when the exe was built without -p:OrbitClientId
+                var id = Str(a, "id").Trim();
+                if (!Guid.TryParse(id, out _)) throw new InvalidOperationException("Das ist keine gültige App-ID (Format 00000000-0000-0000-0000-000000000000).");
+                S.ClientId = id; S.Save(); _auth.ClientId = id;
+                return new { ok = true };
             }
             case "auth.cancel": _dcCts?.Cancel(); _dc = null; return new { };
             case "auth.select": _auth.ActiveUuid = Str(a, "uuid"); _auth.Save(); return AccountsDto();

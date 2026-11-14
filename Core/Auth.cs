@@ -53,7 +53,7 @@ public class Auth
     private void NeedClient()
     {
         if (string.IsNullOrWhiteSpace(ClientId))
-            throw new InvalidOperationException("Diese Version wurde ohne Microsoft-App-ID gebaut. Entwickler: mit -p:OrbitClientId=… bauen (siehe README).");
+            throw new InvalidOperationException("NO_APP_ID");
     }
 
     // ------------------------------------------------------------------ browser login (authorization code + PKCE)
@@ -155,7 +155,10 @@ public class Auth
 
         var xstsToken = (string)xsts["Token"]!;
         var xuid = (string?)xsts["DisplayClaims"]?["xui"]?[0]?["xid"] ?? "";
-        var mc = await Net.Post("https://api.minecraftservices.com/authentication/login_with_xbox", new { identityToken = $"XBL3.0 x={uhs};{xstsToken}" }, null, ct);
+        JsonNode mc;
+        try { mc = await Net.Post("https://api.minecraftservices.com/authentication/login_with_xbox", new { identityToken = $"XBL3.0 x={uhs};{xstsToken}" }, null, ct); }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        { throw new InvalidOperationException("Microsoft-Anmeldung hat geklappt, aber Mojang hat diese App-ID noch nicht für Minecraft freigeschaltet. Antrag bei Mojang stellen bzw. Freigabe abwarten."); }
         var mcToken = (string)mc["access_token"]!;
         var exp = DateTime.UtcNow.AddSeconds(((int?)mc["expires_in"] ?? 86400) - 120);
 

@@ -982,7 +982,8 @@ async function login() {
     gate(false);
     toast('Angemeldet', `Willkommen, ${r.account.name}!`);
   } catch (e) {
-    if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message; else fail('Anmeldung fehlgeschlagen', e);
+    if (e.message === 'NO_APP_ID') { gate(true); $('#gateDev').classList.remove('hidden'); $('#gateErr').textContent = ''; $('#gateAppId').focus(); }
+    else if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message; else fail('Anmeldung fehlgeschlagen', e);
   } finally { if (btn) { btn.disabled = false; btn.classList.remove('busy'); } }
 }
 function gate(show) {
@@ -990,6 +991,14 @@ function gate(show) {
   if (show && !$('#gateBg').innerHTML) $('#gateBg').innerHTML = bannerSvg();
 }
 window.gate = gate;
+async function saveAppId() {
+  try {
+    await api('auth.appid', { id: $('#gateAppId').value });
+    $('#gateDev').classList.add('hidden'); $('#gateErr').textContent = '';
+    toast('App-ID gespeichert', 'Jetzt mit Microsoft anmelden');
+  } catch (e) { $('#gateErr').textContent = e.message; }
+}
+window.saveAppId = saveAppId;
 window.login = login;
 async function loadJava() {
   try {
@@ -1013,7 +1022,7 @@ async function boot() {
   S.orbit.ver = S.settings.orbitVersion || '26.3';
   try { await loadOrbit(); } catch { }
   runUI();
-  if (!S.accounts.length) gate(true);
+  if (!S.accounts.length) { gate(true); if (init.needAppId) $('#gateDev').classList.remove('hidden'); }
   api('versions.list', {}).then(r => { S.versions = r.versions; S.latest = r.latest; if (curPage === 'home') $('#bnLatest').textContent = `Neueste Version ${r.latest.release}`; }).catch(() => { });
   renderHome();
   requestAnimationFrame(moveInd);
@@ -1040,7 +1049,7 @@ const Mock = {
   async call(cmd, a) {
     await sleep(60); const M = this;
     switch (cmd) {
-      case 'init': if (/gate/.test(location.search)) M.accounts = []; return { version: '0.1.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
+      case 'init': if (/gate/.test(location.search)) M.accounts = []; if (/noid/.test(location.search)) { M.accounts = []; return { needAppId: true, version: '0.1.0', root: '', settings: M.settings, instances: M.instances, accounts: [], active: null, running: [] }; } return { version: '0.1.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
       case 'versions.list': {
@@ -1096,7 +1105,8 @@ const Mock = {
       case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true }, armor: { opts: { color: 'Akzent' } } } });
       case 'orbit.config.set': M.ocfg = JSON.parse(JSON.stringify(a.config)); return {};
       case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\java.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\java.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\java.exe', major: 8, source: 'Mojang' }];
-      case 'auth.login': await sleep(900); M.accounts = [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }]; return { account: M.accounts[0], accounts: M.accounts, active: M.accounts[0].uuid };
+      case 'auth.appid': return { ok: true };
+      case 'auth.login': if (/noid/.test(location.search) && !M.appid) throw new Error('NO_APP_ID'); await sleep(900); M.accounts = [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }]; return { account: M.accounts[0], accounts: M.accounts, active: M.accounts[0].uuid };
       case 'screenshots.list': return ['26.3', '26.3', '1.8.9', '1.21.11', '26.3', '1.21.11'].map((v, i) => ({ id: 'orbit-client-26-3', version: v, file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0)), date: new Date(Date.now() - i * 86400e3 / 2).toISOString() }));
       case 'auth.start': return { userCode: 'K7Q2-M9XD', verificationUri: 'https://www.microsoft.com/link' };
       case 'auth.finish': await sleep(600000); return {};
