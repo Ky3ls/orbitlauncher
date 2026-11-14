@@ -68,7 +68,11 @@ public final class Modules {
 	public static Module get(String id) { for (var m : ALL) if (m.id.equals(id)) return m; throw new IllegalArgumentException(id); }
 	public static boolean on(String id) { return get(id).enabled; }
 
-	public static Path file() { return FabricLoader.getInstance().getConfigDir().resolve("orbitclient.json"); }
+	/** OrbitLauncher passes -Dorbit.config=<launcher>/orbitclient.json so launcher and game share one file (live sync both ways). */
+	public static Path file() {
+		var p = System.getProperty("orbit.config");
+		return p != null && !p.isBlank() ? Path.of(p) : FabricLoader.getInstance().getConfigDir().resolve("orbitclient.json");
+	}
 
 	public static void load() {
 		var f = file();
@@ -79,6 +83,7 @@ public final class Modules {
 			if (root.has("accent")) { accent = hex(root.get("accent").getAsString(), accent); accent2 = lighten(accent); }
 			var mods = root.has("modules") ? root.getAsJsonObject("modules") : new JsonObject();
 			for (var m : ALL) {
+				m.enabled = m.defEnabled; m.placed = false; m.x = m.defX; m.y = m.defY; m.opts.clear();
 				if (!mods.has(m.id)) continue;
 				var o = mods.getAsJsonObject(m.id);
 				if (o.has("enabled")) m.enabled = o.get("enabled").getAsBoolean();
@@ -99,7 +104,8 @@ public final class Modules {
 	}
 
 	public static void save() {
-		var root = new JsonObject();
+		JsonObject root;
+		try { root = Files.exists(file()) ? JsonParser.parseString(Files.readString(file())).getAsJsonObject() : new JsonObject(); } catch (Exception e) { root = new JsonObject(); }
 		root.addProperty("accent", String.format("#%06X", accent & 0xFFFFFF));
 		var mods = new JsonObject();
 		for (var m : ALL) {
@@ -114,7 +120,9 @@ public final class Modules {
 		root.add("modules", mods);
 		try {
 			Files.createDirectories(file().getParent());
-			Files.writeString(file(), GSON.toJson(root));
+			var tmp = file().resolveSibling(file().getFileName() + ".tmp");
+			Files.writeString(tmp, GSON.toJson(root));
+			Files.move(tmp, file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 			lastMtime = Files.getLastModifiedTime(file()).toMillis();
 		} catch (Exception e) {
 			System.err.println("[Orbit Client] Speichern fehlgeschlagen: " + e);

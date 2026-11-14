@@ -84,6 +84,16 @@ switch (mode)
         await Launch(inst);
         break;
     }
+    case "ensure":
+    {
+        // "Spielen" for any version: Orbit instance is created on the fly
+        var inst = await OrbitClient.EnsureInstance(args[2], new[] { "perf", "shaders", "qol" }, 3072, "#FF7A3D", prog);
+        var mods = Directory.Exists(Path.Combine(inst.Dir, "mods")) ? Directory.GetFiles(Path.Combine(inst.Dir, "mods"), "*.jar").Length : 0;
+        Console.WriteLine($"{inst.Name}: Loader {inst.Loader}, {mods} Mods, voller Client: {OrbitClient.HasMod(inst)}");
+        var (plan, java) = await Runner.Prepare(inst, set, prog);
+        Console.WriteLine($"Startbereit: Java {plan.JavaMajor}, {plan.Classpath.Count} Classpath-Einträge");
+        break;
+    }
     case "mrpack":
     {
         var inst = await Modrinth.InstallModpack(args[2], null, prog);

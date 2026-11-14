@@ -48,7 +48,7 @@ public class OrbitClient implements ClientModInitializer {
 
 	private static void tick(Minecraft mc) {
 		ticks++;
-		if (ticks % 40 == 0) Modules.reloadIfChanged();
+		if (ticks % 8 == 0 && !(mc.gui.screen() instanceof HudEditorScreen)) Modules.reloadIfChanged();
 		while (MENU.consumeClick()) if (mc.gui.screen() == null) mc.gui.setScreen(new OrbitMenuScreen(null));
 		while (FULLBRIGHT.consumeClick()) { var m = Modules.get("fullbright"); m.enabled = !m.enabled; Modules.save(); }
 		State.tickZoom(ZOOM.isDown());

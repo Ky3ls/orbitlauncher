@@ -2,7 +2,7 @@
 
 Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`, dazu ein eigener Fabric-Mod für die Ingame-Features.
 
-![Client](docs/screenshots/20_client_module.png)
+![Client](docs/screenshots/40_client_start.png)
 
 ![Ingame-Menü](docs/screenshots/30_ingame_menue.png)
 
@@ -15,6 +15,8 @@ Eigener Minecraft-Client mit Launcher für Windows, im Design von OrbitTweak: C#
 | **Instanzen** | Eigener Ordner pro Instanz, eigene Version, Loader, RAM, Java, JVM-Argumente, Fenstergröße. Spielzeit, Konsole mit Log, Crash-Erkennung. |
 | **Modrinth** | Suche mit Filtern (Version, Loader, Kategorien, Sortierung), Detailansicht, 1-Klick-Install mit Abhängigkeiten, Updates (`version_files/update`), Entfernen/Deaktivieren. Mods, Modpacks, Ressourcenpakete, Shader. `.mrpack`-Import (Datei oder direkt von Modrinth). |
 | **Orbit Client (eigener Mod)** | `client-mod/`: eigener Fabric-Mod für 26.3 mit 21 Modulen: HUD (FPS, CPS pro Klick, Keystrokes, Koordinaten/Richtung/Biom, Rüstung mit Haltbarkeit, Effekte, Ping, Server, Uhrzeit, RAM, Tempo, Sitzung), PvP (Reichweite, Combo), Zoom (weich, Mausrad), Freelook, Fullbright, eigenes Fadenkreuz, Toggle Sprint, ruhige Kamera. Mod-Menü auf Rechts-Shift, HUD-Editor mit Drag & Drop, Einrasten und Größe per Mausrad, Chroma-Farben. |
+| **Jede Version, direkt spielen** | Auf der Client-Seite Version wählen und „Spielen“ drücken, kein Installieren vorher. Die Orbit-Instanz für die Version wird beim ersten Start automatisch angelegt: 26.3 mit vollem Ingame-Client (Mod), andere Fabric-Versionen mit Performance-Paketen, alle übrigen Vanilla. Auf Versionen ohne Mod zeichnet die exe ein Overlay-HUD über das Spiel (Keystrokes, CPS, Fadenkreuz, Uhr, Sitzung, RAM), nur sichtbar im Spiel, nicht in Menüs. |
+| **Live-Sync** | Eine gemeinsame `orbitclient.json` im Launcher-Ordner (der Mod bekommt sie per `-Dorbit.config`). Änderungen im Launcher sind nach unter einer Sekunde im Spiel, Änderungen im Spiel (Menü, HUD-Editor) erscheinen per Dateiüberwachung sofort im Launcher und im Overlay. |
 | **Client im Launcher** | Seite „Client“: Module an/aus und alle Einstellungen, HUD-Layout per Drag & Drop direkt im Launcher, Performance-Pakete (Sodium, Iris …) von Modrinth, Tastenbelegung. Launcher und Spiel teilen sich `config/orbitclient.json`, Änderungen greifen live im laufenden Spiel. Die Akzentfarbe des Launchers gilt auch im Ingame-Menü. |
 | **Microsoft-Login** | OAuth Device-Code-Flow (Microsoft identity platform) → Xbox Live → XSTS → Minecraft Services. Kein Passwort, nur das Refresh-Token, verschlüsselt per DPAPI (CurrentUser). Kein Offline-/Cracked-Modus. |
 | **Java** | Pro Version automatisch: Mojangs Java-Runtime-Manifest, Fallback Eclipse Temurin (Adoptium). Eigener Pfad pro Instanz oder global möglich. |

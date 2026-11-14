@@ -170,8 +170,14 @@ function onEvent(ev, d) {
       toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report vorhanden' : ''}`, false);
     }
     refreshInstances(); runUI();
+    if (curPage === 'orbit') renderOrbitHero();
   }
   if (ev === 'instances') { S.instances = d; renderAllInstances(); }
+  if (ev === 'orbitcfg') {
+    if (hbDrag || JSON.stringify(d) === JSON.stringify(S.orbit.cfg)) return;
+    S.orbit.cfg = d; S.orbit.cfg.modules = S.orbit.cfg.modules || {};
+    if (curPage === 'orbit') { renderOMods(); renderOrbitHero(); renderStage(); $('#oSync').textContent = 'Aus dem Spiel übernommen'; }
+  }
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -683,11 +689,10 @@ const oGet = (id, key) => { const v = S.orbit.cfg?.modules?.[id]?.opts?.[key]; i
 const oSet = (id, key, v) => { const c = ocfg(id); (c.opts = c.opts || {})[key] = String(v); oSave(); };
 let oSaveT = 0;
 function oSave() {
-  if (!S.orbit.inst) return;
   $('#oSync').textContent = 'Speichert…';
   clearTimeout(oSaveT);
   oSaveT = setTimeout(async () => {
-    try { await api('orbit.config.set', { id: S.orbit.inst.id, config: S.orbit.cfg }); $('#oSync').textContent = S.running.has(S.orbit.inst.id) ? 'Live im Spiel übernommen' : 'Gespeichert'; }
+    try { await api('orbit.config.set', { config: S.orbit.cfg }); $('#oSync').textContent = [...S.running].some(id => S.instances.find(i => i.id === id)?.kind === 'orbit') ? 'Live im Spiel übernommen' : 'Gespeichert · gilt für alle Versionen'; }
     catch (e) { $('#oSync').textContent = ''; fail('Speichern fehlgeschlagen', e); }
   }, 250);
 }
@@ -695,29 +700,60 @@ function oSave() {
 async function loadOrbit() {
   let info;
   try { info = S.orbit.info = await api('orbit.info'); } catch (e) { return fail('Orbit Client', e); }
-  S.orbit.inst = (info.existing || []).find(i => i.id === S.sel) || (info.existing || [])[0] || null;
-  S.orbit.cfg = { modules: {} };
-  if (S.orbit.inst) { try { S.orbit.cfg = await api('orbit.config.get', { id: S.orbit.inst.id }); S.orbit.cfg.modules = S.orbit.cfg.modules || {}; } catch { } }
-  if (!S.orbit.packs) S.orbit.packs = new Set(info.packs.filter(m => m.default).map(m => m.id));
-  const i = S.orbit.inst, run = i && S.running.has(i.id);
-  const on = OMODS.filter(m => oOn(m.id)).length;
-  $('#ohStats').innerHTML = i
-    ? `<div><b>${OMODS.length}</b><span>eigene Module</span></div><div><b>${on}</b><span>aktiv</span></div><div><b>${i.mods}</b><span>Mods installiert</span></div><div><b>${ptime(i.playSeconds)}</b><span>gespielt</span></div>`
-    : `<div><b>${OMODS.length}</b><span>eigene Module</span></div><div><b>${esc(info.best)}</b><span>Minecraft</span></div><div><b>1 Klick</b><span>Installation</span></div>`;
-  $('#ohAct').innerHTML = i
-    ? `<button class="btn p lg" onclick="play('${i.id}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Orbit Client spielen'}</button><button class="btn lg" onclick="openInst('${i.id}')">${ico('settings')}Instanz</button>${(info.existing || []).length > 1 ? `<select class="in sel" onchange="S.sel=this.value;loadOrbit()">${info.existing.map(x => `<option value="${x.id}" ${x.id === i.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}`
-    : `<button class="btn p lg" onclick="pageTab('orb','packs')">${ico('download')}Orbit Client installieren</button><span class="muted" style="font-size:12.5px">Dauert etwa eine Minute</span>`;
-  $('#oCnt').textContent = on + '/' + OMODS.length;
-  renderOMods(); renderPacks(info); renderKeys();
+  try { S.orbit.cfg = await api('orbit.config.get'); } catch { S.orbit.cfg = {}; }
+  S.orbit.cfg.modules = S.orbit.cfg.modules || {};
+  S.orbit.ver = S.orbit.ver || info.last;
+  S.orbit.packs = new Set((info.selPacks || 'perf,shaders,qol').split(',').filter(Boolean));
+  renderOrbitHero(); renderOMods(); renderPacks(info); renderKeys();
   if (!$('[data-pane="orb:hud"]').classList.contains('hidden')) renderStage();
 }
+function orbitInstFor(v) { return (S.orbit.info?.existing || []).find(i => i.mcVersion === v) || S.instances.find(i => i.kind === 'orbit' && i.mcVersion === v); }
+function renderOrbitHero() {
+  const info = S.orbit.info; if (!info) return;
+  const v = S.orbit.ver, full = info.supported.includes(v), inst = orbitInstFor(v), run = inst && S.running.has(inst.id);
+  const on = OMODS.filter(m => oOn(m.id)).length, rel = info.versions.filter(x => x.type === 'release').length;
+  $('#ohStats').innerHTML = `<div><b>${rel}</b><span>Versionen spielbar</span></div><div><b>${on}/${OMODS.length}</b><span>Module aktiv</span></div><div><b>${(info.existing || []).length}</b><span>Orbit-Versionen installiert</span></div><div><b>Live</b><span>Sync mit dem Spiel</span></div>`;
+  $('#ohAct').innerHTML = `<button class="vpk" id="vpk" onclick="orbitPickVersion(event)"><span>Version</span><b>${esc(v)}</b>${ico('chevd')}</button>
+    <button class="btn p lg ${run ? 'd' : ''}" id="oPlay" onclick="orbitPlay()">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
+    <div class="omode ${full ? 'full' : ''}">${ico(full ? 'sparkle' : 'layers')}<span><b>${full ? 'Voller Client im Spiel' : 'Overlay-Client'}</b><small>${full ? 'Alle 21 Module, Menü auf Rechts-Shift' : 'Keystrokes, CPS, Fadenkreuz, Uhr über dem Spiel'}${inst ? '' : ' · wird beim ersten Start eingerichtet'}</small></span></div>`;
+  $('#oCnt').textContent = on + '/' + OMODS.length;
+}
+function orbitPickVersion(e) {
+  e.stopPropagation();
+  const pop = $('#pop'), info = S.orbit.info;
+  if (!pop.classList.contains('hidden')) return closePop();
+  const r = $('#vpk').getBoundingClientRect();
+  const types = ['release'].concat(S.settings.showSnapshots ? ['snapshot'] : [], S.settings.showOld ? ['old_beta', 'old_alpha'] : []);
+  const list = info.versions.filter(x => types.includes(x.type));
+  const has = new Set((info.existing || []).map(i => i.mcVersion));
+  pop.innerHTML = `<div class="vps"><input class="in" id="vpq" placeholder="Version suchen…"></div><div id="vpl">${list.map(x => `<button data-v="${esc(x.id)}" class="${x.id === S.orbit.ver ? 'on' : ''}"><span class="tx"><b>${esc(x.id)}</b><small>${info.supported.includes(x.id) ? 'Voller Client' : 'Overlay-Client'}${has.has(x.id) ? ' · installiert' : ''}</small></span>${info.supported.includes(x.id) ? '<span class="chip a">MOD</span>' : x.type !== 'release' ? vtypeChip(x.type) : ''}</button>`).join('')}</div>`;
+  pop.style.left = r.left + 'px'; pop.style.width = '300px'; pop.style.top = (r.bottom + 6) + 'px';
+  pop.classList.remove('hidden');
+  $('#vpq').focus();
+  $('#vpq').oninput = ev => { const q = ev.target.value.trim(); $$('#vpl button').forEach(b => b.classList.toggle('hidden', !!q && !b.dataset.v.includes(q))); };
+  $('#vpl').onclick = ev => { const b = ev.target.closest('[data-v]'); if (!b) return; S.orbit.ver = b.dataset.v; closePop(); renderOrbitHero(); };
+}
+window.orbitPickVersion = orbitPickVersion;
+async function orbitPlay() {
+  const v = S.orbit.ver, inst = orbitInstFor(v);
+  if (inst && S.running.has(inst.id)) return play(inst.id);
+  if (!S.accounts.length) return needAccount();
+  const btn = $('#oPlay'); btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + (inst ? 'Startet…' : 'Wird eingerichtet…');
+  try {
+    const r = await api('orbit.play', { mc: v });
+    toast('Orbit Client startet', `Minecraft ${v} · ${r.mod ? 'voller Client' : 'Overlay-Client'}`);
+    await refreshInstances(); S.sel = r.id; runUI();
+    S.orbit.info = await api('orbit.info'); renderOrbitHero();
+  } catch (e) { fail('Start fehlgeschlagen', e); renderOrbitHero(); }
+}
+window.orbitPlay = orbitPlay;
 
 function renderOMods() {
   const list = OMODS.filter(m => !S.orbit.cat || m.cat === S.orbit.cat);
   $('#oMods').innerHTML = list.map(m => `<div class="card mcard ${oOn(m.id) ? 'on' : ''}" data-om="${m.id}"><span class="ti">${ico(m.icon)}</span>
-    <div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.cat}${m.hud && m.cat !== 'HUD' ? ' · HUD' : ''}</span></div>
+    <div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.cat}${m.hud && m.cat !== 'HUD' ? ' · HUD' : ''}</span>${(S.orbit.info?.overlay || []).includes(m.id) ? '<span class="chip a">Alle Versionen</span>' : '<span class="chip m">26.3</span>'}</div>
     <div class="mact"><div class="tg sm ${oOn(m.id) ? 'on' : ''}" data-omt="${m.id}"></div>${m.settings.length ? `<button class="ib sm" title="Einstellungen" data-oms="${m.id}">${ico('settings')}</button>` : ''}</div></div>`).join('');
-  if (!S.orbit.inst) $('#oSync').textContent = 'Erst installieren, dann gilt es im Spiel';
+  if (!$('#oSync').textContent) $('#oSync').textContent = 'Gilt für alle Versionen · live im Spiel';
 }
 $('#oCat').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.orbit.cat = b.dataset.c; $$('#oCat button').forEach(x => x.classList.toggle('on', x === b)); renderOMods(); });
 $('#oMods').addEventListener('click', e => {
@@ -725,7 +761,7 @@ $('#oMods').addEventListener('click', e => {
   const card = e.target.closest('[data-om]'); if (!card) return;
   const id = card.dataset.om, on = !oOn(id);
   ocfg(id).enabled = on; card.classList.toggle('on', on); card.querySelector('.tg').classList.toggle('on', on);
-  $('#oCnt').textContent = OMODS.filter(m => oOn(m.id)).length + '/' + OMODS.length;
+  renderOrbitHero();
   oSave();
 });
 function orbitSettings(id) {
@@ -749,7 +785,7 @@ function orbitSettings(id) {
     xhDraw();
   });
   box.addEventListener('input', e => { const t = e.target; if (t.dataset.t !== 'num') return; const v = fmtNum(t.value); box.querySelector(`[data-nv="${t.dataset.ok}"]`).textContent = v; oSet(id, t.dataset.ok, v); xhDraw(); });
-  S.modalClose = () => loadOrbit();
+  S.modalClose = () => { renderOMods(); renderOrbitHero(); };
   xhDraw();
 }
 window.orbitSettings = orbitSettings;
@@ -768,9 +804,8 @@ function xhDraw() {
   else { plus(st !== 'T'); if (st === 'Plus+Punkt') R(-h0, -h0, h1, h1); }
 }
 async function orbitReset() {
-  if (!S.orbit.inst) return;
   if (!await confirmBox('Alles zurücksetzen?', 'Alle Module, Einstellungen und HUD-Positionen gehen auf Standard zurück.', 'Zurücksetzen', true)) return;
-  S.orbit.cfg = { modules: {} }; oSave(); loadOrbit();
+  S.orbit.cfg = { modules: {} }; oSave(); renderOMods(); renderOrbitHero(); renderStage();
 }
 window.orbitReset = orbitReset;
 
@@ -812,7 +847,7 @@ function renderStage() {
 }
 let hbDrag = null;
 $('#stage').addEventListener('pointerdown', e => {
-  const b = e.target.closest('.hb'); if (!b || !S.orbit.inst) return;
+  const b = e.target.closest('.hb'); if (!b) return;
   const r = b.getBoundingClientRect();
   hbDrag = { id: b.dataset.id, el: b, ox: e.clientX - r.left, oy: e.clientY - r.top };
   b.classList.add('drag'); b.setPointerCapture(e.pointerId);
@@ -835,7 +870,7 @@ $('#stage').addEventListener('pointerup', () => {
   hbDrag = null;
 });
 $('#stage').addEventListener('wheel', e => {
-  const b = e.target.closest('.hb'); if (!b || !S.orbit.inst) return; e.preventDefault();
+  const b = e.target.closest('.hb'); if (!b) return; e.preventDefault();
   const id = b.dataset.id, v = Math.max(0.5, Math.min(2.5, Math.round(((+oGet(id, 'scale') || 1) + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
   oSet(id, 'scale', fmtNum(v)); renderStage();
 }, { passive: false });
@@ -845,39 +880,26 @@ window.addEventListener('resize', () => { if (curPage === 'orbit') renderStage()
 
 /* ---------- packs + install + keys ---------- */
 function renderPacks(info) {
-  const has = !!S.orbit.inst;
+  const cur = orbitInstFor(S.orbit.ver);
   $('#oPacks').innerHTML = info.packs.map(m => `<div class="card mcard ${S.orbit.packs.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span class="ti">${ico(m.icon)}</span><div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.mods} Mod${m.mods > 1 ? 's' : ''}</span></div>
-    ${has ? `<button class="btn sm" onclick="event.stopPropagation();addPack('${m.id}',this)">${ico('download')}Hinzufügen</button>` : `<span class="cb ${S.orbit.packs.has(m.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>`}</div>`).join('');
-  $('#oVer').innerHTML = (info.versions || []).map(v => `<option ${v === info.best ? 'selected' : ''}>${esc(v)}</option>`).join('');
-  const ram = $('#oRam'); setRange(ram); $('#oRamTxt').textContent = ram.value + ' GB';
-  ram.oninput = () => $('#oRamTxt').textContent = ram.value + ' GB';
-  $('#oInstall').innerHTML = ico('download') + (has ? 'Weitere Orbit-Instanz anlegen' : 'Orbit Client installieren');
+    <span class="cb ${S.orbit.packs.has(m.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+    ${cur && cur.loader === 'fabric' ? `<button class="btn sm" onclick="event.stopPropagation();addPack('${m.id}',this)">${ico('download')}In ${esc(cur.mcVersion)} nachladen</button>` : ''}</div>`).join('');
 }
 $('#oPacks').addEventListener('click', e => {
-  if (S.orbit.inst) return;
-  const c = e.target.closest('[data-m]'); if (!c) return;
+  const c = e.target.closest('[data-m]'); if (!c || e.target.closest('button')) return;
   const s = S.orbit.packs; s.has(c.dataset.m) ? s.delete(c.dataset.m) : s.add(c.dataset.m);
   c.classList.toggle('on'); c.querySelector('.cb')?.classList.toggle('on');
+  setS('orbitPacks', [...s].join(','));
 });
 const PACK_MODS = { perf: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast', 'dynamic-fps', 'sodium-extra', 'reeses-sodium-options'], shaders: ['iris'], qol: ['appleskin', 'mouse-tweaks', 'betterf3', 'no-chat-reports'], visual: ['lambdynamiclights', 'continuity', '3dskinlayers'] };
 async function addPack(id, btn) {
-  const i = S.orbit.inst; btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
+  const i = orbitInstFor(S.orbit.ver); if (!i) return; btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
   let n = 0;
   for (const slug of PACK_MODS[id] || []) { try { await api('mr.install', { id: i.id, project: slug, type: 'mod' }); n++; } catch { } }
   btn.disabled = false; btn.innerHTML = ico('check') + 'Installiert';
   toast('Paket installiert', `${n} Mod${n === 1 ? '' : 's'} in ${i.name}`); refreshInstances();
 }
 window.addPack = addPack;
-async function orbitInstall() {
-  const btn = $('#oInstall'); btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Wird eingerichtet…';
-  try {
-    const r = await api('orbit.create', { mc: $('#oVer').value, packs: [...S.orbit.packs], ramMb: +$('#oRam').value * 1024 });
-    toast('Orbit Client bereit', `${r.installed.length} Teile installiert${r.skipped.length ? `, ${r.skipped.length} nicht verfügbar` : ''}`);
-    await refreshInstances(); selectInstance(r.id); await loadOrbit(); pageTab('orb', 'mods');
-  } catch (e) { fail('Orbit Client fehlgeschlagen', e); }
-  finally { btn.disabled = false; }
-}
-window.orbitInstall = orbitInstall;
 function renderKeys() {
   $('#oKeys').innerHTML = [['Rechts-Shift', 'Orbit-Menü öffnen', 'Module an/aus, Einstellungen, HUD bearbeiten'], ['C (halten)', 'Zoom', 'Mausrad ändert die Stärke'], ['Linke Alt (halten)', 'Freelook', 'Kamera dreht, du läufst geradeaus'], ['G', 'Fullbright', 'An/aus, auch wenn das Modul aus ist'], ['Strg (Sprint)', 'Toggle Sprint', 'Einmal drücken, bleibt an']]
     .map(([k, n, d]) => `<div class="srow"><div><b>${esc(n)}</b><p>${esc(d)}</p></div><kbd>${esc(k)}</kbd></div>`).join('')
@@ -975,10 +997,10 @@ async function boot() {
 
 /* ======================= MOCK BACKEND (browser preview) ======================= */
 const Mock = {
-  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', lastInstance: 'orbit-client' },
+  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', lastInstance: 'orbit-client-26-3' },
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
-    { id: 'orbit-client', name: 'Orbit Client', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: new Date(Date.now() - 3600e3).toISOString(), mods: 19 },
+    { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: new Date(Date.now() - 3600e3).toISOString(), mods: 19 },
     { id: 'survival-1-21-11', name: 'Survival mit Freunden', mcVersion: '1.21.11', loader: 'vanilla', kind: 'custom', icon: 'grass', ramMb: 0, playSeconds: 210000, lastPlayed: new Date(Date.now() - 86400e3 * 2).toISOString(), mods: 0 },
     { id: 'technik-abenteuer', name: 'Technik-Abenteuer', mcVersion: '1.21.1', loader: 'neoforge', loaderVersion: '21.1.266', kind: 'modpack', icon: 'ruby', ramMb: 8192, playSeconds: 92000, lastPlayed: new Date(Date.now() - 86400e3 * 5).toISOString(), mods: 214 },
     { id: 'pvp-1-8-9', name: 'PvP 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', kind: 'custom', icon: 'diamond', ramMb: 2048, playSeconds: 12000, lastPlayed: new Date(Date.now() - 86400e3 * 12).toISOString(), mods: 0 },
@@ -1038,11 +1060,13 @@ const Mock = {
       case 'mr.install': await sleep(900); return { installed: ['Zoomify (Zoom)', 'Fabric API', 'YetAnotherConfigLib (YACL)'], skipped: [] };
       case 'mr.modpack': await sleep(800); return M.instances[0];
       case 'orbit.info': return {
-        best: '26.3', versions: ['26.3'],
+        best: '26.3', supported: ['26.3'], overlay: ['keystrokes', 'cps', 'crosshair', 'clock', 'session', 'memory'], last: '26.3',
+        versions: (await Mock.call('versions.list', {})).versions,
         packs: [['perf', 'FPS-Boost', 'Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, Dynamic FPS', 'zap', 1, 8], ['shaders', 'Shader-Support', 'Iris für Shaderpacks wie Complementary oder BSL', 'sun', 1, 1], ['qol', 'Komfort', 'AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports', 'sparkle', 1, 4], ['visual', 'Optik', 'Dynamische Lichter, Connected Textures, 3D-Skin-Layer', 'layers', 0, 3]].map(([id, name, desc, icon, d, mods]) => ({ id, name, desc, icon, default: !!d, mods })),
-        existing: /noorbit/.test(location.search) ? [] : M.instances.filter(i => i.kind === 'orbit'),
+        selPacks: M.settings.orbitPacks || 'perf,shaders,qol',
+        existing: M.instances.filter(i => i.kind === 'orbit'),
       };
-      case 'orbit.create': await sleep(1200); return { id: 'orbit-client', installed: Array(16).fill('x'), skipped: [] };
+      case 'orbit.play': { await sleep(500); let i = M.instances.find(x => x.kind === 'orbit' && x.mcVersion === a.mc); if (!i) { i = { id: 'orbit-client-' + a.mc.replace(/\./g, '-'), name: 'Orbit Client ' + a.mc, mcVersion: a.mc, loader: 'fabric', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 0, mods: 14 }; M.instances.unshift(i); } await M.call('launch', { id: i.id }); return { id: i.id, mod: a.mc === '26.3' }; }
       case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true }, armor: { opts: { color: 'Akzent' } } } });
       case 'orbit.config.set': M.ocfg = JSON.parse(JSON.stringify(a.config)); return {};
       case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\java.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\java.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\java.exe', major: 8, source: 'Mojang' }];

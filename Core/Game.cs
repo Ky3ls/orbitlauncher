@@ -161,7 +161,7 @@ public static class GameInstaller
 /// <summary>Turns a LaunchPlan into a java command line, exactly like the official launcher does.</summary>
 public static class LaunchBuilder
 {
-    public static List<string> Build(LaunchPlan plan, Session s, string gameDir, int ramMb, string? extraJvm, int width = 0, int height = 0, string? quickPlayServer = null)
+    public static List<string> Build(LaunchPlan plan, Session s, string gameDir, int ramMb, string? extraJvm, int width = 0, int height = 0, string? quickPlayServer = null, IEnumerable<string>? launcherJvm = null)
     {
         var v = plan.Version;
         var sep = OperatingSystem.IsWindows() ? ";" : ":";
@@ -206,6 +206,7 @@ public static class LaunchBuilder
         if (string.IsNullOrWhiteSpace(extraJvm) && args?["default-user-jvm"] is JsonArray duj)
             jvm.AddRange(Expand(duj, features, vars).Where(a => !a.StartsWith("-Xmx") && !a.StartsWith("-Xms")));
         if (!string.IsNullOrWhiteSpace(extraJvm)) jvm.AddRange(SplitArgs(extraJvm));
+        if (launcherJvm != null) jvm.AddRange(launcherJvm);
 
         if (args?["jvm"] is JsonArray ja) jvm.AddRange(Expand(ja, features, vars));
         else

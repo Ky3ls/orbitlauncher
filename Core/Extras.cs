@@ -20,6 +20,10 @@ public class Settings
     public string? LastInstance { get; set; }
     public bool FirstRun { get; set; } = true;
     public bool AutoUpdateMods { get; set; }
+    /// <summary>Last Minecraft version played with Orbit Client.</summary>
+    public string? OrbitVersion { get; set; }
+    /// <summary>Performance packs for new Orbit instances, comma separated (perf,shaders,qol,visual).</summary>
+    public string? OrbitPacks { get; set; } = "perf,shaders,qol";
 
     private static string FilePath => Path.Combine(Paths.Root, "settings.json");
     public static Settings Load() => Net.LoadJson<Settings>(FilePath) ?? new Settings();
@@ -56,7 +60,7 @@ public static class OrbitClient
     {
         mc = mc != null && Supported.Contains(mc) ? mc : Supported[0];
         p?.Report(new Progress("Orbit Client wird eingerichtet", 0, 1, "Minecraft " + mc));
-        var inst = Instances.Create("Orbit Client", mc, "fabric", null, "orbit");
+        var inst = Instances.Create("Orbit Client " + mc, mc, "fabric", null, "orbit");
         inst.Icon = "orbit"; inst.RamMb = ramMb;
         inst.VersionId = await Loaders.Install("fabric", mc, null, p, ct);
         inst.LoaderVersion = inst.VersionId.Split('-').ElementAtOrDefault(2);
@@ -80,9 +84,9 @@ public static class OrbitClient
         }
         EnsureMod(inst);
         installed.Insert(0, "Orbit Client");
-        var cfg = ReadConfig(inst) ?? new JsonObject();
+        var cfg = ReadConfig() ?? new JsonObject();
         cfg["accent"] = accent;
-        WriteConfig(inst, cfg);
+        WriteConfig(cfg);
         WriteDefaults(inst);
         return (inst, installed.Distinct().ToList(), skipped.Distinct().ToList());
     }
@@ -103,13 +107,60 @@ public static class OrbitClient
         File.WriteAllBytes(target, bytes);
     }
 
-    public static string ConfigPath(Instance inst) => Path.Combine(inst.Dir, "config", "orbitclient.json");
-    public static JsonObject? ReadConfig(Instance inst)
+    /// <summary>One config for the launcher, the in-game mod (via -Dorbit.config) and the overlay – every version, live in both directions.</summary>
+    public static string ConfigPath => Path.Combine(Paths.Root, "orbitclient.json");
+    public static JsonObject? ReadConfig()
     {
-        try { var f = ConfigPath(inst); return File.Exists(f) ? JsonNode.Parse(File.ReadAllText(f)) as JsonObject : null; } catch { return null; }
+        for (int i = 0; i < 3; i++)
+        {
+            try { return File.Exists(ConfigPath) ? JsonNode.Parse(File.ReadAllText(ConfigPath)) as JsonObject : null; }
+            catch (IOException) { Thread.Sleep(30); }
+            catch { return null; }
+        }
+        return null;
     }
-    /// <summary>The mod watches this file and reloads it while the game runs.</summary>
-    public static void WriteConfig(Instance inst, JsonObject cfg) => Net.SaveJson(ConfigPath(inst), cfg);
+    public static void WriteConfig(JsonObject cfg) => Net.SaveJson(ConfigPath, cfg);
+
+    /// <summary>Modules the launcher overlay can draw on every Minecraft version (no mod needed).</summary>
+    public static readonly string[] OverlayModules = { "keystrokes", "cps", "crosshair", "clock", "session", "memory" };
+
+    /// <summary>True if this instance runs the full in-game client (our mod), otherwise the overlay is used.</summary>
+    public static bool HasMod(Instance inst) => inst.Kind == "orbit" && Supported.Contains(inst.McVersion) && inst.Loader == "fabric";
+
+    /// <summary>
+    /// The Orbit instance for a Minecraft version – created on the fly, so "Spielen" works for every version without an install step.
+    /// 26.3: Fabric + Orbit mod + packs. Other Fabric versions: Fabric + performance packs (if available). Everything else: vanilla.
+    /// </summary>
+    public static async Task<Instance> EnsureInstance(string mc, IEnumerable<string> packs, int ramMb, string accent, IProgress<Progress>? p, CancellationToken ct = default)
+    {
+        var inst = Instances.All().FirstOrDefault(i => i.Kind == "orbit" && i.McVersion == mc);
+        if (inst != null) return inst;
+        bool fabric = Supported.Contains(mc);
+        if (!fabric) { try { fabric = (await Loaders.GameVersions("fabric", ct)).Contains(mc); } catch { } }
+        p?.Report(new Progress("Orbit Client " + mc + " wird vorbereitet", 0, 1, fabric ? "Fabric" : "Vanilla + Overlay"));
+        if (Supported.Contains(mc)) return (await Create(mc, packs, ramMb, accent, p, ct)).inst;
+
+        inst = Instances.Create("Orbit Client " + mc, mc, fabric ? "fabric" : "vanilla", null, "orbit");
+        inst.Icon = "orbit"; inst.RamMb = ramMb;
+        Instances.Save(inst);
+        if (fabric)
+        {
+            inst.VersionId = await Loaders.Install("fabric", mc, null, p, ct);
+            inst.LoaderVersion = inst.VersionId.Split('-').ElementAtOrDefault(2);
+            Instances.Save(inst);
+            var slugs = new List<string> { "fabric-api" };
+            var set = packs.ToHashSet();
+            slugs.AddRange(Packs.Where(m => set.Contains(m.Id)).SelectMany(m => m.Mods));
+            int i = 0;
+            foreach (var slug in slugs.Distinct())
+            {
+                p?.Report(new Progress("Orbit Client: Pakete", ++i, slugs.Count, slug));
+                try { await Modrinth.Install(inst, slug, "mod", null, null, ct); } catch (Exception e) when (e is not OperationCanceledException) { }
+            }
+        }
+        WriteDefaults(inst);
+        return inst;
+    }
 
     /// <summary>Sensible vanilla options for PvP (only written once, never overwrites user settings).</summary>
     private static void WriteDefaults(Instance inst)

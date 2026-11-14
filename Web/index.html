@@ -193,9 +193,9 @@
     <section class="page" id="p-orbit">
       <div class="ohero card gb">
         <div class="oh-l">
-          <div class="kicker">Orbit Client · Minecraft 26.3</div>
-          <h1>Dein Client. <span class="grad">Komplett eigener.</span></h1>
-          <p class="pd">Eigenes HUD mit Keystrokes, CPS, Reichweite und Combo, flüssiger Zoom, Freelook, Fullbright, eigenes Fadenkreuz und ein Mod-Menü auf Rechts-Shift. Dazu FPS-Boost und Shader-Support aus offenen Modrinth-Mods. Alles hier im Launcher einstellbar, auch während du spielst.</p>
+          <div class="kicker">Orbit Client · jede Version</div>
+          <h1>Version wählen. <span class="grad">Spielen.</span></h1>
+          <p class="pd">Jede Minecraft-Version mit einem Klick starten, ohne Installieren vorher. Eigenes HUD mit Keystrokes, CPS, Reichweite und Combo, Zoom, Freelook, Fullbright und eigenem Fadenkreuz. Module an/aus und verschieben geht hier oder im Spiel, beides bleibt live synchron.</p>
           <div class="oh-stats" id="ohStats"></div>
           <div class="oh-act" id="ohAct"></div>
         </div>
@@ -225,14 +225,7 @@
       </div>
       <div data-pane="orb:packs" class="hidden">
         <div class="mods-grid" id="oPacks"></div>
-        <div class="card ocfg mt" id="oSetup">
-          <div class="sh"><b>Setup</b></div>
-          <div class="srow"><div><b>Minecraft-Version</b><p>Version, für die der Orbit Client gebaut ist</p></div><select class="in sel" id="oVer"></select></div>
-          <div class="srow"><div><b>Arbeitsspeicher</b><p id="oRamTxt">3 GB</p></div><input type="range" id="oRam" min="2" max="16" step="1" value="3" style="width:150px"></div>
-          <div class="srow"><div><b>Loader</b><p>Fabric, automatisch die neueste stabile Version</p></div><span class="chip a">Fabric</span></div>
-          <button class="btn p lg oinstall" id="oInstall" onclick="orbitInstall()"><svg class="i"><use href="#download"/></svg>Orbit Client installieren</button>
-          <p class="fine">Der Orbit-Client-Mod ist im Launcher eingebaut. Die Pakete kommen von Modrinth und stehen unter den Lizenzen ihrer Autoren.</p>
-        </div>
+        <p class="fine">Markierte Pakete kommen automatisch in jede neue Orbit-Version (wo es sie für die Version gibt). Alle stammen von Modrinth und stehen unter den Lizenzen ihrer Autoren.</p>
       </div>
       <div data-pane="orb:keys" class="hidden">
         <div class="card keys" id="oKeys"></div>

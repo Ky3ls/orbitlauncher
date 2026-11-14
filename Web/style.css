@@ -669,3 +669,18 @@ code.cc{font-family:var(--mono);font-size:12px;user-select:text}
 .keys{padding:6px 20px 14px}
 kbd{font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line2);border-bottom-width:3px;color:var(--text);white-space:nowrap}
 .stage-bg{opacity:1}
+.vpk{display:flex;align-items:center;gap:10px;height:46px;padding:0 14px;border-radius:13px;border:1px solid var(--line2);background:rgba(255,255,255,.045);transition:border-color .25s,background .25s}
+.vpk:hover{border-color:rgba(var(--a-rgb),.5);background:rgba(255,255,255,.07)}
+.vpk span{font-size:11px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.vpk b{font-family:var(--disp);font-size:16px;font-weight:650;min-width:56px;text-align:left}
+.vpk svg.i{width:14px;height:14px;color:var(--mute)}
+.omode{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 8px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.omode svg.i{width:30px;height:30px;padding:7px;border-radius:9px;background:rgba(255,255,255,.05);color:var(--sub)}
+.omode.full svg.i{background:var(--grad);color:var(--on)}
+.omode b{display:block;font-size:12.5px;font-weight:600}
+.omode small{font-size:11px;color:var(--mute)}
+.vps{padding:4px 4px 6px}
+.vps .in{height:34px;font-size:12.5px}
+#vpl{max-height:300px;overflow:auto}
+.omods .mcard .tx .chip{margin-right:4px}
+#oPacks .mcard .btn{margin-top:10px;align-self:flex-start}

@@ -22,6 +22,11 @@ public partial class MainWindow : Window
     private int _taskSeq;
     private double _zoom = 1;
     private bool _hiddenForGame;
+    private readonly GameOverlay _overlay = new();
+    private string? _overlayFor;
+    private FileSystemWatcher? _cfgWatch;
+    private string _cfgLast = "";
+    private DateTime _cfgDue;
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -47,11 +52,19 @@ public partial class MainWindow : Window
         };
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
         Loaded += async (_, _) => await InitWeb();
-        Closing += (_, _) => S.Save();
+        Closing += (_, _) => { S.Save(); _overlay.Detach(); _overlay.Close(); };
+        WatchConfig();
 
         _runner.Log += (id, line) => Emit("log", new { id, line });
         _runner.State += (id, running, code) =>
         {
+            Dispatcher.InvokeAsync(() =>
+            {
+                var oi = Instances.Get(id);
+                if (running && oi != null && oi.Kind == "orbit" && !OrbitClient.HasMod(oi) && _runner.ProcessOf(id) is Process gp)
+                { _overlay.Attach(gp, oi.Dir, OrbitClient.ReadConfig()); _overlayFor = id; }
+                else if (!running && _overlayFor == id) { _overlay.Detach(); _overlayFor = null; }
+            });
             string? crash = null;
             if (!running && code is not (null or 0)) { var i = Instances.Get(id); if (i != null) crash = Runner.LatestCrash(i); }
             Emit("state", new { id, running, code, crash = crash != null });
@@ -235,11 +248,12 @@ public partial class MainWindow : Window
                 S.Save();
                 if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = S.ClientId;
                 if (prop.Name == nameof(Settings.Accent))
-                    foreach (var oi in Instances.All().Where(i => i.Kind == "orbit"))
-                    {
-                        var cfg = OrbitClient.ReadConfig(oi);
-                        if (cfg != null) { cfg["accent"] = AccentHex(S.Accent); OrbitClient.WriteConfig(oi, cfg); }
-                    }
+                {
+                    var cfg = OrbitClient.ReadConfig() ?? new JsonObject();
+                    cfg["accent"] = AccentHex(S.Accent);
+                    _cfgLast = cfg.ToJsonString();
+                    OrbitClient.WriteConfig(cfg); _overlay.SetConfig(cfg);
+                }
                 return new { };
             }
             case "news": return await News.Latest(6);
@@ -373,12 +387,37 @@ public partial class MainWindow : Window
             // ---------------- orbit client
             case "orbit.info":
             {
+                var all = await Versions.All();
                 return new
                 {
-                    best = OrbitClient.Supported[0], versions = OrbitClient.Supported,
+                    best = OrbitClient.Supported[0], supported = OrbitClient.Supported, overlay = OrbitClient.OverlayModules,
+                    last = S.OrbitVersion ?? OrbitClient.Supported[0],
+                    versions = all.Select(v => new { v.Id, v.Type }),
                     packs = OrbitClient.Packs.Select(m => new { m.Id, m.Name, m.Desc, m.Icon, @default = m.Default, mods = m.Mods.Length }),
+                    selPacks = S.OrbitPacks,
                     existing = Instances.All().Where(i => i.Kind == "orbit").Select(Dto),
                 };
+            }
+            case "orbit.play":
+            {
+                // one click: create the Orbit instance for this version if needed, download everything and start
+                var mc = Str(a, "mc");
+                if (string.IsNullOrEmpty(mc)) mc = S.OrbitVersion ?? OrbitClient.Supported[0];
+                var acc = _auth.Active ?? throw new InvalidOperationException("Bitte zuerst mit einem Microsoft-Konto anmelden.");
+                var session = await _auth.GetSession(acc);
+                S.OrbitVersion = mc; S.Save();
+                var packs = (S.OrbitPacks ?? "perf,shaders,qol").Split(',', StringSplitOptions.RemoveEmptyEntries);
+                var accent = AccentHex(S.Accent);
+                var inst = await WithTask(async p =>
+                {
+                    var i = await OrbitClient.EnsureInstance(mc, packs, S.RamMb > 0 ? Math.Min(S.RamMb, 4096) : 3072, accent, p);
+                    var cfg = OrbitClient.ReadConfig() ?? new JsonObject();
+                    if ((string?)cfg["accent"] != accent) { cfg["accent"] = accent; OrbitClient.WriteConfig(cfg); }
+                    await _runner.Launch(i, session, S, p);
+                    return i;
+                });
+                if (S.OnLaunch is "minimize" or "close") { _hiddenForGame = true; if (S.OnLaunch == "close") Hide(); else WindowState = WindowState.Minimized; }
+                return new { id = inst.Id, mod = OrbitClient.HasMod(inst) };
             }
             case "orbit.create":
             {
@@ -388,18 +427,14 @@ public partial class MainWindow : Window
                 _ = WithTask(async p => { try { await Runner.Prepare(r.inst, S, p); } catch { } return 0; });
                 return new { id = r.inst.Id, installed = r.installed, skipped = r.skipped };
             }
-            case "orbit.config.get":
-            {
-                var inst = Inst(a);
-                return OrbitClient.ReadConfig(inst) ?? new JsonObject();
-            }
+            case "orbit.config.get": return OrbitClient.ReadConfig() ?? new JsonObject { ["modules"] = new JsonObject() };
             case "orbit.config.set":
             {
-                var inst = Inst(a);
-                var cfg = a["config"] as JsonObject ?? new JsonObject();
-                cfg = (JsonObject)cfg.DeepClone();
+                var cfg = (a["config"] as JsonObject)?.DeepClone() as JsonObject ?? new JsonObject();
                 cfg["accent"] = AccentHex(S.Accent);
-                OrbitClient.WriteConfig(inst, cfg);
+                _cfgLast = cfg.ToJsonString();
+                OrbitClient.WriteConfig(cfg);
+                _overlay.SetConfig(cfg);
                 return new { };
             }
 
@@ -435,6 +470,36 @@ public partial class MainWindow : Window
             case "auth.remove": _auth.Remove(Str(a, "uuid")); return AccountsDto();
         }
         throw new InvalidOperationException("Unbekannter Befehl: " + cmd);
+    }
+
+    /// <summary>Live sync: when the game (mod) writes orbitclient.json, the launcher UI and the overlay update immediately.</summary>
+    private void WatchConfig()
+    {
+        try
+        {
+            _cfgWatch = new FileSystemWatcher(Paths.Root, "orbitclient.json") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+            FileSystemEventHandler h = (_, _) => ConfigChanged();
+            _cfgWatch.Changed += h; _cfgWatch.Created += h;
+            _cfgWatch.Renamed += (_, _) => ConfigChanged();
+            _cfgWatch.EnableRaisingEvents = true;
+        }
+        catch { }
+    }
+
+    private void ConfigChanged()
+    {
+        _cfgDue = DateTime.UtcNow.AddMilliseconds(120);
+        Task.Delay(150).ContinueWith(_ =>
+        {
+            if (DateTime.UtcNow < _cfgDue) return;
+            var cfg = OrbitClient.ReadConfig();
+            if (cfg == null) return;
+            var json = cfg.ToJsonString();
+            if (json == _cfgLast) return;      // our own write
+            _cfgLast = json;
+            Dispatcher.InvokeAsync(() => _overlay.SetConfig(cfg));
+            Emit("orbitcfg", JsonNode.Parse(json)!);
+        });
     }
 
     /// <summary>Launcher accent theme → hex, so the in-game menu uses the same color.</summary>

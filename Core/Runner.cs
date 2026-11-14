@@ -11,6 +11,7 @@ public class Runner
     private readonly ConcurrentDictionary<string, Process> _running = new();
 
     public bool IsRunning(string id) => _running.ContainsKey(id);
+    public Process? ProcessOf(string id) => _running.TryGetValue(id, out var p) ? p : null;
     public IEnumerable<string> RunningIds => _running.Keys;
 
     /// <summary>Loader + client + libraries + assets + Java. Safe to call repeatedly (only missing files are fetched).</summary>
@@ -34,8 +35,9 @@ public class Runner
         if (_running.ContainsKey(inst.Id)) throw new InvalidOperationException($"„{inst.Name}“ läuft bereits.");
         var (plan, java) = await Prepare(inst, set, p, ct);
         var ram = inst.RamMb > 0 ? inst.RamMb : set.RamMb;
+        var extra = inst.Kind == "orbit" ? new[] { "-Dorbit.config=" + OrbitClient.ConfigPath } : null;
         var args = LaunchBuilder.Build(plan, s, inst.Dir, ram, string.IsNullOrWhiteSpace(inst.JvmArgs) ? set.JvmArgs : inst.JvmArgs,
-            inst.Width > 0 ? inst.Width : set.Width, inst.Height > 0 ? inst.Height : set.Height, server);
+            inst.Width > 0 ? inst.Width : set.Width, inst.Height > 0 ? inst.Height : set.Height, server, extra);
         p?.Report(new Progress("Minecraft startet", 1, 1, inst.Name));
         Log?.Invoke(inst.Id, "[OrbitLauncher] " + LaunchBuilder.Pretty(java, args, s));
 
