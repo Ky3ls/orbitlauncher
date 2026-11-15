@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private FileSystemWatcher? _cfgWatch;
     private string _cfgLast = "";
     private DateTime _cfgDue;
+    private readonly DiscordRpc _rpc = new("1571553631818219580");
+    private List<Transfer.Found> _found = new();
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -36,6 +38,7 @@ public partial class MainWindow : Window
     {
         Net.AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
         _auth = new Auth(ClientIdFor(S));
+        CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
         OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
         InitializeComponent();
 
@@ -52,12 +55,18 @@ public partial class MainWindow : Window
         };
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
         Loaded += async (_, _) => await InitWeb();
-        Closing += (_, _) => { S.Save(); _overlay.Detach(); _overlay.Close(); };
+        Closing += (_, _) => { _rpc.Dispose(); S.Save(); _overlay.Detach(); _overlay.Close(); };
         WatchConfig();
 
         _runner.Log += (id, line) => Emit("log", new { id, line });
         _runner.State += (id, running, code) =>
         {
+            if (S.DiscordRpc) Task.Run(() =>
+            {
+                var ri = Instances.All().FirstOrDefault(x => _runner.IsRunning(x.Id));
+                if (ri == null) _rpc.Set(null, null, null);
+                else _rpc.Set("Spielt " + ri.Name, $"Minecraft {ri.McVersion} · {Loaders.Name(ri.Loader)}", DateTime.Now);
+            });
             Dispatcher.InvokeAsync(() =>
             {
                 var oi = Instances.Get(id);
@@ -204,8 +213,8 @@ public partial class MainWindow : Window
         return new
         {
             i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
-            i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, mods, running = _runner.IsRunning(i.Id),
-            content = i.Content.Select(c => new { c.ProjectId, c.Type }),
+            i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, i.ManualDownloads, mods, running = _runner.IsRunning(i.Id),
+            content = i.Content.Select(c => new { c.ProjectId, c.Type, c.Source }),
         };
     }
 
@@ -233,7 +242,7 @@ public partial class MainWindow : Window
             {
                 return new
                 {
-                    needAppId = string.IsNullOrWhiteSpace(ClientIdFor(S)),
+                    needAppId = string.IsNullOrWhiteSpace(ClientIdFor(S)), cfReady = CurseForge.Ready,
                     version = Net.AppVersion, root = Paths.Root, settings = S,
                     instances = Instances.All().Select(Dto).ToList(),
                     accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }),
@@ -249,6 +258,8 @@ public partial class MainWindow : Window
                 prop.SetValue(S, v);
                 S.Save();
                 if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = ClientIdFor(S);
+                if (prop.Name == nameof(Settings.CurseForgeKey)) CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
+                if (prop.Name == nameof(Settings.DiscordRpc) && !S.DiscordRpc) _ = Task.Run(() => _rpc.Set(null, null, null));
                 if (prop.Name == nameof(Settings.Accent))
                 {
                     var cfg = OrbitClient.ReadConfig() ?? new JsonObject();
@@ -462,9 +473,10 @@ public partial class MainWindow : Window
             }
             case "pack.import":
             {
-                var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Modrinth-Modpack (*.mrpack)|*.mrpack", Title = "Modpack importieren" };
+                var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Modpacks (*.mrpack;*.zip)|*.mrpack;*.zip", Title = "Modpack importieren" };
                 if (dlg.ShowDialog(this) != true) return null;
-                var inst = await WithTask(p => Modrinth.ImportPack(dlg.FileName, null, p));
+                var file = dlg.FileName;
+                var inst = await WithTask(p => file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && CurseForge.IsCfPack(file) ? CurseForge.ImportPack(file, null, p) : Modrinth.ImportPack(file, null, p));
                 _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
                 return Dto(inst);
             }
@@ -542,6 +554,54 @@ public partial class MainWindow : Window
                 return null;
             }
             case "screenshots.delete": { var f = ShotPath(a); File.Delete(f); return new { }; }
+
+            // ---------------- curseforge
+            case "cf.status": return new { ready = CurseForge.Ready, own = !string.IsNullOrWhiteSpace(S.CurseForgeKey) };
+            case "cf.get":
+            {
+                var path = Str(a, "path");
+                if (!path.StartsWith('/') || path.Contains("://") || path.Contains("..") || path.Contains('\\')) throw new ArgumentException("Ungültiger Pfad");
+                return await CurseForge.Get(path);
+            }
+            case "cf.install":
+            {
+                var inst = Inst(a); var fid = Int(a, "file");
+                var r = await WithTask(p => CurseForge.Install(inst, Int(a, "project"), fid > 0 ? fid : null, p));
+                return new { installed = r.Installed, skipped = r.Skipped };
+            }
+            case "cf.modpack":
+            {
+                var fid = Int(a, "file");
+                var inst = await WithTask(p => CurseForge.InstallModpack(Int(a, "project"), fid > 0 ? fid : null, p));
+                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                return Dto(inst);
+            }
+
+            // ---------------- servers, backups, export, import
+            case "server.ping": return await ServerPing.Ping(Str(a, "address"));
+            case "backup.list": return Backups.List(Inst(a));
+            case "backup.create": { var inst = Inst(a); var f = Str(a, "folder"); return await WithTask(p => { p.Report(new Progress("Backup wird erstellt", 0, 1, f)); return Task.FromResult(Backups.Create(inst, f)); }); }
+            case "backup.delete": Backups.Delete(Inst(a), Str(a, "file")); return new { };
+            case "backup.restore": { var inst = Inst(a); var f = Str(a, "file"); return new { world = await Task.Run(() => Backups.Restore(inst, f)) }; }
+            case "backup.folder": { var d = Paths.Dir(Path.Combine("backups", Inst(a).Id)); Process.Start(new ProcessStartInfo("explorer.exe", $"\"{d}\"") { UseShellExecute = true }); return null; }
+            case "instance.export":
+            {
+                var inst = Inst(a);
+                var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Modrinth-Modpack (*.mrpack)|*.mrpack", FileName = $"{inst.Name} {StrN(a, "version") ?? "1.0.0"}.mrpack", Title = "Als Modpack exportieren" };
+                if (dlg.ShowDialog(this) != true) return null;
+                var target = dlg.FileName;
+                await WithTask(async p => { await Transfer.Export(inst, target, StrN(a, "version") ?? "1.0.0", Bool(a, "worlds"), p); return 0; });
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{target}\"") { UseShellExecute = true });
+                return new { path = target };
+            }
+            case "import.scan": _found = await Task.Run(Transfer.Scan); return _found.Select((f, i) => new { i, f.Launcher, f.Name, f.Mc, f.Loader });
+            case "import.run":
+            {
+                var f = _found.ElementAtOrDefault(Int(a, "i")) ?? throw new InvalidOperationException("Nicht gefunden");
+                var inst = await WithTask(p => Transfer.Import(f, p));
+                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                return Dto(inst);
+            }
 
             // ---------------- skins
             case "skins.list": return Skins.All().Where(x => File.Exists(Skins.FileOf(x.Id))).Select(x => new { x.Id, x.Name, x.Variant, x.Added, url = Skins.DataUrl(x.Id) });

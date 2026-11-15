@@ -30,6 +30,8 @@ public class Instance
     public string? ModpackVersion { get; set; }
     /// <summary>Content installed through the launcher (Modrinth), used for updates and removal.</summary>
     public List<InstalledContent> Content { get; set; } = new();
+    /// <summary>Files of a CurseForge modpack the authors only allow on curseforge.com: "name|url".</summary>
+    public List<string>? ManualDownloads { get; set; }
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;
@@ -47,6 +49,8 @@ public class InstalledContent
     public string? VersionNumber { get; set; }
     public bool Dependency { get; set; }
     public bool Enabled { get; set; } = true;
+    /// <summary>modrinth | curseforge</summary>
+    public string Source { get; set; } = "modrinth";
 }
 
 public static class Instances

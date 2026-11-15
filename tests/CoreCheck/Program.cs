@@ -17,6 +17,20 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "ping":
+    {
+        foreach (var a in args.Skip(2)) { var st = await ServerPing.Ping(a); Console.WriteLine($"{a}: online={st.Online} {st.Players}/{st.Max} ping={st.Ping} ver={st.Version} motd={st.Motd?.Replace("\n"," | ")} icon={(st.Icon?.Length ?? 0)}"); }
+        break;
+    }
+    case "export":
+    {
+        var inst = Instances.Get(args[2])!;
+        var t = Path.Combine(Paths.Root, "export.mrpack");
+        await Transfer.Export(inst, t, "1.0.0", false, null);
+        using var z = System.IO.Compression.ZipFile.OpenRead(t);
+        Console.WriteLine($"exported {inst.Name}: {z.Entries.Count} entries, index files=" + System.Text.Json.Nodes.JsonNode.Parse(new StreamReader(z.GetEntry("modrinth.index.json")!.Open()).ReadToEnd())!["files"]!.AsArray().Count);
+        break;
+    }
     case "vanilla":
     {
         var all = await Versions.All();

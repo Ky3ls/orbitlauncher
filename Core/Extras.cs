@@ -20,6 +20,10 @@ public class Settings
     public string? LastInstance { get; set; }
     public bool FirstRun { get; set; } = true;
     public bool AutoUpdateMods { get; set; }
+    /// <summary>CurseForge Core API key (console.curseforge.com); empty = built-in key.</summary>
+    public string? CurseForgeKey { get; set; }
+    /// <summary>Show "Spielt …" in Discord.</summary>
+    public bool DiscordRpc { get; set; } = true;
     /// <summary>Last Minecraft version played with Orbit Client.</summary>
     public string? OrbitVersion { get; set; }
     /// <summary>Performance packs for new Orbit instances, comma separated (perf,shaders,qol,visual).</summary>

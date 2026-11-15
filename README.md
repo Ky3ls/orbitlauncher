@@ -16,8 +16,12 @@ Minecraft-Launcher für Windows im Aufbau der Modrinth-App, im Design von OrbitT
 | **Bibliothek** | Alle Instanzen als Karten: Filter (Modpacks, Eigene, Orbit Client), Suche, Sortieren (zuletzt gespielt, Name, neu, Spielzeit, Version), Gruppieren (Gruppe, Loader, Version). Rechtsklick-Menü: Spielen, Inhalte hinzufügen, Einstellungen, Ordner, Duplizieren, Löschen. |
 | **Instanzseite** | Kopf mit Spielen/Beenden, Spielzeit, Loader. Tabs: **Inhalte** (Mods, Ressourcenpakete, Shader mit Icons, Suche, Filter, an/aus, Mehrfachauswahl, Updates prüfen und alle aktualisieren, aus Datei hinzufügen), **Welten** (Spielmodus, Symbol, direkt in die Welt starten ab 1.20, Server aus der Serverliste direkt beitreten, Welt in den Papierkorb), **Logs** (Live-Konsole und alte Logs/Crash-Reports mit Suche), **Orbit Client** (nur bei Orbit-Instanzen: Module, HUD-Editor, Tasten). |
 | **Instanz-Einstellungen** | Name, Symbol, Gruppe; Version und Mod-Loader nachträglich wechseln, Dateien prüfen und reparieren; Java-Pfad, RAM, JVM-Argumente; Fenstergröße. |
-| **Entdecken** | Modpacks, Mods, Ressourcenpakete, Shader. Filterleiste: Spielversion, Loader, alle Modrinth-Kategorien, Umgebung (Client/Server), Open Source. Sortieren, Seiten, aktive Filter als Chips. Aus einer Instanz heraus: nur passende Inhalte, „Installiert“-Markierung. |
+| **Entdecken** | **Modrinth und CurseForge** umschaltbar. Modpacks, Mods, Ressourcenpakete, Shader, Listen- oder Kachelansicht. Filterleiste: Spielversion, Loader, alle Modrinth-Kategorien, Umgebung (Client/Server), Open Source. Sortieren, Seiten, aktive Filter als Chips. Aus einer Instanz heraus: nur passende Inhalte, „Installiert“-Markierung. |
 | **Projektseite** | Beschreibung (Markdown und HTML, bereinigt), Versionen mit Filtern und Changelog, Galerie mit Großansicht, Kompatibilität, Links, Ersteller, Lizenz. Installieren mit Instanzauswahl (passende oben) oder „Neue Instanz dafür“. Abhängigkeiten kommen automatisch mit. |
+| **Welten & Server** | Live-Status der gespeicherten Server (Spieler, Ping, MOTD, Icon), direkt beitreten, Welt-Backups als Zip mit Wiederherstellen. |
+| **Teilen & Umziehen** | Instanz als .mrpack exportieren (Modrinth-Mods verlinkt, Rest in overrides). Import von .mrpack und CurseForge-.zip, Instanzen aus Prism Launcher, MultiMC, PolyMC und der CurseForge-App übernehmen. |
+| **Screenshots** | Galerie aller Screenshots aus allen Instanzen mit Filter. |
+| **Discord** | Zeigt „Spielt …“ mit Instanz und Version (abschaltbar). |
 | **Skins** | Skin-Bibliothek mit 3D-Ansicht (drehen, laufen), Klassisch/Schlank, mit einem Klick fürs Konto übernehmen, Umhang wählen. Über die offizielle Minecraft-Services-API. |
 | **Alle Versionen & Loader** | Mojang Version Manifest (Releases, Snapshots, Beta, Alpha), Fabric, Quilt, Forge, NeoForge. Startargumente wie beim offiziellen Launcher. |
 | **Orbit Client (eigener Mod)** | `client-mod/`: Fabric-Mod für 26.3 mit 21 Modulen (Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint …), Mod-Menü auf Rechts-Shift, HUD-Editor. Einstellungen live zwischen Launcher und Spiel synchron. Anlegen über „Neue Instanz → Orbit Client“. |
@@ -37,6 +41,10 @@ Wie bei jedem Client (Lunar, Feather …) braucht die App dafür **eine eigene, 
 4. Die ID fest in die exe bauen: `dotnet publish -c Release -o publish -p:OrbitClientId=<deine-app-id>`
 
 Die App-ID des offiziellen Minecraft-Launchers wird bewusst nicht benutzt.
+
+## CurseForge
+
+CurseForge erlaubt Launchern nur den Zugriff mit einem eigenen API-Schlüssel (kostenlos, console.curseforge.com). Entweder in der App unter Einstellungen → Quellen eintragen oder fest einbauen: `dotnet publish -c Release -o publish -p:CurseForgeKey=<schlüssel>`. Mods, deren Autoren Downloads außerhalb von CurseForge verbieten, werden nicht geladen, sondern verlinkt.
 
 ## Bauen
 

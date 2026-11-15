@@ -11,7 +11,7 @@
     <AssemblyName>OrbitLauncher</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <Product>OrbitLauncher</Product>
     <Description>OrbitLauncher – Minecraft Launcher</Description>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -25,6 +25,10 @@
     <SatelliteResourceLanguages>de;en</SatelliteResourceLanguages>
   </PropertyGroup>
   <!-- Microsoft app id for the login, set once by the developer: dotnet publish -c Release -o publish -p:OrbitClientId=<id> -->
+  <!-- CurseForge Core API key (console.curseforge.com): dotnet publish ... -p:CurseForgeKey=<key> -->
+  <ItemGroup Condition="'$(CurseForgeKey)' != ''">
+    <AssemblyMetadata Include="CurseForgeKey" Value="$(CurseForgeKey)" />
+  </ItemGroup>
   <ItemGroup Condition="'$(OrbitClientId)' != ''">
     <AssemblyMetadata Include="OrbitClientId" Value="$(OrbitClientId)" />
   </ItemGroup>

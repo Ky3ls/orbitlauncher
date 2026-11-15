@@ -136,7 +136,7 @@ public static class Modrinth
     public static async Task<List<UpdateInfo>> CheckUpdates(Instance inst, CancellationToken ct = default)
     {
         var r = new List<UpdateInfo>();
-        foreach (var group in inst.Content.Where(c => c.Sha1 != null).GroupBy(c => c.Type))
+        foreach (var group in inst.Content.Where(c => c.Sha1 != null && c.Source != "curseforge").GroupBy(c => c.Type))
         {
             var body = new JsonObject
             {
@@ -159,10 +159,12 @@ public static class Modrinth
     public static async Task<int> UpdateAll(Instance inst, IProgress<Progress>? p, CancellationToken ct = default)
     {
         var ups = await CheckUpdates(inst, ct);
+        ups.AddRange(await CurseForge.CheckUpdates(inst, ct));
         foreach (var u in ups)
         {
             var c = inst.Content.First(x => x.ProjectId == u.ProjectId);
-            await Install(inst, u.ProjectId, c.Type, u.VersionId, p, ct);
+            if (c.Source == "curseforge") await CurseForge.Install(inst, int.Parse(u.ProjectId[3..]), int.Parse(u.VersionId), p, ct);
+            else await Install(inst, u.ProjectId, c.Type, u.VersionId, p, ct);
         }
         return ups.Count;
     }
