@@ -158,7 +158,7 @@ public partial class MainWindow : Window
     private void Emit(string ev, object data)
     {
         var json = JsonSerializer.Serialize(new { @event = ev, data }, J);
-        Dispatcher.InvokeAsync(() => Web.CoreWebView2?.PostWebMessageAsJson(json));
+        Dispatcher.InvokeAsync(() => Post(json));
     }
 
     private async void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -173,13 +173,19 @@ public partial class MainWindow : Window
             var args = root.TryGetProperty("args", out var a) ? JsonNode.Parse(a.GetRawText()) as JsonObject ?? new JsonObject() : new JsonObject();
             var data = await Handle(cmd, args);
             var payload = data is JsonNode jn ? $"{{\"id\":{id},\"ok\":true,\"data\":{jn.ToJsonString()}}}" : JsonSerializer.Serialize(new { id, ok = true, data }, J);
-            Web.CoreWebView2.PostWebMessageAsJson(payload);
+            Post(payload);
         }
         catch (Exception ex)
         {
             var msg = ex is HttpRequestException ? "Netzwerkfehler: " + ex.Message : ex.Message;
-            Web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(new { id, ok = false, error = msg }, J));
+            Post(JsonSerializer.Serialize(new { id, ok = false, error = msg }, J));
         }
+    }
+
+    /// <summary>Answers the UI; ignored when the WebView is already gone (app closing / updating).</summary>
+    private void Post(string json)
+    {
+        try { if (!App.Quitting) Web.CoreWebView2?.PostWebMessageAsJson(json); } catch { }
     }
 
     private static string Str(JsonObject a, string k) => a[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
@@ -578,7 +584,9 @@ public partial class MainWindow : Window
             case "update.install":
                 if (_runner.RunningIds.Any()) throw new InvalidOperationException("Erst Minecraft beenden, dann wird das Update installiert.");
                 Updater.Install();
-                return null;
+                App.Quitting = true;
+                _ = Dispatcher.InvokeAsync(async () => { await Task.Delay(400); Application.Current.Shutdown(); });
+                return new { ok = true };
 
             // ---------------- orbit account + cloud sync
             case "cloud.status": return new { loggedIn = Cloud.LoggedIn, name = Cloud.Name, lastSync = Cloud.LastSync, syncing = _syncing > 0 };
@@ -718,7 +726,9 @@ public partial class MainWindow : Window
                 var req = _auth.StartLogin(_auth.Accounts.Count > 0);
                 var env = Web.CoreWebView2.Environment;
                 var win = new LoginWindow(this, env, req.Url);
-                if (win.ShowDialog() != true || win.Result == null) return null;
+                var ok = win.ShowDialog() == true;
+                if (win.UseBrowser) return new { fallback = "device" };
+                if (!ok || win.Result == null) return null;
                 var acc = await _auth.FinishLogin(req, win.Result);
                 return new { account = new { acc.Uuid, acc.Name }, accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }), active = _auth.Active?.Uuid };
             }

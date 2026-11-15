@@ -1,6 +1,6 @@
 # OrbitLauncher
 
-Minecraft-Launcher für Windows im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`. Dazu der eigene Orbit-Client-Mod für PvP-Features.
+Minecraft-Launcher für Windows: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`. Dazu der eigene Orbit-Client-Mod für PvP-Features.
 
 ![Start](docs/screenshots/60_start.png)
 

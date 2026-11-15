@@ -1,4 +1,4 @@
-/* OrbitLauncher – design language shared with OrbitTweak (dark, ember accent, Geist/Inter) */
+/* OrbitLauncher – dark, ember accent, Geist/Inter */
 @font-face{font-family:'Geist';font-weight:100 900;font-display:block;src:url(fonts/geist.woff2) format('woff2')}
 @font-face{font-family:'Inter';font-weight:100 900;font-display:block;src:url(fonts/inter.woff2) format('woff2')}
 
@@ -282,7 +282,7 @@ input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 0 7px rgba(var(--a-
 .slinks button.bad .qi{background:rgba(248,113,113,.12);color:var(--bad)}
 .slinks button.bad b{color:var(--bad)}
 
-/* ===== from OrbitTweak: quick tiles, empty, toggle cards, banner, splash ===== */
+/* ===== quick tiles, empty, toggle cards, banner, splash ===== */
 .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:16px}
 .qt{display:flex;align-items:center;gap:14px;padding:16px;text-align:left;overflow:hidden}
 .qt .qi{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:rgba(var(--a-rgb),.1);color:var(--a);flex:none;transition:background .3s,color .3s,transform .4s var(--spring)}
@@ -456,7 +456,7 @@ code.cc{font-family:var(--mono);font-size:12px;user-select:text}
 .ib.d:hover{color:var(--bad);border-color:rgba(248,113,113,.4)}
 .ib.d:hover svg.i{transform:none}
 
-/* base tabs + addbar (shared with OrbitTweak) */
+/* base tabs + addbar */
 .tabs{display:inline-flex;gap:4px;margin-bottom:18px;padding:4px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
 .tab{height:36px;padding:0 16px;border-radius:10px;font-weight:550;font-size:13px;color:var(--sub);position:relative;display:flex;align-items:center;gap:8px;transition:color .25s,background .25s}
 .tab:hover{color:var(--text)}
@@ -569,7 +569,7 @@ kbd{font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:8px;ba
 .g-dev .btn{height:38px;flex:none}
 
 /* =====================================================================
-   OrbitLauncher v2 – Modrinth-style launcher in the OrbitTweak design
+   OrbitLauncher v2 – launcher layout
    ===================================================================== */
 .page{padding:26px 30px 40px}
 .page.wide{padding:0}

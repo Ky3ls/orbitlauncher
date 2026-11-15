@@ -36,7 +36,7 @@ public static class CurseForge
         if (body != null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var r = await Net.Http.SendAsync(req, ct);
         var txt = await r.Content.ReadAsStringAsync(ct);
-        if ((int)r.StatusCode == 403) throw new InvalidOperationException("Der erweiterte Katalog hat den API-Schlüssel abgelehnt.");
+        if ((int)r.StatusCode == 403) throw new InvalidOperationException(path.StartsWith("/mods/search") ? "Die Suche im erweiterten Katalog ist für diesen Schlüssel noch nicht freigeschaltet." : "Der erweiterte Katalog hat den API-Schlüssel abgelehnt.");
         if (!r.IsSuccessStatusCode) throw new HttpRequestException($"Katalog-Fehler {(int)r.StatusCode}");
         return JsonNode.Parse(txt)!;
     }

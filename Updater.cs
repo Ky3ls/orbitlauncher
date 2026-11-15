@@ -125,6 +125,6 @@ internal static class Updater
         catch { File.Move(old, cur); throw; }
         try { File.Delete(TempFile); } catch { }
         Process.Start(new ProcessStartInfo(cur, "--updated") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(cur)! });
-        System.Windows.Application.Current.Shutdown();
+        // the caller shuts the app down after answering the UI (shutting down here kills the WebView mid-call)
     }
 }

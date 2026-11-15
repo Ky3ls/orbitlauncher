@@ -299,11 +299,12 @@ window.removeAccount = async uuid => {
   if (!await confirmBox('Abmelden?', `${a.name} wird aus OrbitLauncher entfernt. Du kannst dich jederzeit wieder anmelden.`, 'Abmelden', true)) return;
   const r = await api('auth.remove', { uuid }); S.accounts = r.accounts; S.active = r.active; accountUI(); go(S.page, S.args, false);
 };
-async function login() {
+async function login(device) {
   $('#gateErr').textContent = '';
   const b = $('.g-ms'); b?.classList.add('busy');
   try {
-    const r = await api('auth.login');
+    let r = device ? await deviceLogin() : await api('auth.login');
+    if (r?.fallback === 'device') r = await deviceLogin();
     if (!r) return;
     S.accounts = r.accounts; S.active = r.active; accountUI();
     gate(false); toast('Angemeldet', 'Willkommen, ' + r.account.name);
@@ -316,6 +317,23 @@ async function login() {
   } finally { b?.classList.remove('busy'); }
 }
 window.login = login;
+/* sign-in in the normal browser with a short code (Microsoft device code flow) */
+async function deviceLogin() {
+  let dc;
+  try { dc = await api('auth.start'); } catch (e) { fail('Anmeldung', e); return null; }
+  return new Promise(res => {
+    S.modalClose = () => { api('auth.cancel'); res(null); };
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Mit Microsoft anmelden</div><h1>Im Browser anmelden</h1>
+      <p>Öffne die Microsoft-Seite, gib diesen Code ein und melde dich an. OrbitLauncher merkt es automatisch.</p>
+      <div class="code"><b>${esc(dc.userCode)}</b></div>
+      <div class="act"><button class="btn p" id="dcGo">${ico('ext')}Code kopieren &amp; Seite öffnen</button></div>
+      <div class="wait">${ico('refresh', 'i spin')}Warte auf die Anmeldung…</div>`);
+    $('#dcGo').onclick = () => { navigator.clipboard?.writeText(dc.userCode); openUrl(dc.verificationUri); };
+    api('auth.finish').then(r => { S.modalClose = null; closeModal(); res(r); }).catch(e => { S.modalClose = null; closeModal(); fail('Anmeldung fehlgeschlagen', e); res(null); });
+  });
+}
+window.deviceLogin = deviceLogin;
+
 function gate(show) {
   if (show && !$('#gateBg').innerHTML) $('#gateBg').innerHTML = bannerSvg(false, 675);
   $('#gate').classList.toggle('hidden', !show);

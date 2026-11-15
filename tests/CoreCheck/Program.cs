@@ -17,6 +17,21 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "cf":
+    {
+        CurseForge.Key = File.ReadAllText(args[2]).Trim();
+        System.Text.Json.Nodes.JsonNode first;
+        try { var r = await CurseForge.Get("/mods/search?gameId=432&classId=6&searchFilter=waystones&modLoaderType=6&gameVersion=1.21.1&pageSize=3"); first = r["data"]!.AsArray()[0]!; Console.WriteLine("search: " + string.Join(", ", r["data"]!.AsArray().Select(m => (string)m!["name"]!))); }
+        catch (Exception e) { Console.WriteLine("search: " + e.Message); first = await CurseForge.Mod(245755); Console.WriteLine("mod: " + (string)first["name"]!); }
+        var inst = Instances.Get("neoforge-1-21-1")!;
+        var res = await CurseForge.Install(inst, (int)first["id"]!, null, null);
+        Console.WriteLine("installed: " + string.Join(", ", res.Installed) + (res.Skipped.Count > 0 ? " | skipped: " + string.Join(", ", res.Skipped) : ""));
+        inst = Instances.Get(inst.Id)!;
+        Console.WriteLine("mods dir: " + string.Join(", ", Directory.GetFiles(Path.Combine(inst.Dir, "mods")).Select(Path.GetFileName).Where(f => inst.Content.Any(c => c.File == f && c.Source == "curseforge"))));
+        var ups = await CurseForge.CheckUpdates(inst);
+        Console.WriteLine("updates: " + ups.Count);
+        break;
+    }
     case "cloud":
     {
         Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;
