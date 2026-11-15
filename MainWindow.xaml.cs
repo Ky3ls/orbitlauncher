@@ -30,7 +30,7 @@ public partial class MainWindow : Window
     private readonly DiscordRpc _rpc = new("1571553631818219580");
     private List<Transfer.Found> _found = new();
     private int _syncing; private CancellationTokenSource? _syncDue;
-    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode" };
+    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx" };
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -52,7 +52,16 @@ public partial class MainWindow : Window
         var wa = SystemParameters.WorkArea;
         _zoom = Math.Min(1, Math.Min((wa.Width - 24) / 1280, (wa.Height - 24) / 800));
         if (wa.Width >= 2500 && wa.Height >= 1500) _zoom = 1.25;
-        Width = 1280 * _zoom; Height = 800 * _zoom;
+        MinWidth = Math.Min(1000 * _zoom, wa.Width - 24); MinHeight = Math.Min(640 * _zoom, wa.Height - 24);
+        // bigger by default; the last size and position are remembered
+        Width = Math.Min(wa.Width - 40, 1520 * _zoom); Height = Math.Min(wa.Height - 40, 940 * _zoom);
+        if (S.WinW >= MinWidth && S.WinH >= MinHeight && S.WinW <= wa.Width + 16 && S.WinH <= wa.Height + 16)
+        {
+            Width = S.WinW; Height = S.WinH;
+            if (S.WinX > wa.Left - 100 && S.WinX < wa.Right - 200 && S.WinY >= wa.Top - 10 && S.WinY < wa.Bottom - 100)
+            { WindowStartupLocation = WindowStartupLocation.Manual; Left = S.WinX; Top = S.WinY; }
+        }
+        if (S.WinMax) Loaded += (_, _) => WindowState = WindowState.Maximized;
 
         SourceInitialized += (_, _) =>
         {
@@ -62,7 +71,7 @@ public partial class MainWindow : Window
         };
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
         Loaded += async (_, _) => await InitWeb();
-        Closing += (_, _) => { _rpc.Dispose(); S.Save(); _overlay.Detach(); _overlay.Close(); };
+        Closing += (_, _) => { _rpc.Dispose(); SaveBounds(); S.Save(); _overlay.Detach(); _overlay.Close(); };
         WatchConfig();
 
         _runner.Log += (id, line) => Emit("log", new { id, line });
@@ -249,6 +258,14 @@ public partial class MainWindow : Window
             case "win.min": WindowState = WindowState.Minimized; return null;
             case "win.max": WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized; return null;
             case "win.close": Close(); return null;
+            case "win.resize":
+            {
+                if (WindowState == WindowState.Maximized) return null;
+                var ht = Str(a, "edge") switch { "w" => 10, "e" => 11, "n" => 12, "nw" => 13, "ne" => 14, "s" => 15, "sw" => 16, "se" => 17, _ => 0 };
+                if (ht == 0) return null;
+                ReleaseCapture(); SendMessage(new WindowInteropHelper(this).Handle, 0xA1, (IntPtr)ht, IntPtr.Zero);
+                return null;
+            }
 
             // ---------------- general
             case "init":
@@ -876,6 +893,13 @@ public partial class MainWindow : Window
                     if (!have.Contains((string)s!["id"]!)) try { Skins.Add(Convert.FromBase64String((string)s["png"]!), (string?)s["name"] ?? "Skin", (string?)s["variant"] ?? "classic", (string?)s["id"]); } catch { }
             }
         });
+    }
+
+    private void SaveBounds()
+    {
+        S.WinMax = WindowState == WindowState.Maximized;
+        var b = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        if (b.Width > 0 && b.Height > 0) { S.WinX = (int)b.Left; S.WinY = (int)b.Top; S.WinW = (int)b.Width; S.WinH = (int)b.Height; }
     }
 
     private static long DirSize(string d)

@@ -250,7 +250,7 @@ function onEvent(ev, d) {
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
   if (ev === 'cloud') cloudEvent(d);
-  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); }
+  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); fxSet(d.fx); }
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -1562,7 +1562,7 @@ function demoSkin(n) {
 
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['sources', 'Quellen', 'globe', 'Mod-Kataloge'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
@@ -1581,13 +1581,15 @@ async function setBody() {
       + `<div class="row" style="margin-top:14px"><button class="btn p" onclick="login()">${ico('plus')}Konto hinzufügen</button></div><p class="fine">Die Anmeldung läuft über das offizielle Microsoft-Fenster. OrbitLauncher sieht dein Passwort nie und speichert nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI).</p>`);
   }
   if (S.stab === 'design') {
-    b.innerHTML = card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
+    b.innerHTML = card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`)
+      + '<div class="mt"></div>' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
       + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
         <div class="srow"><div><b>Spielen über</b><p>Offizieller Launcher: Anmeldung dort, OrbitLauncher bereitet alles vor.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'OrbitLauncher'], ['official', 'Minecraft Launcher']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div>`);
     $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
+    $('#sFx').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('fx', x.dataset.v); fxSet(x.dataset.v); $$('#sFx button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sPlay').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('playMode', x.dataset.v); $$('#sPlay button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
   }
@@ -1972,6 +1974,79 @@ async function installUpdate(silent) {
 }
 window.installUpdate = installUpdate;
 
+
+/* ======================= WINDOW RESIZE (WebView covers the frame, so the edges are HTML) ======================= */
+$('#rz').addEventListener('mousedown', e => { const i = e.target.closest('[data-e]'); if (i && e.button === 0) { e.preventDefault(); api('win.resize', { edge: i.dataset.e }); } });
+
+/* ======================= BACKGROUND EFFECTS (snow / embers / stars), cheap canvas, paused while playing ======================= */
+const FX = { mode: 'snow', parts: [], raf: 0, last: 0, w: 0, h: 0, dpr: 1 };
+function fxSet(mode) {
+  FX.mode = mode || 'snow';
+  $('#fx').classList.toggle('hidden', FX.mode === 'off');
+  fxInit(); fxLoop();
+}
+function fxInit() {
+  const c = $('#fx'); FX.dpr = Math.min(1.5, devicePixelRatio || 1);
+  FX.w = innerWidth; FX.h = innerHeight; c.width = FX.w * FX.dpr; c.height = FX.h * FX.dpr;
+  const n = FX.mode === 'snow' ? Math.round(FX.w * FX.h / 9500) : FX.mode === 'embers' ? Math.round(FX.w * FX.h / 22000) : FX.mode === 'stars' ? Math.round(FX.w * FX.h / 5200) : 0;
+  FX.parts = Array.from({ length: n }, () => fxNew(true));
+}
+function fxNew(any) {
+  const W = FX.w, H = FX.h, r = Math.random;
+  if (FX.mode === 'snow') { const z = r(); return { x: r() * W, y: any ? r() * H : -10, z, s: 0.8 + z * 2.6, vy: 0.25 + z * 0.9, sw: r() * Math.PI * 2, sp: 0.004 + r() * 0.012, a: 0.25 + z * 0.6 }; }
+  if (FX.mode === 'embers') { const z = r(); return { x: r() * W, y: any ? r() * H : H + 10, z, s: 0.8 + z * 2.2, vy: -(0.25 + z * 0.8), vx: (r() - 0.5) * 0.3, life: any ? r() * 400 : 0, max: 500 + r() * 700, sw: r() * 6 }; }
+  return { x: r() * W, y: r() * H, s: 0.4 + r() * 1.3, t: r() * 6.28, sp: 0.01 + r() * 0.03 };
+}
+let fxShoot = null;
+function fxDraw(dt) {
+  const c = $('#fx'), x = c.getContext('2d'), d = FX.dpr;
+  x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, FX.w, FX.h);
+  const acc = getComputedStyle(document.documentElement).getPropertyValue('--a-rgb').trim() || '255,122,61';
+  if (FX.mode === 'snow') {
+    x.fillStyle = '#fff';
+    for (const p of FX.parts) {
+      p.sw += p.sp * dt; p.y += p.vy * dt; p.x += Math.sin(p.sw) * (0.25 + p.z * 0.4) * dt;
+      if (p.y > FX.h + 10) Object.assign(p, fxNew(false));
+      if (p.z > 0.8) { const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 1.8); g.addColorStop(0, `rgba(255,255,255,${p.a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, p.s * 1.8, 0, 6.283); x.fill(); x.fillStyle = '#fff'; }
+      else { x.globalAlpha = p.a; x.beginPath(); x.arc(p.x, p.y, p.s, 0, 6.283); x.fill(); }
+    }
+  } else if (FX.mode === 'embers') {
+    for (const p of FX.parts) {
+      p.life += dt; p.sw += 0.02 * dt; p.y += p.vy * dt; p.x += (p.vx + Math.sin(p.sw) * 0.25) * dt;
+      if (p.y < -10 || p.life > p.max) Object.assign(p, fxNew(false));
+      const k = Math.min(1, p.life / 60) * Math.max(0, 1 - p.life / p.max);
+      const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 4);
+      g.addColorStop(0, `rgba(${acc},${0.9 * k})`); g.addColorStop(1, `rgba(${acc},0)`);
+      x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, p.s * 4, 0, 6.283); x.fill();
+    }
+  } else if (FX.mode === 'stars') {
+    x.fillStyle = '#fff';
+    for (const p of FX.parts) { p.t += p.sp * dt; x.globalAlpha = 0.25 + Math.abs(Math.sin(p.t)) * 0.6; x.fillRect(p.x, p.y, p.s, p.s); }
+    if (!fxShoot && Math.random() < 0.004 * dt) fxShoot = { x: Math.random() * FX.w * 0.7 + FX.w * 0.2, y: Math.random() * FX.h * 0.4, l: 0 };
+    if (fxShoot) {
+      const s = fxShoot; s.l += 1.4 * dt; const len = 120, px = s.x - s.l * 9, py = s.y + s.l * 4;
+      const g = x.createLinearGradient(px, py, px + len, py - len * 0.45); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.globalAlpha = Math.max(0, 1 - s.l / 40); x.strokeStyle = g; x.lineWidth = 1.6; x.beginPath(); x.moveTo(px, py); x.lineTo(px + len, py - len * 0.45); x.stroke();
+      if (s.l > 40) fxShoot = null;
+    }
+  }
+  x.globalAlpha = 1;
+}
+function fxLoop() {
+  cancelAnimationFrame(FX.raf);
+  const c = $('#fx');
+  if (FX.mode === 'off') { c.getContext('2d').clearRect(0, 0, c.width, c.height); return; }
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { fxDraw(0); return; }   // still image
+  const step = t => {
+    FX.raf = requestAnimationFrame(step);
+    if (document.hidden || S.running.size || t - FX.last < 33) return;   // ~30 fps, nothing while Minecraft runs
+    const dt = Math.min(3, (t - FX.last) / 16.7); FX.last = t;
+    fxDraw(dt);
+  };
+  FX.raf = requestAnimationFrame(step);
+}
+let fxRT = 0; window.addEventListener('resize', () => { clearTimeout(fxRT); fxRT = setTimeout(() => { fxInit(); if (matchMedia('(prefers-reduced-motion: reduce)').matches) fxDraw(0); }, 200); });
+
 /* ======================= BOOT ======================= */
 async function boot() {
   const t0 = performance.now();
@@ -1982,6 +2057,7 @@ async function boot() {
   S.needAppId = !!init.needAppId;
   cloudStatus();
   applyTheme(S.settings.accent || 'ember');
+  fxSet(S.settings.fx || 'snow');
   accountUI(); runUI();
   api('orbit.info').then(r => { S.orbitInfo = r; S.orbitSupported = r.supported; }).catch(() => { });
   ensureVersions().catch(() => { });

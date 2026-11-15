@@ -32,6 +32,14 @@ public class Settings
     public string PlayMode { get; set; } = "auto";
     /// <summary>Time (ms) of the last change of synced settings.</summary>
     public long SyncAt { get; set; }
+    /// <summary>Window bounds of the last session.</summary>
+    public int WinX { get; set; }
+    public int WinY { get; set; }
+    public int WinW { get; set; }
+    public int WinH { get; set; }
+    public bool WinMax { get; set; }
+    /// <summary>Background effect: snow | embers | stars | off</summary>
+    public string Fx { get; set; } = "snow";
     /// <summary>Override for the Orbit cloud API (testing).</summary>
     public string? CloudApi { get; set; }
     /// <summary>Last Minecraft version played with Orbit Client.</summary>
