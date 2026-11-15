@@ -304,7 +304,7 @@ async function login() {
     if (S.afterLogin) { const f = S.afterLogin; S.afterLogin = null; f(); }
     go(S.page, S.args, false);
   } catch (e) {
-    if (e.message === 'NO_APP_ID') { gate(true); $('#gateDev').classList.remove('hidden'); $('#gateErr').textContent = 'Microsoft-App-ID fehlt noch (einmalig einrichten).'; }
+    if (e.message === 'NO_APP_ID') { gate(true); $('#gateErr').innerHTML = 'Die Microsoft-Anmeldung ist in dieser Version noch nicht freigeschaltet. Sie kommt mit einem Update, bis dahin kannst du dich umsehen.'; $('#gateDevLink').classList.remove('hidden'); }
     else if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message;
     else fail('Anmeldung fehlgeschlagen', e);
   } finally { b?.classList.remove('busy'); }
@@ -318,7 +318,7 @@ function gate(show) {
 window.gate = gate;
 async function saveAppId() {
   const id = $('#gateAppId').value.trim();
-  try { await api('auth.appid', { id }); $('#gateDev').classList.add('hidden'); $('#gateErr').textContent = ''; login(); }
+  try { await api('auth.appid', { id }); $('#gateDev').classList.add('hidden'); $('#gateDevLink').classList.add('hidden'); $('#gateErr').textContent = ''; login(); }
   catch (e) { $('#gateErr').textContent = e.message; }
 }
 window.saveAppId = saveAppId;
@@ -1571,7 +1571,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   const args = {}; ['id', 'tab', 'target', 'type'].forEach(k => { if (q.get(k)) args[k] = q.get(k); });
   go(q.get('page') || 'home', args);
-  if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (init.needAppId) $('#gateDev').classList.remove('hidden'); if (S.settings.firstRun) setS('firstRun', false); }
+  if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
   if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 700 - (performance.now() - t0)));
