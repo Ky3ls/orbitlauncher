@@ -79,7 +79,12 @@ public class Auth
     public async Task<Account> FinishLogin(LoginRequest req, string redirectedUrl, CancellationToken ct = default)
     {
         var q = System.Web.HttpUtility.ParseQueryString(new Uri(redirectedUrl).Query);
-        if (q["error"] != null) throw new InvalidOperationException(q["error"] == "access_denied" ? "Anmeldung abgebrochen." : q["error_description"] ?? q["error"]);
+        if (q["error"] != null)
+        {
+            if (q["error"] == "access_denied") throw new InvalidOperationException("Anmeldung abgebrochen.");
+            var d = q["error_description"];
+            throw new InvalidOperationException("Microsoft meldet einen Fehler (" + q["error"] + ")" + (string.IsNullOrWhiteSpace(d) ? ". Oft hilft es, es in ein paar Minuten nochmal zu versuchen." : ": " + d));
+        }
         if (q["state"] != req.State) throw new InvalidOperationException("Ungültige Antwort von Microsoft.");
         var code = q["code"] ?? throw new InvalidOperationException("Microsoft hat keinen Code geliefert.");
         var r = await Net.PostForm($"https://login.microsoftonline.com/{Tenant}/oauth2/v2.0/token", new()

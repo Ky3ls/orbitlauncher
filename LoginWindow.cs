@@ -20,7 +20,7 @@ public sealed class LoginWindow : Window
     /// <summary>True when the user chose the browser sign-in (device code) instead.</summary>
     public bool UseBrowser { get; private set; }
 
-    private static void Log(string s) { try { File.AppendAllText(Path.Combine(Paths.Root, "login.log"), $"{DateTime.Now:HH:mm:ss} {s}{Environment.NewLine}"); } catch { } }
+    public static void Log(string s) { try { File.AppendAllText(Path.Combine(Paths.Root, "login.log"), $"{DateTime.Now:HH:mm:ss} {s}{Environment.NewLine}"); } catch { } }
 
     public LoginWindow(Window owner, CoreWebView2Environment env, string url)
     {
@@ -53,6 +53,7 @@ public sealed class LoginWindow : Window
                 {
                     if (!e.Uri.StartsWith(Auth.RedirectUri, StringComparison.OrdinalIgnoreCase)) return;
                     e.Cancel = true;
+                    Log("redirect " + System.Text.RegularExpressions.Regex.Replace(e.Uri, "([?&]code=)[^&]+", "$1***"));
                     Result = e.Uri;
                     DialogResult = true;
                 };
