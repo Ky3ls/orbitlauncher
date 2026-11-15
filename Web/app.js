@@ -2108,7 +2108,7 @@ const Mock = {
       case 'import.scan': await sleep(500); return [{ i: 0, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric' }, { i: 1, launcher: 'Mod-Launcher', name: 'All the Mods 10', mc: '1.21.1', loader: 'neoforge' }];
       case 'import.run': await sleep(900); return M.instances[0];
       case 'screenshots.list': return ['survival-1-21-11', 'orbit-client-26-3', 'survival-1-21-11', 'technik-abenteuer', 'orbit-client-26-3', 'survival-1-21-11'].map((id, i) => ({ id, version: '', file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0, 675)), date: iso(i * DAY / 2) }));
-      case 'mr.get': { const r = await fetch('https://api.modrinth.com/v2' + a.path); if (!r.ok) throw new Error('Modrinth ' + r.status); return r.json(); }
+      case 'mr.get': { const r = await fetch('https://api.modrinth.com/v2' + a.path); if (!r.ok) throw new Error('Katalog ' + r.status); return r.json(); }
       case 'mr.install': { await sleep(900); const i = inst(); i.content = (i.content || []).concat([{ projectId: a.project, type: a.type }]); return { installed: ['Projekt'], skipped: [] }; }
       case 'mr.modpack': await sleep(800); return M.instances[1];
       case 'pack.import': return null;
