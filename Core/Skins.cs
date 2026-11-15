@@ -37,11 +37,11 @@ public static class Skins
         if (w != 64 || (h != 64 && h != 32)) throw new InvalidOperationException($"Skins müssen 64×64 Pixel groß sein (diese Datei: {w}×{h}).");
     }
 
-    public static Entry Add(byte[] png, string name, string variant)
+    public static Entry Add(byte[] png, string name, string variant, string? id = null)
     {
         Validate(png);
         var l = All();
-        var e = new Entry { Id = Guid.NewGuid().ToString("N")[..12], Name = string.IsNullOrWhiteSpace(name) ? "Skin" : name.Trim(), Variant = variant == "slim" ? "slim" : "classic" };
+        var e = new Entry { Id = id != null && System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9]{6,32}$") ? id : Guid.NewGuid().ToString("N")[..12], Name = string.IsNullOrWhiteSpace(name) ? "Skin" : name.Trim(), Variant = variant == "slim" ? "slim" : "classic" };
         File.WriteAllBytes(FileOf(e.Id), png);
         l.Insert(0, e);
         SaveAll(l);

@@ -28,6 +28,12 @@ public class Settings
     public bool AutoUpdate { get; set; } = true;
     /// <summary>Install launcher updates without asking (never while Minecraft runs).</summary>
     public bool AutoInstall { get; set; }
+    /// <summary>orbit = start ourselves (Microsoft login in OrbitLauncher) | official = hand over to the official Minecraft Launcher.</summary>
+    public string PlayMode { get; set; } = "auto";
+    /// <summary>Time (ms) of the last change of synced settings.</summary>
+    public long SyncAt { get; set; }
+    /// <summary>Override for the Orbit cloud API (testing).</summary>
+    public string? CloudApi { get; set; }
     /// <summary>Last Minecraft version played with Orbit Client.</summary>
     public string? OrbitVersion { get; set; }
     /// <summary>Performance packs for new Orbit instances, comma separated (perf,shaders,qol,visual).</summary>

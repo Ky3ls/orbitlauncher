@@ -249,6 +249,8 @@ function onEvent(ev, d) {
   if (ev === 'instances') { S.instances = d; instancesChanged(); }
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
+  if (ev === 'cloud') cloudEvent(d);
+  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); }
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -283,7 +285,9 @@ function accountUI() {
 function accountPop(e) {
   e.stopPropagation();
   if (!$('#pop').classList.contains('hidden')) return closePop();
-  const html = (S.accounts.length ? S.accounts.map(a => `<button class="${a.uuid === S.active ? 'on' : ''}" onclick="selectAccount('${jsq(a.uuid)}')">${headHtml(a)}<span class="tx"><b>${esc(a.name)}</b><small>${a.uuid === S.active ? 'Aktiv' : 'Wechseln'}</small></span>${a.uuid === S.active ? ico('check') : ''}</button>`).join('') + '<hr>' : '')
+  const oc = S.cloud || {};
+  const html = `<div class="popsec">Orbit-Konto</div>` + (oc.loggedIn ? `<button onclick="closePop();go('settings',{tab:'cloud'})"><span class="head orb">${blockSvg('orbit')}</span><span class="tx"><b>${esc(oc.name)}</b><small>${oc.lastSync ? 'Synchronisiert ' + esc(ago(oc.lastSync).toLowerCase()) : 'Cloud-Sync aktiv'}</small></span>${ico('cloud')}</button>`
+    : `<button onclick="closePop();orbitLogin(false)"><span class="head orb">${blockSvg('orbit')}</span><span class="tx"><b>Bei Orbit anmelden</b><small>Instanzen auf jedem PC</small></span></button>`) + `<hr><div class="popsec">Minecraft</div>` + (S.accounts.length ? S.accounts.map(a => `<button class="${a.uuid === S.active ? 'on' : ''}" onclick="selectAccount('${jsq(a.uuid)}')">${headHtml(a)}<span class="tx"><b>${esc(a.name)}</b><small>${a.uuid === S.active ? 'Aktiv' : 'Wechseln'}</small></span>${a.uuid === S.active ? ico('check') : ''}</button>`).join('') + '<hr>' : '')
     + `<button onclick="closePop();login()">${ico('plus')}<span class="tx"><b>Konto hinzufügen</b><small>Mit Microsoft anmelden</small></span></button>`
     + (S.accounts.length ? `<button onclick="closePop();go('skins')">${ico('shirt')}<span class="tx"><b>Skins &amp; Umhänge</b></span></button><button onclick="closePop();removeAccount('${jsq(S.active)}')">${ico('logout')}<span class="tx"><b>Abmelden</b></span></button>` : '');
   popAt($('#sacc'), html, 260, true);
@@ -355,7 +359,9 @@ function runUI() {
 async function play(id, extra = {}) {
   const i = instById(id); if (!i) return;
   if (S.running.has(id)) { try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
-  if (!S.accounts.length) { S.afterLogin = () => play(id, extra); return gate(true); }
+  const mode = S.settings.playMode || 'auto';
+  if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
+  if (!S.accounts.length) return playChoice(id, extra);
   toast('Minecraft startet', `${i.name}${extra.world ? ' · Welt ' + extra.worldName : extra.server ? ' · ' + extra.server : ''}`);
   try { await api('launch', { id, ...extra }); }
   catch (e) { fail('Start fehlgeschlagen', e); }
@@ -364,7 +370,7 @@ window.play = play;
 function instCtx(e, id) {
   const i = instById(id); if (!i) return;
   const run = S.running.has(id);
-  ctxMenu(e, [[run ? 'stop' : 'play', run ? 'Beenden' : 'Spielen', () => play(id)], ['plus', 'Inhalte hinzufügen', () => go('discover', { type: i.loader === 'vanilla' ? 'resourcepack' : 'mod', target: id })],
+  ctxMenu(e, [[run ? 'stop' : 'play', run ? 'Beenden' : 'Spielen', () => play(id)], ['rocket', 'Im Minecraft Launcher öffnen', () => playOfficial(id)], ['plus', 'Inhalte hinzufügen', () => go('discover', { type: i.loader === 'vanilla' ? 'resourcepack' : 'mod', target: id })],
     ['eye', 'Anzeigen', () => go('inst', { id })], ['settings', 'Einstellungen', () => instSettings(id)], '-',
     ['folder', 'Ordner öffnen', () => api('folder.open', { id, what: '' })], ['dup', 'Duplizieren', () => duplicateInst(id)], ['upload', 'Als Modpack exportieren', () => exportInst(id)], '-',
     ['trash', 'Löschen', () => deleteInst(id), true]]);
@@ -1538,7 +1544,7 @@ function demoSkin(n) {
 
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['account', 'Konten', 'user', 'Microsoft-Anmeldung'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['sources', 'Quellen', 'globe', 'Modrinth und CurseForge'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['sources', 'Quellen', 'globe', 'Modrinth und CurseForge'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
@@ -1561,10 +1567,13 @@ async function setBody() {
       + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start Updates von Modrinth holen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
+        <div class="srow"><div><b>Spielen über</b><p>Offizieller Launcher: Anmeldung dort, OrbitLauncher bereitet alles vor.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'OrbitLauncher'], ['official', 'Minecraft Launcher']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div>`);
     $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
+    $('#sPlay').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('playMode', x.dataset.v); $$('#sPlay button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
   }
+  if (S.stab === 'cloud') return cloudSettings(b, card);
   if (S.stab === 'sources') {
     let cfs = { ready: false }; try { cfs = await api('cf.status'); } catch { }
     if (S.stab !== 'sources') return;
@@ -1790,6 +1799,119 @@ window.hudAuto = () => { Object.values(S.orbit.cfg.modules || {}).forEach(c => {
 window.addEventListener('resize', () => { if (S.page === 'inst' && S.itab === 'orbit') renderStage(); moveInd(); });
 
 
+
+/* ======================= ORBIT ACCOUNT + CLOUD SYNC ======================= */
+async function cloudStatus() { try { S.cloud = await api('cloud.status'); } catch { S.cloud = { loggedIn: false }; } cloudUI(); return S.cloud; }
+function cloudUI(state) {
+  const c = S.cloud || {}, p = $('#cloudPill');
+  p.classList.toggle('hidden', !c.loggedIn);
+  if (!c.loggedIn) return;
+  const syncing = state === 'sync' || c.syncing;
+  p.classList.toggle('busy', syncing); p.classList.toggle('err', state === 'error');
+  $('#cloudTxt').textContent = syncing ? 'Synchronisiert…' : state === 'error' ? 'Sync-Fehler' : c.name;
+  p.title = c.lastSync ? 'Orbit-Cloud · zuletzt ' + ago(c.lastSync).toLowerCase() : 'Orbit-Cloud';
+}
+function cloudEvent(d) {
+  if (d.state === 'done') { S.cloud = { ...(S.cloud || {}), lastSync: d.at, syncing: false }; if (d.created) toast('Aus der Orbit-Cloud', `${d.created} Instanz${d.created > 1 ? 'en' : ''} von deinem Konto übernommen${d.restore ? ', Mods werden geladen' : ''}`); }
+  if (d.state === 'restored') toast('Cloud-Instanzen bereit', `${d.ok} Inhalte geladen${d.failed?.length ? ' · nicht verfügbar: ' + d.failed.join(', ') : ''}`, !d.failed?.length);
+  if (d.state === 'error' && S.cloud) S.cloud.lastError = d.error;
+  cloudUI(d.state);
+  if (S.page === 'settings' && S.stab === 'cloud' && d.state !== 'sync') setBody();
+}
+function orbitLogin(register = false) {
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="upd-hero"><span class="iic">${blockSvg('orbit')}</span><div><div class="kicker">Orbit-Konto</div><h1>${register ? 'Konto erstellen' : 'Bei Orbit anmelden'}</h1></div></div>
+    <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">Deine Instanzen, Mod-Listen, Einstellungen und Skins liegen dann auf deinem Konto. Auf jedem PC anmelden, und alles ist wieder da. Mods werden dabei frisch von Modrinth und CurseForge geladen.</p>
+    <label class="fl">Name</label><input class="in" id="olName" maxlength="20" placeholder="3–20 Zeichen, Buchstaben, Zahlen, _" autocomplete="username">
+    <label class="fl">Passwort</label><input class="in" id="olPw" type="password" placeholder="${register ? 'Mindestens 8 Zeichen' : ''}" autocomplete="${register ? 'new-password' : 'current-password'}">
+    ${register ? '<label class="fl">Passwort wiederholen</label><input class="in" id="olPw2" type="password" autocomplete="new-password"><p class="fine">Es gibt keine E-Mail-Wiederherstellung. Merk dir dein Passwort gut. Es verlässt deinen PC nur verschlüsselt.</p>' : ''}
+    <div class="g-err" id="olErr" style="text-align:left"></div>
+    <div class="act" style="justify-content:space-between"><button class="btn" onclick="orbitLogin(${!register})">${register ? 'Ich habe schon ein Konto' : 'Neues Konto erstellen'}</button><button class="btn p" id="olGo">${ico(register ? 'plus' : 'user')}${register ? 'Erstellen' : 'Anmelden'}</button></div>`, 'form');
+  const go = async () => {
+    const name = $('#olName').value.trim(), pw = $('#olPw').value;
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return $('#olErr').textContent = 'Name: 3–20 Zeichen, nur Buchstaben, Zahlen und _';
+    if (register && pw.length < 8) return $('#olErr').textContent = 'Das Passwort braucht mindestens 8 Zeichen.';
+    if (register && pw !== $('#olPw2').value) return $('#olErr').textContent = 'Die Passwörter sind nicht gleich.';
+    const b = $('#olGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + (register ? 'Erstelle…' : 'Melde an…');
+    try { const r = await api('cloud.login', { name, password: pw, register }); closeModal(); toast(register ? 'Orbit-Konto erstellt' : 'Bei Orbit angemeldet', 'Hallo ' + r.name + ', deine Instanzen werden abgeglichen'); await cloudStatus(); cloudUI('sync'); if (S.page === 'settings') setBody(); }
+    catch (e) { b.disabled = false; b.innerHTML = ico(register ? 'plus' : 'user') + (register ? 'Erstellen' : 'Anmelden'); $('#olErr').textContent = e.message; }
+  };
+  $('#olGo').onclick = go;
+  $$('#mbox .in').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); });
+  setTimeout(() => $('#olName').focus(), 50);
+}
+window.orbitLogin = orbitLogin;
+async function cloudSyncNow(btn) {
+  if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Synchronisiert…'; }
+  cloudUI('sync');
+  try { const r = await api('cloud.sync'); if (!r.busy) toast('Synchronisiert', `${r.pushed} hochgeladen · ${r.pulled} übernommen`); }
+  catch (e) { fail('Sync fehlgeschlagen', e); }
+  await cloudStatus(); if (S.page === 'settings' && S.stab === 'cloud') setBody();
+}
+window.cloudSyncNow = cloudSyncNow;
+async function cloudLogout() {
+  if (!await confirmBox('Von Orbit abmelden?', 'Deine Instanzen bleiben auf diesem PC und in der Cloud. Es wird nur nicht mehr abgeglichen.', 'Abmelden')) return;
+  await api('cloud.logout'); await cloudStatus(); if (S.page === 'settings') setBody();
+}
+window.cloudLogout = cloudLogout;
+async function cloudSettings(b, card) {
+  const c = await cloudStatus();
+  if (S.stab !== 'cloud') return;
+  if (!c.loggedIn) {
+    b.innerHTML = card('', `<div class="cloudhero"><span class="ch-ic">${ico('cloud')}</span><h2>Deine Instanzen überall</h2><p>Mit einem Orbit-Konto liegen Instanzen, Mod-Listen, Optionen, Configs, Einstellungen und Skins auf deinem Konto. Auf einem anderen PC anmelden, und alles wird automatisch wiederhergestellt.</p>
+      <div class="row" style="justify-content:center;gap:10px"><button class="btn p" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
+      + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste, Configs</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen kommen sie direkt von Modrinth bzw. CurseForge.</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Einstellungen, Orbit Client, Skins</b><p>Akzentfarbe, Standard-RAM, HUD-Layout, deine Skin-Bibliothek</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Welten</b><p>Nicht automatisch (zu groß). Nutze Welt-Backups.</p></div>${ico('x')}</div>`);
+    return;
+  }
+  let me = null; try { me = await api('cloud.me'); } catch { }
+  if (S.stab !== 'cloud') return;
+  b.innerHTML = card('', `<div class="srcrow"><span class="srclogo orb">${blockSvg('orbit')}</span><div class="tx"><b>${esc(c.name)}</b><p>Orbit-Konto · ${c.lastSync ? 'zuletzt synchronisiert ' + esc(ago(c.lastSync).toLowerCase()) : 'noch nicht synchronisiert'}${S.cloud.lastError ? ' · <span style="color:var(--bad)">' + esc(S.cloud.lastError) + '</span>' : ''}</p></div>
+      <button class="btn p" onclick="cloudSyncNow(this)">${ico('refresh')}Jetzt synchronisieren</button></div>
+      ${me ? `<div class="mt"></div><div class="bar"><i style="width:${Math.max(1, me.bytes / me.maxBytes * 100)}%"></i></div><p class="fine">${bytes(me.bytes)} von ${bytes(me.maxBytes)} Cloud-Speicher · ${me.items} Einträge</p>` : ''}`)
+    + (me?.devices?.length ? '<div class="mt"></div>' + card('Angemeldete Geräte', me.devices.map(d => `<div class="srow"><div><b>${esc(d.device || 'Unbekannt')}</b><p>Zuletzt aktiv ${esc(ago(d.last).toLowerCase())}</p></div>${ico('monitor')}</div>`).join('')) : '')
+    + '<div class="mt"></div>' + card('Konto', `<div class="srow"><div><b>Passwort ändern</b><p>Meldet alle anderen Geräte ab.</p></div><button class="btn sm" onclick="cloudPassword()">${ico('lock')}Ändern</button></div>
+      <div class="srow"><div><b>Abmelden</b><p>Nur auf diesem PC.</p></div><button class="btn sm" onclick="cloudLogout()">${ico('logout')}Abmelden</button></div>
+      <div class="srow"><div><b>Konto löschen</b><p>Löscht das Konto und alle Cloud-Daten. Instanzen auf deinen PCs bleiben.</p></div><button class="btn sm d" onclick="cloudDelete()">${ico('trash')}Löschen</button></div>`);
+}
+window.cloudPassword = async () => {
+  modal(`<h1>Passwort ändern</h1><label class="fl">Altes Passwort</label><input class="in" id="cpOld" type="password"><label class="fl">Neues Passwort</label><input class="in" id="cpNew" type="password" placeholder="Mindestens 8 Zeichen"><div class="g-err" id="cpErr" style="text-align:left"></div><div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="cpGo">Ändern</button></div>`, 'form');
+  $('#cpGo').onclick = async () => { if ($('#cpNew').value.length < 8) return $('#cpErr').textContent = 'Mindestens 8 Zeichen.'; try { await api('cloud.password', { old: $('#cpOld').value, password: $('#cpNew').value }); closeModal(); toast('Passwort geändert'); } catch (e) { $('#cpErr').textContent = e.message; } };
+};
+window.cloudDelete = async () => {
+  const pw = await promptBox('Konto endgültig löschen?', 'Zur Bestätigung dein Passwort', '', 'Löschen');
+  if (!pw) return;
+  try { await api('cloud.delete', { password: pw }); toast('Orbit-Konto gelöscht'); await cloudStatus(); setBody(); } catch (e) { fail('Löschen fehlgeschlagen', e); }
+};
+
+/* ======================= PLAY VIA THE OFFICIAL MINECRAFT LAUNCHER ======================= */
+async function playOfficial(id) {
+  const i = instById(id); if (!i) return;
+  toast('Wird vorbereitet', `${i.name} für den Minecraft Launcher`);
+  try {
+    const r = await api('launch.official', { id });
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="upd-hero"><span class="iic">${ico('rocket')}</span><div><div class="kicker">Offizieller Minecraft Launcher</div><h1>Fast geschafft</h1></div></div>
+      <ol class="steps2"><li>${r.opened ? 'Der Minecraft Launcher öffnet sich gerade.' : 'Öffne den Minecraft Launcher.'}</li><li>Melde dich dort mit deinem Microsoft-Konto an (nur beim ersten Mal).</li><li>Wähle unten links das Profil <b>${esc(r.profile)}</b> und drück <b>Spielen</b>.</li></ol>
+      ${r.found || r.opened ? '' : '<div class="note w">Der Minecraft Launcher wurde nicht gefunden. Du bekommst ihn kostenlos auf minecraft.net.</div>'}
+      <p class="fine">Mods, Welten und Einstellungen bleiben in deiner OrbitLauncher-Instanz. Live-Konsole und Spielzeit gibt es in diesem Modus nicht.</p>
+      <div class="act" style="justify-content:flex-end">${r.found || r.opened ? '' : `<button class="btn" onclick="openUrl('https://www.minecraft.net/de-de/download')">${ico('ext')}Launcher herunterladen</button>`}<button class="btn p" onclick="closeModal()">Alles klar</button></div>`, 'form');
+  } catch (e) { fail('Vorbereiten fehlgeschlagen', e); }
+}
+window.playOfficial = playOfficial;
+/* no Microsoft account in OrbitLauncher: let the player choose */
+function playChoice(id, extra) {
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Spielen</div><h1>Wie möchtest du starten?</h1>
+    <div class="col" style="gap:10px;margin-top:16px">
+      <button class="mtile" id="pcOff"><span class="iic">${ico('rocket')}</span><span style="flex:1"><b>Über den Minecraft Launcher</b><small>Anmeldung im offiziellen Launcher, OrbitLauncher bereitet alles vor</small></span>${ico('right')}</button>
+      <button class="mtile" id="pcMs"><span class="iic">${ico('user')}</span><span style="flex:1"><b>Mit Microsoft in OrbitLauncher</b><small>Direkt starten, mit Live-Konsole und Spielzeit</small></span>${ico('right')}</button></div>
+    <div class="fsw" style="padding:14px 0 0"><span>Auswahl merken</span><div class="tg sm" id="pcRem" onclick="this.classList.toggle('on')"></div></div>`, 'form');
+  const rem = v => { if ($('#pcRem').classList.contains('on')) setS('playMode', v); };
+  $('#pcOff').onclick = () => { rem('official'); closeModal(); playOfficial(id); };
+  $('#pcMs').onclick = () => { rem('orbit'); closeModal(); S.afterLogin = () => play(id, extra); gate(true); };
+}
+window.playOfficialPick = () => { const i = S.instances[0]; if (i) playOfficial(i.id); else newInstance(); };
+
 /* ======================= LAUNCHER UPDATES ======================= */
 async function checkUpdate(manual) {
   let u;
@@ -1839,6 +1961,8 @@ async function boot() {
   try { init = await api('init'); } catch (e) { fail('Start fehlgeschlagen', e); init = { settings: {}, instances: [], accounts: [] }; }
   S.settings = init.settings || {}; S.instances = init.instances || []; S.accounts = init.accounts || []; S.active = init.active; S.version = init.version || S.version; S.root = init.root || '';
   (init.running || []).forEach(id => S.running.add(id));
+  S.needAppId = !!init.needAppId;
+  cloudStatus();
   applyTheme(S.settings.accent || 'ember');
   accountUI(); runUI();
   api('orbit.info').then(r => { S.orbitInfo = r; S.orbitSupported = r.supported; }).catch(() => { });
@@ -1856,6 +1980,7 @@ async function boot() {
 /* ======================= MOCK BACKEND (browser preview) ======================= */
 const H = 3600e3, DAY = 86400e3, iso = ms => new Date(Date.now() - ms).toISOString();
 const Mock = {
+  cloud: /[?&]cloud=1/.test(location.search) ? 'Ky3ls' : null,
   settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', firstRun: false, orbitPacks: 'perf,shaders,qol' },
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
@@ -1963,6 +2088,12 @@ const Mock = {
         const j = await (await fetch('https://launchercontent.mojang.com/v2/javaPatchNotes.json')).json();
         return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
       } catch { return [{ title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }]; }
+      case 'cloud.status': return { loggedIn: !!M.cloud, name: M.cloud, lastSync: M.cloud ? iso(60e3 * 3) : null };
+      case 'cloud.login': await sleep(700); M.cloud = a.name; setTimeout(() => { onEvent('cloud', { state: 'sync' }); setTimeout(() => onEvent('cloud', { state: 'done', pushed: 6, pulled: 0, created: 0, at: iso(0) }), 900); }, 100); return { name: a.name };
+      case 'cloud.logout': M.cloud = null; return {};
+      case 'cloud.sync': await sleep(900); return { pushed: 2, pulled: 1, created: 0, deleted: 0, restore: 0 };
+      case 'cloud.me': return { name: M.cloud, created: iso(DAY * 3), items: 14, bytes: 412e3, maxBytes: 40e6, devices: [{ device: 'GAMING-PC', last: iso(60e3) }, { device: 'LAPTOP', last: iso(DAY * 2) }] };
+      case 'launch.official': await sleep(800); return { profile: 'Orbit · ' + inst().name, opened: true, found: true };
       case 'update.check': return /upd/.test(location.search) ? { configured: true, current: '0.3.0', latest: '0.3.1', available: true, date: '15.11.2026', size: 73e6, notes: ['Automatische Updates direkt im Launcher', 'Update-Hinweis mit Änderungen und Fortschritt', 'Updates warten, bis Minecraft beendet ist'] } : { configured: true, current: '0.3.0', latest: '0.3.0', available: false };
       case 'update.download': for (let k = 0; k <= 100; k += 10) { onEvent('update', { pct: k, done: k * 73e4, total: 73e6 }); await sleep(80); } return { ok: true };
       case 'cf.status': return { ready: !/nocf/.test(location.search), own: false };

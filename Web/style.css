@@ -1201,3 +1201,24 @@ h1{font-size:32px}
 .upd-notes svg.i{width:16px;height:16px;color:var(--good);margin-top:1px}
 .upd-meter{margin-top:16px;text-align:left}
 .upd-meter small{display:block;margin-top:6px;font-size:11.5px;color:var(--sub)}
+
+/* orbit cloud */
+.cloudpill{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:99px;background:rgba(var(--a-rgb),.1);border:1px solid rgba(var(--a-rgb),.3);color:var(--text);font-size:12px;font-weight:600}
+.cloudpill svg.i{width:15px;height:15px;color:var(--a)}
+.cloudpill.busy svg.i{animation:cloudp 1s ease-in-out infinite alternate}
+.cloudpill.err{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.4)}.cloudpill.err svg.i{color:var(--bad)}
+@keyframes cloudp{to{opacity:.3;transform:translateY(-2px)}}
+.cloudhero{text-align:center;padding:16px 10px 8px}
+.cloudhero .ch-ic{width:72px;height:72px;border-radius:22px;margin:0 auto 14px;display:grid;place-items:center;background:radial-gradient(circle at 30% 20%,rgba(var(--a-rgb),.35),rgba(var(--a-rgb),.08));border:1px solid rgba(var(--a-rgb),.35);box-shadow:0 0 40px -10px rgba(var(--a-rgb),.7)}
+.cloudhero .ch-ic svg.i{width:34px;height:34px;color:var(--a)}
+.cloudhero h2{font-size:22px}
+.cloudhero p{color:var(--sub);max-width:520px;margin:8px auto 18px;line-height:1.55}
+.srclogo.orb{background:rgba(var(--a-rgb),.1)}.srclogo.orb::before{display:none}.srclogo.orb svg{width:34px;height:34px}
+.popsec{font-size:10.5px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;padding:8px 10px 4px}
+.head.orb{background:rgba(var(--a-rgb),.12);padding:3px}.head.orb svg{width:100%;height:100%}
+.g-alt{width:100%;height:44px;margin-top:10px;border-radius:13px;border:1px solid var(--line2);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600;font-size:13px;transition:background .25s,border-color .25s}
+.g-alt:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.25)}
+.g-alt svg.i{width:16px;height:16px;color:var(--a)}
+.steps2{text-align:left;margin:16px 0 0 20px;display:flex;flex-direction:column;gap:8px;color:#D4D4DA;font-size:13.5px;line-height:1.5}
+.steps2 li::marker{color:var(--a);font-weight:700}
+.mbox .fine{margin:12px 0 0;max-width:none;text-align:left}

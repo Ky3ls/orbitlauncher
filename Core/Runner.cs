@@ -15,7 +15,7 @@ public class Runner
     public IEnumerable<string> RunningIds => _running.Keys;
 
     /// <summary>Loader + client + libraries + assets + Java. Safe to call repeatedly (only missing files are fetched).</summary>
-    public static async Task<(LaunchPlan plan, string java)> Prepare(Instance inst, Settings set, IProgress<Progress>? p, CancellationToken ct = default)
+    public static async Task<(LaunchPlan plan, string java)> Prepare(Instance inst, Settings set, IProgress<Progress>? p, CancellationToken ct = default, bool java = true)
     {
         if (inst.VersionId == null || !File.Exists(Versions.JsonPath(inst.VersionId)))
         {
@@ -24,10 +24,11 @@ public class Runner
         }
         OrbitClient.EnsureMod(inst);
         var plan = await GameInstaller.Prepare(inst.VersionId, inst.Dir, p, ct);
-        var java = !string.IsNullOrWhiteSpace(inst.JavaPath) && File.Exists(inst.JavaPath) ? inst.JavaPath!
+        if (!java) return (plan, "");
+        var javaExe = !string.IsNullOrWhiteSpace(inst.JavaPath) && File.Exists(inst.JavaPath) ? inst.JavaPath!
                  : !string.IsNullOrWhiteSpace(set.JavaPath) && File.Exists(set.JavaPath) ? set.JavaPath!
                  : await Java.Ensure(plan.JavaMajor, plan.JavaComponent, p, ct);
-        return (plan, java);
+        return (plan, javaExe);
     }
 
     public async Task<Process> Launch(Instance inst, Session s, Settings set, IProgress<Progress>? p, CancellationToken ct = default, string? server = null, string? world = null)

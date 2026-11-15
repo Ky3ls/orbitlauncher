@@ -17,6 +17,58 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "cloud":
+    {
+        Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;
+        string rootA = Path.Combine(root, "pcA"), rootB = Path.Combine(root, "pcB");
+        void Use(string r) { Paths.Root = r; Directory.CreateDirectory(r); }
+        var user = "E2E_" + Random.Shared.Next(10000, 99999);
+        // PC A: register, create a Fabric instance with Sodium, a group and options
+        Use(rootA);
+        await Cloud.Login(user, "Passwort123", register: true);
+        var a = Instances.Create("Cloud Test", "1.21.1", "fabric", null);
+        a.Group = "PvP"; a.RamMb = 3072; Instances.Save(a);
+        File.WriteAllText(Path.Combine(a.Dir, "options.txt"), "fov:0.75\nrenderDistance:16\n");
+        Directory.CreateDirectory(Path.Combine(a.Dir, "config")); File.WriteAllText(Path.Combine(a.Dir, "config", "sodium-options.json"), "{\"quality\":1}");
+        await Modrinth.Install(Instances.Get(a.Id)!, "sodium", "mod", null, null);
+        var r1 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A push: pushed={r1.Pushed} pulled={r1.Pulled}");
+        // PC B: login, sync -> instance appears, mods restored from Modrinth
+        Use(rootB);
+        await Cloud.Login(user, "Passwort123", register: false);
+        var r2 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"B pull: created={r2.Created} pulled={r2.Pulled} toInstall={string.Join(",", r2.ToInstall.Select(m => m.Title))}");
+        var res = await Cloud.Restore(r2.ToInstall, null);
+        var b = Instances.All().Single();
+        Console.WriteLine($"B instance: {b.Name} {b.Loader} {b.McVersion} group={b.Group} ram={b.RamMb} uid={(b.Uid == a.Uid)} mods=[{string.Join(", ", Directory.GetFiles(Path.Combine(b.Dir, "mods")).Select(Path.GetFileName))}] options={File.ReadAllText(Path.Combine(b.Dir, "options.txt")).Replace("\n", " ")} config={File.Exists(Path.Combine(b.Dir, "config", "sodium-options.json"))} restored={res.ok} failed={res.failed.Count}");
+        // B renames -> A gets it
+        await Task.Delay(1200);
+        b = Instances.Get(b.Id)!; b.Name = "Umbenannt auf B"; Instances.Save(b);
+        await Cloud.Sync(null, null, null);
+        Use(rootA);
+        var r3 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A after B rename: pulled={r3.Pulled} name={Instances.All().Single().Name}");
+        // A deletes -> B loses it
+        Instances.Delete(Instances.All().Single().Id); Cloud.MarkDeleted(a.Uid);
+        var r4 = await Cloud.Sync(null, null, null);
+        Use(rootB);
+        var r5 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"delete: A tombstones={r4.Deleted} B deleted={r5.Deleted} B instances={Instances.All().Count}");
+        // and it never comes back on A
+        Use(rootA); var r6 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A again: created={r6.Created} instances={Instances.All().Count}");
+        break;
+    }
+    case "official":
+    {
+        var inst = Instances.Get(args[2])!;
+        var name = await OfficialLauncher.Export(inst, new Settings(), null);
+        var pf = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(OfficialLauncher.McDir, "launcher_profiles.json")))!;
+        Console.WriteLine($"profile {name}: " + pf["profiles"]!["orbit-" + inst.Id]!.ToJsonString());
+        Console.WriteLine("versions: " + string.Join(", ", Directory.GetDirectories(Path.Combine(OfficialLauncher.McDir, "versions")).Select(Path.GetFileName)));
+        Console.WriteLine("libraries copied: " + Directory.GetFiles(Path.Combine(OfficialLauncher.McDir, "libraries"), "*.jar", SearchOption.AllDirectories).Length);
+        break;
+    }
     case "ping":
     {
         foreach (var a in args.Skip(2)) { var st = await ServerPing.Ping(a); Console.WriteLine($"{a}: online={st.Online} {st.Players}/{st.Max} ping={st.Ping} ver={st.Version} motd={st.Motd?.Replace("\n"," | ")} icon={(st.Icon?.Length ?? 0)}"); }

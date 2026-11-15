@@ -5,6 +5,10 @@ namespace OrbitLauncher.Core;
 public class Instance
 {
     public string Id { get; set; } = "";
+    /// <summary>Stable id across PCs (cloud sync).</summary>
+    public string Uid { get; set; } = "";
+    /// <summary>Last change (UTC), used for cloud sync (last write wins).</summary>
+    public DateTime Modified { get; set; } = DateTime.UtcNow;
     public string Name { get; set; } = "";
     public string McVersion { get; set; } = "";
     /// <summary>vanilla | fabric | quilt | forge | neoforge</summary>
@@ -66,6 +70,7 @@ public static class Instances
             var i = Net.LoadJson<Instance>(Path.Combine(d, "instance.json"));
             if (i == null) continue;
             i.Id = Path.GetFileName(d);
+            if (string.IsNullOrEmpty(i.Uid)) { i.Uid = Guid.NewGuid().ToString("N"); lock (L) Net.SaveJson(Path.Combine(d, "instance.json"), i); }
             r.Add(i);
         }
         return r.OrderByDescending(i => i.LastPlayed ?? i.Created).ToList();
@@ -73,7 +78,16 @@ public static class Instances
 
     public static Instance? Get(string id) { var i = Net.LoadJson<Instance>(FileOf(id)); if (i != null) i.Id = id; return i; }
 
-    public static void Save(Instance i) { lock (L) Net.SaveJson(FileOf(i.Id), i); }
+    public static void Save(Instance i, bool touch = true)
+    {
+        if (string.IsNullOrEmpty(i.Uid)) i.Uid = Guid.NewGuid().ToString("N");
+        if (touch) i.Modified = DateTime.UtcNow;
+        lock (L) Net.SaveJson(FileOf(i.Id), i);
+        Changed?.Invoke(i.Id);
+    }
+    /// <summary>Raised after an instance was saved or deleted (cloud sync hooks in here).</summary>
+    public static event Action<string>? Changed;
+    public static event Action<string>? Deleted;
 
     public static Instance Create(string name, string mc, string loader = "vanilla", string? loaderVersion = null, string kind = "custom")
     {
@@ -90,7 +104,9 @@ public static class Instances
     public static void Delete(string id)
     {
         var d = Path.Combine(Paths.Instances, id);
+        var uid = Get(id)?.Uid;
         if (Directory.Exists(d) && Path.GetFullPath(d).StartsWith(Path.GetFullPath(Paths.Instances))) Directory.Delete(d, true);
+        if (!string.IsNullOrEmpty(uid)) Deleted?.Invoke(uid);
     }
 
     public static string ContentDir(Instance i, string type) => Path.Combine(i.Dir, type switch

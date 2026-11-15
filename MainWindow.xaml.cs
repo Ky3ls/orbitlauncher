@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private DateTime _cfgDue;
     private readonly DiscordRpc _rpc = new("1571553631818219580");
     private List<Transfer.Found> _found = new();
+    private int _syncing; private CancellationTokenSource? _syncDue;
+    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode" };
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -39,6 +41,10 @@ public partial class MainWindow : Window
         Net.AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
         _auth = new Auth(ClientIdFor(S));
         Updater.CleanupOld();
+        if (!string.IsNullOrWhiteSpace(S.CloudApi)) Cloud.Api = S.CloudApi!;
+        Instances.Deleted += uid => { if (Cloud.LoggedIn) Cloud.MarkDeleted(uid); };
+        Instances.Changed += _ => ScheduleSync();
+        if (Cloud.LoggedIn) _ = Task.Delay(3000).ContinueWith(_ => RunSync(false));
         CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
         OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
         InitializeComponent();
@@ -257,6 +263,7 @@ public partial class MainWindow : Window
                 var val = a["value"];
                 object? v = val == null ? null : prop.PropertyType == typeof(int) ? (int)val.GetValue<double>() : prop.PropertyType == typeof(bool) ? val.GetValue<bool>() : (object?)(string?)val;
                 prop.SetValue(S, v);
+                if (SyncedSettings.Contains(prop.Name)) { S.SyncAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); ScheduleSync(); }
                 S.Save();
                 if (prop.Name == nameof(Settings.ClientId)) _auth.ClientId = ClientIdFor(S);
                 if (prop.Name == nameof(Settings.CurseForgeKey)) CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
@@ -443,6 +450,13 @@ public partial class MainWindow : Window
                 }
                 return new { };
             }
+            case "launch.official":
+            {
+                var inst = Inst(a);
+                var name = await WithTask(p => OfficialLauncher.Export(inst, S, p));
+                var opened = OfficialLauncher.Open();
+                return new { profile = name, opened, found = OfficialLauncher.FindExe() != null };
+            }
             case "stop": _runner.Kill(Str(a, "id")); return new { };
 
             // ---------------- modrinth
@@ -565,6 +579,20 @@ public partial class MainWindow : Window
                 if (_runner.RunningIds.Any()) throw new InvalidOperationException("Erst Minecraft beenden, dann wird das Update installiert.");
                 Updater.Install();
                 return null;
+
+            // ---------------- orbit account + cloud sync
+            case "cloud.status": return new { loggedIn = Cloud.LoggedIn, name = Cloud.Name, lastSync = Cloud.LastSync, syncing = _syncing > 0 };
+            case "cloud.login":
+            {
+                var name = await Cloud.Login(Str(a, "name"), Str(a, "password"), Bool(a, "register"));
+                _ = RunSync(true);
+                return new { name };
+            }
+            case "cloud.logout": await Cloud.Logout(); return new { };
+            case "cloud.sync": return await RunSync(true);
+            case "cloud.me": return await Cloud.Me();
+            case "cloud.password": await Cloud.ChangePassword(Str(a, "old"), Str(a, "password")); return new { };
+            case "cloud.delete": await Cloud.DeleteAccount(Str(a, "password")); return new { };
 
             // ---------------- curseforge
             case "cf.status": return new { ready = CurseForge.Ready, own = !string.IsNullOrWhiteSpace(S.CurseForgeKey) };
@@ -758,6 +786,87 @@ public partial class MainWindow : Window
         "crimson" => "#FF3B4E", "sunset" => "#FF6B3D", "magenta" => "#E040FB", "sky" => "#38BDF8", "teal" => "#14B8A6", "lime" => "#84CC16",
         "copper" => "#D97745", "ice" => "#93C5FD", _ => "#FF7A3D",
     };
+
+    // ---- Orbit cloud sync: debounced after changes, plus on start and on demand
+    private void ScheduleSync()
+    {
+        if (!Cloud.LoggedIn || _syncing > 0) return;
+        _syncDue?.Cancel();
+        var cts = _syncDue = new CancellationTokenSource();
+        _ = Task.Delay(6000, cts.Token).ContinueWith(t => { if (!t.IsCanceled) _ = RunSync(false); });
+    }
+
+    private async Task<object> RunSync(bool manual)
+    {
+        if (Interlocked.Increment(ref _syncing) > 1) { Interlocked.Decrement(ref _syncing); return new { busy = true }; }
+        Emit("cloud", new { state = "sync" });
+        try
+        {
+            var r = await WithTask(p => Cloud.Sync(SyncDoc, ApplySync, p));
+            if (r.Created + r.Pulled + r.Deleted > 0) Emit("instances", Instances.All().Select(Dto).ToList());
+            Emit("cloud", new { state = "done", r.Pushed, r.Pulled, r.Created, r.Deleted, restore = r.ToInstall.Count, at = DateTime.UtcNow });
+            if (r.ToInstall.Count > 0)
+            {
+                var (ok, failed) = await WithTask(p => Cloud.Restore(r.ToInstall, p));
+                Emit("instances", Instances.All().Select(Dto).ToList());
+                Emit("cloud", new { state = "restored", ok, failed });
+            }
+            return new { r.Pushed, r.Pulled, r.Created, r.Deleted, restore = r.ToInstall.Count };
+        }
+        catch (Exception e)
+        {
+            Emit("cloud", new { state = "error", error = e.Message });
+            if (manual) throw;
+            return new { error = e.Message };
+        }
+        finally { Interlocked.Decrement(ref _syncing); }
+    }
+
+    private JsonObject SyncDoc(string key)
+    {
+        long Mtime(string f) => File.Exists(f) ? new DateTimeOffset(File.GetLastWriteTimeUtc(f)).ToUnixTimeMilliseconds() : 0;
+        switch (key)
+        {
+            case "settings":
+            {
+                var o = new JsonObject();
+                foreach (var n in SyncedSettings) { var pr = typeof(Settings).GetProperty(n)!; o[n] = JsonSerializer.SerializeToNode(pr.GetValue(S)); }
+                o["_at"] = S.SyncAt; return o;
+            }
+            case "orbitcfg": { var c = OrbitClient.ReadConfig() ?? new JsonObject(); var o = (JsonObject)c.DeepClone(); o["_at"] = c.Count == 0 ? 0 : Mtime(OrbitClient.ConfigPath); return o; }
+            default:
+            {
+                var list = new JsonArray(Skins.All().Take(40).Where(x => File.Exists(Skins.FileOf(x.Id))).Select(x => (JsonNode)new JsonObject { ["id"] = x.Id, ["name"] = x.Name, ["variant"] = x.Variant, ["png"] = Convert.ToBase64String(File.ReadAllBytes(Skins.FileOf(x.Id))) }).ToArray());
+                return new JsonObject { ["list"] = list, ["_at"] = list.Count == 0 ? 0 : Mtime(Path.Combine(Paths.Root, "skins", "index.json")) };
+            }
+        }
+    }
+
+    private void ApplySync(JsonObject o)
+    {
+        var key = (string?)o["_key"]; o.Remove("_key"); var at = (long?)o["_at"] ?? 0; o.Remove("_at");
+        Dispatcher.Invoke(() =>
+        {
+            if (key == "settings")
+            {
+                foreach (var n in SyncedSettings)
+                {
+                    if (o[n] is not JsonNode v) continue;
+                    var pr = typeof(Settings).GetProperty(n)!;
+                    try { pr.SetValue(S, v.Deserialize(pr.PropertyType)); } catch { }
+                }
+                S.SyncAt = at; S.Save();
+                Emit("settings", S);
+            }
+            else if (key == "orbitcfg") { _cfgLast = o.ToJsonString(); OrbitClient.WriteConfig(o); _overlay.SetConfig(o); Emit("orbitcfg", o); }
+            else if (key == "skins")
+            {
+                var have = Skins.All().Select(x => x.Id).ToHashSet();
+                foreach (var s in o["list"]?.AsArray() ?? new JsonArray())
+                    if (!have.Contains((string)s!["id"]!)) try { Skins.Add(Convert.FromBase64String((string)s["png"]!), (string?)s["name"] ?? "Skin", (string?)s["variant"] ?? "classic", (string?)s["id"]); } catch { }
+            }
+        });
+    }
 
     private static long DirSize(string d)
     {
