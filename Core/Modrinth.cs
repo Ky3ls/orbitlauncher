@@ -240,6 +240,7 @@ public static class Modrinth
         p?.Report(new Progress("Modpack wird geladen", 0, 1, (string?)proj["title"]));
         await Net.Download(new DlItem((string)file["url"]!, tmp, (string?)file["hashes"]?["sha1"], (long?)file["size"] ?? 0), ct);
         var inst = await ImportPack(tmp, (string?)proj["title"], p, ct, (string)ver["project_id"]!, (string)ver["id"]!);
+        inst.IconUrl = (string?)proj["icon_url"]; Instances.Save(inst);
         try { File.Delete(tmp); } catch { }
         return inst;
     }

@@ -161,7 +161,7 @@ public static class GameInstaller
 /// <summary>Turns a LaunchPlan into a java command line, exactly like the official launcher does.</summary>
 public static class LaunchBuilder
 {
-    public static List<string> Build(LaunchPlan plan, Session s, string gameDir, int ramMb, string? extraJvm, int width = 0, int height = 0, string? quickPlayServer = null, IEnumerable<string>? launcherJvm = null)
+    public static List<string> Build(LaunchPlan plan, Session s, string gameDir, int ramMb, string? extraJvm, int width = 0, int height = 0, string? quickPlayServer = null, IEnumerable<string>? launcherJvm = null, string? quickPlayWorld = null)
     {
         var v = plan.Version;
         var sep = OperatingSystem.IsWindows() ? ";" : ":";
@@ -170,6 +170,7 @@ public static class LaunchBuilder
             ["has_custom_resolution"] = width > 0 && height > 0,
             ["is_demo_user"] = false,
             ["is_quick_play_multiplayer"] = !string.IsNullOrEmpty(quickPlayServer),
+            ["is_quick_play_singleplayer"] = !string.IsNullOrEmpty(quickPlayWorld),
         };
         var vars = new Dictionary<string, string>
         {
@@ -196,6 +197,7 @@ public static class LaunchBuilder
             ["resolution_width"] = width.ToString(),
             ["resolution_height"] = height.ToString(),
             ["quickPlayMultiplayer"] = quickPlayServer ?? "",
+            ["quickPlaySingleplayer"] = quickPlayWorld ?? "",
             ["quickPlayPath"] = Path.Combine(gameDir, "quickPlay", "log.json"),
         };
 
@@ -220,7 +222,13 @@ public static class LaunchBuilder
         if (plan.LoggingArg != null) jvm.Add(plan.LoggingArg);
 
         var game = new List<string>();
-        if (args?["game"] is JsonArray ga) game.AddRange(Expand(ga, features, vars));
+        if (args?["game"] is JsonArray ga)
+        {
+            game.AddRange(Expand(ga, features, vars));
+            // 1.13–1.19 have no quick play: join the server the classic way
+            if (!string.IsNullOrEmpty(quickPlayServer) && !ga.ToJsonString().Contains("quickPlayMultiplayer"))
+            { var hp = quickPlayServer.Split(':'); game.AddRange(new[] { "--server", hp[0], "--port", hp.Length > 1 ? hp[1] : "25565" }); }
+        }
         else if ((string?)v["minecraftArguments"] is string ma)
         {
             game.AddRange(SplitArgs(ma).Select(a => Sub(a, vars)));

@@ -1,28 +1,29 @@
-# Orbit Client
+# OrbitLauncher
 
-Eigener Minecraft-Client für Windows, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`, dazu ein eigener Fabric-Mod für die Ingame-Features.
+Minecraft-Launcher für Windows im Aufbau der Modrinth-App, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`. Dazu der eigene Orbit-Client-Mod für PvP-Features.
 
-![Spielen](docs/screenshots/51_spielen.png)
+![Start](docs/screenshots/60_start.png)
 
-![Anmelden](docs/screenshots/50_login.png)
+![Entdecken](docs/screenshots/66_entdecken.png)
 
-![Ingame-Menü](docs/screenshots/30_ingame_menue.png)
+![Instanz](docs/screenshots/62_instanz_inhalte.png)
 
 ## Was drin ist
 
 | Bereich | Umsetzung |
 |---|---|
-| **Client-Oberfläche** | Anmeldebildschirm, Hauptscreen mit Versionswahl + großem „Spielen“, Schnell-Schalter, Mods, HUD-Editor, Mod-Browser, Screenshot-Galerie. Instanzen und Versionslisten liegen unter Einstellungen → Erweitert. |
-| **Alle Versionen** | Mojang Version Manifest (piston-meta): Releases, Snapshots, Beta, Alpha. Client, Bibliotheken, Natives, Assets (inkl. Legacy/virtual) und Log-Config werden geladen, SHA-1 geprüft, die Startargumente werden wie beim offiziellen Launcher gebaut (Rules, Features, `default-user-jvm`, alte `minecraftArguments`). |
-| **Mod-Loader** | Fabric und Quilt über ihre Meta-APIs (Profile mit `inheritsFrom`), Forge und NeoForge über ihre offiziellen Installer (`--installClient`, headless). |
-| **Instanzen** | Eigener Ordner pro Instanz, eigene Version, Loader, RAM, Java, JVM-Argumente, Fenstergröße. Spielzeit, Konsole mit Log, Crash-Erkennung. |
-| **Modrinth** | Suche mit Filtern (Version, Loader, Kategorien, Sortierung), Detailansicht, 1-Klick-Install mit Abhängigkeiten, Updates (`version_files/update`), Entfernen/Deaktivieren. Mods, Modpacks, Ressourcenpakete, Shader. `.mrpack`-Import (Datei oder direkt von Modrinth). |
-| **Orbit Client (eigener Mod)** | `client-mod/`: eigener Fabric-Mod für 26.3 mit 21 Modulen: HUD (FPS, CPS pro Klick, Keystrokes, Koordinaten/Richtung/Biom, Rüstung mit Haltbarkeit, Effekte, Ping, Server, Uhrzeit, RAM, Tempo, Sitzung), PvP (Reichweite, Combo), Zoom (weich, Mausrad), Freelook, Fullbright, eigenes Fadenkreuz, Toggle Sprint, ruhige Kamera. Mod-Menü auf Rechts-Shift, HUD-Editor mit Drag & Drop, Einrasten und Größe per Mausrad, Chroma-Farben. |
-| **Jede Version, direkt spielen** | Auf der Client-Seite Version wählen und „Spielen“ drücken, kein Installieren vorher. Die Orbit-Instanz für die Version wird beim ersten Start automatisch angelegt: 26.3 mit vollem Ingame-Client (Mod), andere Fabric-Versionen mit Performance-Paketen, alle übrigen Vanilla. Auf Versionen ohne Mod zeichnet die exe ein Overlay-HUD über das Spiel (Keystrokes, CPS, Fadenkreuz, Uhr, Sitzung, RAM), nur sichtbar im Spiel, nicht in Menüs. |
-| **Live-Sync** | Eine gemeinsame `orbitclient.json` im Launcher-Ordner (der Mod bekommt sie per `-Dorbit.config`). Änderungen im Launcher sind nach unter einer Sekunde im Spiel, Änderungen im Spiel (Menü, HUD-Editor) erscheinen per Dateiüberwachung sofort im Launcher und im Overlay. |
-| **Client im Launcher** | Seite „Client“: Module an/aus und alle Einstellungen, HUD-Layout per Drag & Drop direkt im Launcher, Performance-Pakete (Sodium, Iris …) von Modrinth, Tastenbelegung. Launcher und Spiel teilen sich `config/orbitclient.json`, Änderungen greifen live im laufenden Spiel. Die Akzentfarbe des Launchers gilt auch im Ingame-Menü. |
-| **Microsoft-Login** | Anmeldebildschirm beim Start, offizielles Microsoft-Fenster in der App (Auth-Code + PKCE) → Xbox Live → XSTS → Minecraft Services. Kein Passwort, nur das Refresh-Token, verschlüsselt per DPAPI (CurrentUser). Mehrere Konten. Kein Offline-/Cracked-Modus. |
-| **Java** | Pro Version automatisch: Mojangs Java-Runtime-Manifest, Fallback Eclipse Temurin (Adoptium). Eigener Pfad pro Instanz oder global möglich. |
+| **Start** | Weiterspielen (letzte Instanz), direkt zurück in die letzten Welten, zuletzt gespielte Instanzen, beliebte Modpacks und Mods von Modrinth, Minecraft-News. |
+| **Bibliothek** | Alle Instanzen als Karten: Filter (Modpacks, Eigene, Orbit Client), Suche, Sortieren (zuletzt gespielt, Name, neu, Spielzeit, Version), Gruppieren (Gruppe, Loader, Version). Rechtsklick-Menü: Spielen, Inhalte hinzufügen, Einstellungen, Ordner, Duplizieren, Löschen. |
+| **Instanzseite** | Kopf mit Spielen/Beenden, Spielzeit, Loader. Tabs: **Inhalte** (Mods, Ressourcenpakete, Shader mit Icons, Suche, Filter, an/aus, Mehrfachauswahl, Updates prüfen und alle aktualisieren, aus Datei hinzufügen), **Welten** (Spielmodus, Symbol, direkt in die Welt starten ab 1.20, Server aus der Serverliste direkt beitreten, Welt in den Papierkorb), **Logs** (Live-Konsole und alte Logs/Crash-Reports mit Suche), **Orbit Client** (nur bei Orbit-Instanzen: Module, HUD-Editor, Tasten). |
+| **Instanz-Einstellungen** | Name, Symbol, Gruppe; Version und Mod-Loader nachträglich wechseln, Dateien prüfen und reparieren; Java-Pfad, RAM, JVM-Argumente; Fenstergröße. |
+| **Entdecken** | Modpacks, Mods, Ressourcenpakete, Shader. Filterleiste: Spielversion, Loader, alle Modrinth-Kategorien, Umgebung (Client/Server), Open Source. Sortieren, Seiten, aktive Filter als Chips. Aus einer Instanz heraus: nur passende Inhalte, „Installiert“-Markierung. |
+| **Projektseite** | Beschreibung (Markdown und HTML, bereinigt), Versionen mit Filtern und Changelog, Galerie mit Großansicht, Kompatibilität, Links, Ersteller, Lizenz. Installieren mit Instanzauswahl (passende oben) oder „Neue Instanz dafür“. Abhängigkeiten kommen automatisch mit. |
+| **Skins** | Skin-Bibliothek mit 3D-Ansicht (drehen, laufen), Klassisch/Schlank, mit einem Klick fürs Konto übernehmen, Umhang wählen. Über die offizielle Minecraft-Services-API. |
+| **Alle Versionen & Loader** | Mojang Version Manifest (Releases, Snapshots, Beta, Alpha), Fabric, Quilt, Forge, NeoForge. Startargumente wie beim offiziellen Launcher. |
+| **Orbit Client (eigener Mod)** | `client-mod/`: Fabric-Mod für 26.3 mit 21 Modulen (Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint …), Mod-Menü auf Rechts-Shift, HUD-Editor. Einstellungen live zwischen Launcher und Spiel synchron. Anlegen über „Neue Instanz → Orbit Client“. |
+| **Microsoft-Login** | Offizielles Microsoft-Fenster in der App (Auth-Code + PKCE) → Xbox Live → XSTS → Minecraft. Nur das Refresh-Token wird gespeichert, verschlüsselt per DPAPI. Mehrere Konten. Kein Offline-/Cracked-Modus. |
+| **Java** | Pro Version automatisch: Mojangs Java-Runtime, sonst Eclipse Temurin. |
+| **Komfort** | Zurück/Vor wie im Browser (auch Maustasten 4/5), Brotkrümel, Download-Anzeige mit allen laufenden Aufgaben, laufendes Spiel oben mit Logs und Beenden, Speicherbelegung und Cache leeren, 15 Akzentfarben. |
 
 ## Microsoft-Login (einmalig für dich als Entwickler)
 

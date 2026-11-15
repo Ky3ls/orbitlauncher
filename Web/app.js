@@ -4,16 +4,18 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const jsq = s => esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 const ico = (id, cls = 'i') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
-const bytes = b => { if (b == null || b < 0) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + ' ' + u[i]; };
+const bytes = b => { if (b == null || b < 0) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return (i ? b.toFixed(1).replace('.', ',') : b) + ' ' + u[i]; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const num = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' Mio.' : n >= 1e3 ? Math.round(n / 1e3) + ' Tsd.' : String(n ?? 0);
 const ago = d => {
   if (!d) return 'Nie gespielt';
   const s = (Date.now() - new Date(d)) / 1000;
   if (s < 90) return 'Gerade eben'; if (s < 3600) return `Vor ${Math.round(s / 60)} Min.`; if (s < 86400) return `Vor ${Math.round(s / 3600)} Std.`;
-  if (s < 86400 * 30) return `Vor ${Math.round(s / 86400)} Tag${Math.round(s / 86400) > 1 ? 'en' : ''}`;
-  return new Date(d).toLocaleDateString('de-DE');
+  if (s < 86400 * 30) { const n = Math.round(s / 86400); return `Vor ${n} Tag${n > 1 ? 'en' : ''}`; }
+  if (s < 86400 * 365) { const n = Math.round(s / 86400 / 30); return `Vor ${n} Monat${n > 1 ? 'en' : ''}`; }
+  const n = Math.round(s / 86400 / 365); return `Vor ${n} Jahr${n > 1 ? 'en' : ''}`;
 };
 const ptime = s => !s ? '0 Std.' : s < 3600 ? Math.max(1, Math.round(s / 60)) + ' Min.' : (s / 3600).toFixed(s < 36000 ? 1 : 0).replace('.', ',') + ' Std.';
 const dateDe = d => d ? new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
@@ -24,6 +26,7 @@ function api(cmd, args = {}) {
   if (!HOST) return Mock.call(cmd, args);
   return new Promise((res, rej) => { const id = ++rid; pending[id] = { res, rej }; window.chrome.webview.postMessage({ id, cmd, args }); });
 }
+window.api = api;
 if (HOST) window.chrome.webview.addEventListener('message', e => {
   const m = e.data;
   if (m.id && pending[m.id]) { const p = pending[m.id]; delete pending[m.id]; m.ok ? p.res(m.data) : p.rej(new Error(m.error || 'Fehler')); }
@@ -32,13 +35,26 @@ if (HOST) window.chrome.webview.addEventListener('message', e => {
 document.addEventListener('mousedown', e => { if (e.button === 0 && e.target.closest('[data-drag]') && !e.target.closest('button')) api('win.drag'); });
 document.addEventListener('dblclick', e => { if (e.target.closest('[data-drag]') && !e.target.closest('button')) api('win.max'); });
 
+/* Modrinth API (read-only) – through the host (proper user agent), live fetch in the browser preview */
+const mrCache = new Map();
+async function mr(path, cache = true) {
+  if (cache && mrCache.has(path)) return mrCache.get(path);
+  const p = api('mr.get', { path });
+  if (cache) { mrCache.set(path, p); p.catch(() => mrCache.delete(path)); }
+  return p;
+}
+const openUrl = url => api('open.url', { url });
+window.openUrl = openUrl;
+
 const S = {
-  settings: {}, instances: [], versions: [], latest: {}, accounts: [], active: null, running: new Set(), sel: null, cur: null,
-  logs: {}, tasks: {}, java: [], version: '0.1.0', root: '',
+  settings: {}, instances: [], versions: [], latest: {}, accounts: [], active: null, running: new Set(), logs: {}, tasks: {},
+  java: [], version: '0.2.0', root: '', page: 'home', args: {}, hist: [], hi: -1,
 };
 const LOADERS = { vanilla: ['Vanilla', 'van'], fabric: ['Fabric', 'fab'], quilt: ['Quilt', 'qui'], forge: ['Forge', 'frg'], neoforge: ['NeoForge', 'neo'] };
-const loaderChip = l => `<span class="chip ${LOADERS[l]?.[1] || 'm'}">${LOADERS[l]?.[0] || esc(l)}</span>`;
-const vtypeChip = t => t === 'release' ? '<span class="chip van">Release</span>' : t === 'snapshot' ? '<span class="chip snap">Snapshot</span>' : t === 'old_beta' ? '<span class="chip old">Beta</span>' : '<span class="chip old">Alpha</span>';
+const LCOL = { vanilla: '#4ADE9A', fabric: '#DBB67C', quilt: '#C48CFF', forge: '#78A0FF', neoforge: '#FF8C50' };
+const loaderChip = l => `<span class="chip ${LOADERS[l]?.[1] || 'm'}">${LOADERS[l]?.[0] || esc(cap(l))}</span>`;
+const cap = s => String(s || '').replace(/^./, c => c.toUpperCase());
+const KIND = { custom: 'Eigene', modpack: 'Modpack', orbit: 'Orbit Client' };
 
 /* ======================= THEMES ======================= */
 const THEMES = {
@@ -66,24 +82,25 @@ function blockSvg(key) {
   if (key === 'orbit') return `<svg viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg>`;
   if (key === 'box') key = 'wood';
   const [t, l, r, grass] = BLOCKS[key] || BLOCKS.grass;
-  // pixel texture: a few darker squares on the faces
   const px = (pts, c) => pts.map(([x, y]) => `<rect x="${x}" y="${y}" width="3" height="3" fill="${c}" opacity=".35"/>`).join('');
   return `<svg viewBox="0 0 64 64"><path d="M32 8 56 21 32 34 8 21Z" fill="${t}"/><path d="M8 21 32 34v24L8 45Z" fill="${l}"/><path d="M56 21 32 34v24l24-13Z" fill="${r}"/>
     ${grass ? `<path d="M8 21 32 34v6L8 27Z" fill="${t}" opacity=".9"/><path d="M56 21 32 34v6l24-13Z" fill="${t}" opacity=".75"/>` : ''}
     ${px([[14, 34], [22, 44], [16, 41], [26, 38]], '#000')}${px([[40, 40], [48, 32], [44, 46], [36, 48]], '#000')}
     <path d="M32 8 56 21 32 34 8 21Z" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1"/></svg>`;
 }
-const instIcon = (i, cls = 'iic') => `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
+const instIcon = (i, cls = 'iic') => i?.iconUrl ? `<span class="${cls} img"><img src="${esc(i.iconUrl)}" alt="" loading="lazy"></span>` : `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
+const picHtml = (url, cls = 'pic', icon = 'box') => url ? `<span class="${cls}" style="background-image:url('${esc(url)}')"></span>` : `<span class="${cls}">${ico(icon)}</span>`;
 
 /* ======================= BANNER (original voxel landscape) ======================= */
-function bannerSvg(day = false) {
-  const W = 1200, H = day ? 675 : 260, s = 12, gid = day ? 'bskyd' : 'bsky'; let seed = 7;
+function bannerSvg(day = false, H0) {
+  const W = 1200, H = H0 || (day ? 675 : 300), s = 12, gid = 'bs' + Math.random().toString(36).slice(2, 8); let seed = day ? 7 : 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const a = getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#FF7A3D';
   let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">${day ? '<stop offset="0" stop-color="#5E8FD6"/><stop offset="1" stop-color="#BFD8F2"/>' : `<stop offset="0" stop-color="#0B0B14"/><stop offset=".55" stop-color="#1C1626"/><stop offset="1" stop-color="${a}" stop-opacity=".55"/>`}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#${gid})"/>`;
-  if (!day) for (let i = 0; i < 60; i++) out += `<rect x="${Math.floor(rnd() * W / 4) * 4}" y="${Math.floor(rnd() * 120 / 4) * 4}" width="3" height="3" fill="#fff" opacity="${(0.2 + rnd() * 0.6).toFixed(2)}"/>`;
+  const k = H / (day ? 675 : 260);
+  if (!day) for (let i = 0; i < 70; i++) out += `<rect x="${Math.floor(rnd() * W / 4) * 4}" y="${Math.floor(rnd() * 130 * k / 4) * 4}" width="3" height="3" fill="#fff" opacity="${(0.2 + rnd() * 0.6).toFixed(2)}"/>`;
   out += day ? '<rect x="900" y="40" width="50" height="50" fill="#FFF6C9"/><rect x="890" y="30" width="70" height="70" fill="#FFF6C9" opacity=".25"/>' + [[120, 50, 140], [420, 30, 180], [700, 70, 120]].map(([x, y, w]) => `<rect x="${x}" y="${y}" width="${w}" height="16" fill="#fff" opacity=".85"/><rect x="${x + 20}" y="${y - 10}" width="${w - 50}" height="12" fill="#fff" opacity=".85"/>`).join('')
-    : `<rect x="930" y="70" width="60" height="60" fill="${a}" opacity=".9"/><rect x="920" y="60" width="80" height="80" fill="${a}" opacity=".18"/>`;
+    : `<rect x="930" y="${70 * k}" width="60" height="60" fill="${a}" opacity=".9"/><rect x="920" y="${60 * k}" width="80" height="80" fill="${a}" opacity=".18"/>`;
   const layer = (base, amp, color, top, step) => {
     let h = base, g = '';
     for (let x = 0; x < W; x += s) {
@@ -94,16 +111,16 @@ function bannerSvg(day = false) {
     return g;
   };
   out += day ? layer(430, 50, '#8DB0D3', null, 3) + layer(500, 30, '#5F7F4A', '#6FAA4A', 2) + layer(590, 16, '#7A5634', '#5FA03A', 2)
-    : layer(150, 40, '#191825', null, 3) + layer(180, 26, '#1F2A22', '#2F4A2C', 2) + layer(215, 16, '#2A2018', '#3E6B2E', 2);
+    : layer(150 * k, 40, '#191825', null, 3) + layer(180 * k, 26, '#1F2A22', '#2F4A2C', 2) + layer(215 * k, 16, '#2A2018', '#3E6B2E', 2);
   return out + '</svg>';
 }
 
 /* ======================= MOTION ======================= */
-function moveInd() { const a = $('.nav.active'), ind = $('#navInd'); if (!a || !ind) return; ind.style.transform = `translateY(${a.offsetTop}px)`; ind.style.opacity = 1; }
+function moveInd() { const a = $('.nav.active'), ind = $('#navInd'); if (!a || !ind) { if (ind) ind.style.opacity = 0; return; } ind.style.transform = `translateY(${a.offsetTop}px)`; ind.style.opacity = 1; }
 function enterPage(el) {
   if (!el) return;
   el.classList.remove('enter'); void el.offsetWidth;
-  el.querySelectorAll('.card,.tabs,.addbar,.empty').forEach((c, i) => c.style.setProperty('--i', Math.min(i, 12)));
+  el.querySelectorAll('.card').forEach((c, i) => c.style.setProperty('--i', Math.min(i, 12)));
   el.classList.add('enter');
   clearTimeout(el._et); el._et = setTimeout(() => el.classList.remove('enter'), 1400);
 }
@@ -118,20 +135,38 @@ document.addEventListener('pointermove', e => {
   });
 });
 
-/* ======================= NAV ======================= */
-let curPage = 'home';
-const NAV_OF = { inst: 'settings', instances: 'settings', versions: 'settings' };
-function go(p) {
-  curPage = p; closePop();
+/* ======================= ROUTER (with back/forward like a browser) ======================= */
+const NAV_OF = { inst: 'library', project: 'discover' };
+const PAGES = {};
+function go(p, args = {}, push = true) {
+  closePop(); closeCtx();
+  if (push) {
+    const cur = S.hist[S.hi];
+    if (!cur || cur.p !== p || JSON.stringify(cur.a) !== JSON.stringify(args)) { S.hist = S.hist.slice(0, S.hi + 1); S.hist.push({ p, a: args }); S.hi = S.hist.length - 1; }
+  }
+  const same = S.page === p;
+  S.page = p; S.args = args;
   $$('.nav').forEach(n => n.classList.toggle('active', n.dataset.p === (NAV_OF[p] || p)));
+  $('.sset').classList.toggle('on', p === 'settings');
   $$('.page').forEach(s => s.classList.toggle('show', s.id === 'p-' + p));
-  moveInd(); enterPage($('#p-' + p));
-  ({ home: renderHome, instances: renderInstances, mods: loadOrbit, hud: () => loadOrbit().then(() => setTimeout(renderStage, 30)), browse: () => { browseInit(); }, shots: loadShots, versions: () => S.versions.length ? renderVersions() : loadVersions(), settings: renderSettings })[p]?.();
+  moveInd();
+  const el = $('#p-' + p);
+  if (!same || push) el.scrollTop = 0;
+  PAGES[p]?.(el, args);
+  enterPage(el);
+  histUI(); sideUI();
 }
 window.go = go;
+function hist(d) { const n = S.hi + d; if (n < 0 || n >= S.hist.length) return; S.hi = n; const h = S.hist[n]; go(h.p, h.a, false); }
+window.hist = hist;
+function histUI() { $('#hBack').disabled = S.hi <= 0; $('#hFwd').disabled = S.hi >= S.hist.length - 1; }
+function crumbs(list) {
+  $('#crumbs').innerHTML = list.map((c, i) => i === list.length - 1 ? `<b>${esc(c[0])}</b>` : `<button onclick="${c[1]}">${esc(c[0])}</button>${ico('right')}`).join('');
+}
+document.addEventListener('mouseup', e => { if (e.button === 3) hist(-1); if (e.button === 4) hist(1); });
 $('#side').addEventListener('click', e => { const n = e.target.closest('.nav'); if (n) go(n.dataset.p); });
 
-/* ======================= TOAST / MODAL ======================= */
+/* ======================= TOAST / MODAL / POPOVER / CONTEXT MENU ======================= */
 function toast(title, text = '', ok = true) {
   const t = document.createElement('div');
   t.className = 'toast' + (ok ? '' : ' err');
@@ -141,10 +176,14 @@ function toast(title, text = '', ok = true) {
 }
 const fail = (title, e) => toast(title, e?.message || String(e), false);
 function modal(html, cls = '') { $('#mbox').className = 'card gb mbox ' + cls; $('#mbox').innerHTML = html; $('#modal').classList.add('show'); }
-function closeModal() { $('#modal').classList.remove('show'); S.modalClose?.(); S.modalClose = null; }
+function closeModal() { $('#modal').classList.remove('show'); const f = S.modalClose; S.modalClose = null; f?.(); }
 window.closeModal = closeModal;
 $('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closePop(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if (!$('#lightbox').classList.contains('hidden')) return $('#lightbox').classList.add('hidden'); closeModal(); closePop(); closeCtx(); }
+  if (e.altKey && e.key === 'ArrowLeft') hist(-1);
+  if (e.altKey && e.key === 'ArrowRight') hist(1);
+});
 function confirmBox(title, text, okText = 'Ja', danger = false) {
   return new Promise(res => {
     S.modalClose = () => res(false);
@@ -153,526 +192,1218 @@ function confirmBox(title, text, okText = 'Ja', danger = false) {
     $('#cbYes').onclick = () => { S.modalClose = null; closeModal(); res(true); };
   });
 }
+function promptBox(title, label, value = '', okText = 'Speichern') {
+  return new Promise(res => {
+    S.modalClose = () => res(null);
+    modal(`<h1>${esc(title)}</h1><label class="fl">${esc(label)}</label><input class="in" id="pbIn" value="${esc(value)}"><div class="act" style="justify-content:flex-end"><button class="btn" id="pbNo">Abbrechen</button><button class="btn p" id="pbYes">${esc(okText)}</button></div>`, 'form');
+    const ok = () => { const v = $('#pbIn').value.trim(); S.modalClose = null; closeModal(); res(v || null); };
+    $('#pbNo').onclick = () => closeModal(); $('#pbYes').onclick = ok;
+    $('#pbIn').onkeydown = e => { if (e.key === 'Enter') ok(); };
+    setTimeout(() => { $('#pbIn').focus(); $('#pbIn').select(); }, 50);
+  });
+}
+function closePop() { $('#pop')?.classList.add('hidden'); }
+function popAt(anchor, html, w = 300, up = false) {
+  const pop = $('#pop'), r = anchor.getBoundingClientRect();
+  pop.innerHTML = html; pop.style.width = w + 'px';
+  pop.classList.remove('hidden');
+  pop.style.left = Math.min(innerWidth - w - 10, Math.max(10, r.left)) + 'px';
+  pop.style.top = (up ? Math.max(10, r.top - pop.offsetHeight - 8) : Math.min(innerHeight - pop.offsetHeight - 10, r.bottom + 6)) + 'px';
+}
+document.addEventListener('mousedown', e => {
+  if (!e.target.closest('#pop') && !e.target.closest('[data-pop]')) closePop();
+  if (!e.target.closest('#ctx')) closeCtx();
+});
+function closeCtx() { $('#ctx')?.classList.add('hidden'); }
+/* items: [icon, label, fn, danger] or '-' */
+function ctxMenu(e, items) {
+  e.preventDefault(); e.stopPropagation();
+  const c = $('#ctx');
+  S.ctxFns = [];
+  c.innerHTML = items.map(it => it === '-' ? '<hr>' : `<button class="${it[3] ? 'd' : ''}" data-ci="${S.ctxFns.push(it[2]) - 1}">${ico(it[0])}${esc(it[1])}</button>`).join('');
+  c.classList.remove('hidden');
+  const x = e.clientX ?? e.target.getBoundingClientRect().left, y = e.clientY ?? e.target.getBoundingClientRect().bottom;
+  c.style.left = Math.min(innerWidth - c.offsetWidth - 8, x) + 'px';
+  c.style.top = Math.min(innerHeight - c.offsetHeight - 8, y) + 'px';
+}
+$('#ctx').addEventListener('click', e => { const b = e.target.closest('[data-ci]'); if (!b) return; closeCtx(); S.ctxFns[+b.dataset.ci]?.(); });
 
 /* ======================= EVENTS ======================= */
 function onEvent(ev, d) {
   if (ev === 'progress') return taskUpdate(d);
   if (ev === 'log') {
     const arr = S.logs[d.id] = S.logs[d.id] || [];
-    arr.push(d.line); if (arr.length > 4000) arr.splice(0, arr.length - 4000);
-    if (S.cur?.id === d.id && !$('[data-pane="inst:console"]').classList.contains('hidden')) appendLog(d.line);
+    arr.push(d.line); if (arr.length > 5000) arr.splice(0, arr.length - 5000);
+    if (S.page === 'inst' && S.args.id === d.id && S.itab === 'logs' && S.logSel === '__live') appendLog(d.line);
     return;
   }
   if (ev === 'state') {
     d.running ? S.running.add(d.id) : S.running.delete(d.id);
     if (!d.running && d.code && d.code !== 0) {
       const i = S.instances.find(x => x.id === d.id);
-      toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report vorhanden' : ''}`, false);
+      toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report unter Logs' : ''}`, false);
     }
-    refreshInstances(); runUI();
-    renderOrbitHero();
+    refreshInstances();
   }
-  if (ev === 'instances') { S.instances = d; renderAllInstances(); }
-  if (ev === 'orbitcfg') {
-    if (hbDrag || JSON.stringify(d) === JSON.stringify(S.orbit.cfg)) return;
-    S.orbit.cfg = d; S.orbit.cfg.modules = S.orbit.cfg.modules || {};
-    renderOMods(); renderOrbitHero(); renderQuick(); if (curPage === 'hud') renderStage();
-    $('#oSync').textContent = 'Aus dem Spiel übernommen'; $('#hudSync').textContent = 'Aus dem Spiel übernommen'; $('#qsync').textContent = 'Gerade aus dem Spiel übernommen';
-  }
+  if (ev === 'instances') { S.instances = d; instancesChanged(); }
+  if (ev === 'orbitcfg') orbitCfgEvent(d);
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
 function taskUpdate(d) {
   if (d.done) delete S.tasks[d.task]; else S.tasks[d.task] = d;
   const list = Object.values(S.tasks), t = list[list.length - 1];
-  $('#task').classList.toggle('hidden', !t); $('#tbTask').classList.toggle('hidden', !t);
+  $('#tbTask').classList.toggle('hidden', !t);
+  if (!$('#pop').classList.contains('hidden') && $('#pop .tlist')) tasksPop();
   if (!t) return;
-  $('#taskStage').textContent = t.stage; $('#taskDetail').textContent = t.detail || '';
-  $('#taskPct').textContent = t.total > 1 ? t.pct + '%' : '';
-  $('#taskBar').style.width = (t.total > 1 ? t.pct : 100) + '%';
-  $('#tbTaskTxt').textContent = t.stage + (t.total > 1 ? ' · ' + t.pct + '%' : '');
+  $('#tbTaskTxt').textContent = (list.length > 1 ? list.length + ' Aufgaben · ' : '') + t.stage + (t.total > 1 ? ' · ' + t.pct + '%' : '');
   $('#tbTaskBar').style.width = (t.total > 1 ? t.pct : 100) + '%';
 }
+function tasksPop(e) {
+  const list = Object.values(S.tasks);
+  const html = `<div class="tlist">${list.length ? list.map(t => `<div class="tk"><b>${esc(t.stage)}</b><small>${esc(t.detail || '')}${t.total > 1 ? ' · ' + t.pct + '%' : ''}</small><div class="bar"><i style="width:${t.total > 1 ? t.pct : 100}%"></i></div></div>`).join('') : '<div class="tk"><small>Keine laufenden Downloads</small></div>'}</div>`;
+  if (e) { e.stopPropagation(); popAt($('#tbTask'), html, 320); } else $('#pop').innerHTML = html;
+}
+window.tasksPop = tasksPop;
 
-/* ======================= ACCOUNT HEAD ======================= */
+/* ======================= ACCOUNTS ======================= */
 function headHtml(acc, cls = 'head') {
   if (acc?.skin) return `<span class="${cls} skin" style="background-image:url('${esc(acc.skin)}')"></span>`;
   return `<span class="${cls}">${esc((acc?.name || '?')[0].toUpperCase())}</span>`;
 }
+const activeAcc = () => S.accounts.find(x => x.uuid === S.active) || S.accounts[0];
 function accountUI() {
-  const a = S.accounts.find(x => x.uuid === S.active) || S.accounts[0];
-  $('#acctHead').outerHTML = headHtml(a, 'head').replace('class="head', 'id="acctHead" class="head');
-  $('#acctName').textContent = a ? a.name : 'Anmelden';
-  $('#acctSub').textContent = a ? 'Microsoft-Konto' : 'Microsoft-Konto fehlt';
-  $('#uname').textContent = a ? a.name : 'Spieler';
+  const a = activeAcc();
+  $('#saccHead').outerHTML = headHtml(a, 'head').replace('class="head', 'id="saccHead" class="head');
+  $('#saccName').textContent = a ? a.name : 'Anmelden';
+  $('#saccSub').textContent = a ? 'Microsoft-Konto' : 'Nicht angemeldet';
 }
-
-/* ======================= INSTANCE SELECTION / PLAY ======================= */
-const selInst = () => S.instances.find(i => i.id === S.sel) || S.instances[0];
-function instSub(i) { return `${i.mcVersion} · ${LOADERS[i.loader]?.[0] || i.loader}`; }
-function runUI() {
-  const v = S.orbit?.ver || '26.3', full = (S.orbit?.info?.supported || ['26.3']).includes(v);
-  const oi = orbitInstFor(v), run = oi && S.running.has(oi.id);
-  $('#iselIcon').outerHTML = `<span class="iic" id="iselIcon">${blockSvg('orbit')}</span>`;
-  $('#iselName').textContent = 'Minecraft ' + v;
-  $('#iselSub').textContent = full ? 'Voller Client' : 'Overlay-Client';
-  $('#launchBtn').classList.toggle('run', !!run);
-  $('#launchTxt').textContent = run ? 'Beenden' : 'Spielen';
-  $('#launchSub').textContent = run ? 'Orbit Client läuft' : 'Orbit Client · ' + v;
-  $('#launchBtn .pi').innerHTML = ico(run ? 'stop' : 'play');
-  const n = S.running.size;
-  $('#tbDot').classList.toggle('on', n > 0);
-  $('#tbState').textContent = n ? 'Minecraft läuft' : 'Bereit';
-  $('#navRun').classList.toggle('hidden', !n);
-  if (curPage === 'inst' && S.cur) renderInstHead();
-}
-function selectInstance(id) { S.sel = id; api('settings.set', { key: 'lastInstance', value: id }); runUI(); closePop(); if (curPage === 'home') renderHome(); }
-window.selectInstance = selectInstance;
-function pickInstance(e) {
+function accountPop(e) {
   e.stopPropagation();
-  const pop = $('#pop');
-  if (!pop.classList.contains('hidden')) return closePop();
-  const r = $('#isel').getBoundingClientRect();
-  pop.innerHTML = (S.instances.map(i => `<button class="${i.id === S.sel ? 'on' : ''}" onclick="selectInstance('${i.id}')">${instIcon(i)}<span class="tx"><b>${esc(i.name)}</b><small>${esc(instSub(i))}</small></span>${S.running.has(i.id) ? '<i class="dot on"></i>' : ''}</button>`).join('') || '<div class="muted" style="padding:12px;font-size:12px">Noch keine Instanzen</div>')
-    + `<hr><button onclick="closePop();newInstance()"><span class="iic">${ico('plus')}</span><span class="tx"><b>Neue Instanz</b><small>Version und Loader wählen</small></span></button>`;
-  pop.style.left = r.left + 'px'; pop.style.width = r.width + 40 + 'px';
-  pop.classList.remove('hidden');
-  pop.style.top = Math.max(60, r.top - pop.offsetHeight - 8) + 'px';
+  if (!$('#pop').classList.contains('hidden')) return closePop();
+  const html = (S.accounts.length ? S.accounts.map(a => `<button class="${a.uuid === S.active ? 'on' : ''}" onclick="selectAccount('${jsq(a.uuid)}')">${headHtml(a)}<span class="tx"><b>${esc(a.name)}</b><small>${a.uuid === S.active ? 'Aktiv' : 'Wechseln'}</small></span>${a.uuid === S.active ? ico('check') : ''}</button>`).join('') + '<hr>' : '')
+    + `<button onclick="closePop();login()">${ico('plus')}<span class="tx"><b>Konto hinzufügen</b><small>Mit Microsoft anmelden</small></span></button>`
+    + (S.accounts.length ? `<button onclick="closePop();go('skins')">${ico('shirt')}<span class="tx"><b>Skins &amp; Umhänge</b></span></button><button onclick="closePop();removeAccount('${jsq(S.active)}')">${ico('logout')}<span class="tx"><b>Abmelden</b></span></button>` : '');
+  popAt($('#sacc'), html, 260, true);
 }
-window.pickInstance = pickInstance;
-function closePop() { $('#pop')?.classList.add('hidden'); }
-document.addEventListener('click', e => { if (!e.target.closest('#pop') && !e.target.closest('#isel') && !e.target.closest('#cver')) closePop(); });
+window.accountPop = accountPop;
+window.selectAccount = async uuid => { try { const r = await api('auth.select', { uuid }); S.accounts = r.accounts; S.active = r.active; } catch (e) { fail('Konto', e); } closePop(); accountUI(); if (S.page === 'skins' || S.page === 'settings' || S.page === 'home') go(S.page, S.args, false); };
+window.removeAccount = async uuid => {
+  const a = S.accounts.find(x => x.uuid === uuid); if (!a) return;
+  if (!await confirmBox('Abmelden?', `${a.name} wird aus OrbitLauncher entfernt. Du kannst dich jederzeit wieder anmelden.`, 'Abmelden', true)) return;
+  const r = await api('auth.remove', { uuid }); S.accounts = r.accounts; S.active = r.active; accountUI(); go(S.page, S.args, false);
+};
+async function login() {
+  $('#gateErr').textContent = '';
+  const b = $('.g-ms'); b?.classList.add('busy');
+  try {
+    const r = await api('auth.login');
+    if (!r) return;
+    S.accounts = r.accounts; S.active = r.active; accountUI();
+    gate(false); toast('Angemeldet', 'Willkommen, ' + r.account.name);
+    if (S.afterLogin) { const f = S.afterLogin; S.afterLogin = null; f(); }
+    go(S.page, S.args, false);
+  } catch (e) {
+    if (e.message === 'NO_APP_ID') { gate(true); $('#gateDev').classList.remove('hidden'); $('#gateErr').textContent = 'Microsoft-App-ID fehlt noch (einmalig einrichten).'; }
+    else if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message;
+    else fail('Anmeldung fehlgeschlagen', e);
+  } finally { b?.classList.remove('busy'); }
+}
+window.login = login;
+function gate(show) {
+  if (show && !$('#gateBg').innerHTML) $('#gateBg').innerHTML = bannerSvg(false, 675);
+  $('#gate').classList.toggle('hidden', !show);
+  if (!show) S.afterLogin = null;
+}
+window.gate = gate;
+async function saveAppId() {
+  const id = $('#gateAppId').value.trim();
+  try { await api('auth.appid', { id }); $('#gateDev').classList.add('hidden'); $('#gateErr').textContent = ''; login(); }
+  catch (e) { $('#gateErr').textContent = e.message; }
+}
+window.saveAppId = saveAppId;
 
-async function play(id) {
-  const i = id ? S.instances.find(x => x.id === id) : selInst();
-  if (!i) return newInstance();
-  if (S.running.has(i.id)) { if (await confirmBox('Minecraft beenden?', `„${i.name}“ wird sofort geschlossen. Nicht gespeicherter Fortschritt kann verloren gehen.`, 'Beenden', true)) api('stop', { id: i.id }); return; }
-  if (!S.accounts.length) return needAccount();
-  S.sel = i.id; runUI();
-  $('#launchBtn').classList.add('busy');
-  try { await api('launch', { id: i.id }); toast('Minecraft startet', `${i.name} · ${instSub(i)}`); }
+/* ======================= INSTANCES (shared) ======================= */
+const instById = id => S.instances.find(i => i.id === id);
+const instSub = i => `${LOADERS[i.loader]?.[0] || cap(i.loader)} ${i.mcVersion}`;
+async function refreshInstances() { try { S.instances = await api('instances.list'); } catch { } instancesChanged(); }
+function instancesChanged() {
+  sideUI(); runUI();
+  if (S.page === 'home') PAGES.home($('#p-home'), S.args, true);
+  if (S.page === 'library') renderLibGrid();
+  if (S.page === 'inst') { const i = instById(S.args.id); if (i) instHead(i); else go('library'); }
+}
+function sideUI() {
+  $('#navLib').textContent = S.instances.length || '';
+  const list = S.instances.slice(0, 7);
+  $('#sideInst').innerHTML = list.length ? list.map(i => {
+    const run = S.running.has(i.id);
+    return `<button class="si ${S.page === 'inst' && S.args.id === i.id ? 'on' : ''}" onclick="go('inst',{id:'${jsq(i.id)}'})" oncontextmenu="instCtx(event,'${jsq(i.id)}')">${instIcon(i)}${run ? '<i class="live"></i>' : ''}<span class="tx"><b>${esc(i.name)}</b><small>${esc(instSub(i))}</small></span>
+      <span class="go ${run ? 'run' : ''}" onclick="event.stopPropagation();play('${jsq(i.id)}')" title="${run ? 'Beenden' : 'Spielen'}">${ico(run ? 'stop' : 'play', '')}</span></button>`;
+  }).join('') : '<div class="si-empty">Noch keine Instanzen. Leg eine an oder installiere ein Modpack.</div>';
+}
+function runUI() {
+  const ids = [...S.running], rp = $('#runPill');
+  if (!ids.length) { rp.className = 'runpill idle'; rp.innerHTML = '<i class="dot"></i>Kein Spiel läuft'; return; }
+  const i = instById(ids[0]);
+  rp.className = 'runpill';
+  rp.innerHTML = `<i class="dot on"></i><b>${esc(i?.name || ids[0])}</b>${ids.length > 1 ? `<span>+${ids.length - 1}</span>` : ''}
+    <button title="Logs" onclick="go('inst',{id:'${jsq(ids[0])}',tab:'logs'})">${ico('terminal')}</button><button class="st" title="Beenden" onclick="play('${jsq(ids[0])}')">${ico('stop')}</button>`;
+}
+async function play(id, extra = {}) {
+  const i = instById(id); if (!i) return;
+  if (S.running.has(id)) { try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
+  if (!S.accounts.length) { S.afterLogin = () => play(id, extra); return gate(true); }
+  toast('Minecraft startet', `${i.name}${extra.world ? ' · Welt ' + extra.worldName : extra.server ? ' · ' + extra.server : ''}`);
+  try { await api('launch', { id, ...extra }); }
   catch (e) { fail('Start fehlgeschlagen', e); }
-  finally { $('#launchBtn').classList.remove('busy'); }
 }
 window.play = play;
-function needAccount() { return gate(true);
+function instCtx(e, id) {
+  const i = instById(id); if (!i) return;
+  const run = S.running.has(id);
+  ctxMenu(e, [[run ? 'stop' : 'play', run ? 'Beenden' : 'Spielen', () => play(id)], ['plus', 'Inhalte hinzufügen', () => go('discover', { type: i.loader === 'vanilla' ? 'resourcepack' : 'mod', target: id })],
+    ['eye', 'Anzeigen', () => go('inst', { id })], ['settings', 'Einstellungen', () => instSettings(id)], '-',
+    ['folder', 'Ordner öffnen', () => api('folder.open', { id, what: '' })], ['dup', 'Duplizieren', () => duplicateInst(id)], '-',
+    ['trash', 'Löschen', () => deleteInst(id), true]]);
 }
-function needAccountOld() {
-  modal(`<div class="kicker">Konto</div><h1>Melde dich zuerst an</h1><p>Zum Spielen brauchst du ein Microsoft-Konto, das Minecraft: Java Edition besitzt. Die Anmeldung läuft über die offizielle Microsoft-Seite.</p>
-    <div class="act"><button class="btn" onclick="closeModal()">Später</button><button class="btn p" onclick="closeModal();login()">${ico('user')}Mit Microsoft anmelden</button></div>`);
+window.instCtx = instCtx;
+async function duplicateInst(id) {
+  try { const c = await api('instance.duplicate', { id }); toast('Dupliziert', c.name); await refreshInstances(); go('inst', { id: c.id }); }
+  catch (e) { fail('Duplizieren fehlgeschlagen', e); }
 }
+async function deleteInst(id) {
+  const i = instById(id); if (!i) return;
+  if (!await confirmBox('Instanz löschen?', `„${i.name}“ wird mit allen Welten, Mods und Einstellungen gelöscht. Das kann nicht rückgängig gemacht werden.`, 'Löschen', true)) return;
+  try { await api('instance.delete', { id }); toast('Gelöscht', i.name); if (S.page === 'inst') go('library'); await refreshInstances(); }
+  catch (e) { fail('Löschen fehlgeschlagen', e); }
+}
+window.deleteInst = deleteInst;
 
 /* ======================= HOME ======================= */
-function renderHome() {
-  const h = new Date().getHours();
-  $('#greet').textContent = h < 5 ? 'Noch wach' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Bereit' : 'Guten Abend';
-  if (!$('#bnScene').innerHTML) $('#bnScene').innerHTML = bannerSvg();
-  renderOrbitHero(); renderQuick();
-  loadNews();
+const RND_OFF = Math.floor(Math.random() * 4) * 12;
+PAGES.home = async (el, a, soft) => {
+  crumbs([['Start']]);
+  const acc = activeAcc(), last = S.instances[0];
+  const total = S.instances.reduce((s, i) => s + (i.playSeconds || 0), 0);
+  const hcard = last ? `<div class="hcard">${instIcon(last)}<div class="tx"><small>Weiterspielen</small><b class="ell">${esc(last.name)}</b><small>${esc(instSub(last))} · ${esc(ago(last.lastPlayed))}</small></div>
+      <button class="btn lg ${S.running.has(last.id) ? 'stop' : 'play'}" onclick="play('${jsq(last.id)}')">${ico(S.running.has(last.id) ? 'stop' : 'play')}${S.running.has(last.id) ? 'Beenden' : 'Spielen'}</button></div>` : '';
+  const head = `<div class="hero2"><div class="hbg">${S.heroSvg || (S.heroSvg = bannerSvg(false, 300))}</div>
+    <div class="hl"><div class="kicker">${acc ? 'Angemeldet als ' + esc(acc.name) : 'OrbitLauncher'}</div><h1>${acc ? 'Willkommen zurück, <span class="grad">' + esc(acc.name) + '</span>' : 'Willkommen bei <span class="grad">OrbitLauncher</span>'}</h1>
+      <p class="hsub">${S.instances.length ? `${S.instances.length} Instanz${S.instances.length > 1 ? 'en' : ''} · ${ptime(total)} gespielt` : 'Jede Minecraft-Version, alle Mod-Loader und alles von Modrinth an einem Ort.'}</p>
+      <div class="hact">${S.instances.length ? '' : `<button class="btn lg p" onclick="newInstance()">${ico('plus')}Erste Instanz erstellen</button><button class="btn lg" onclick="go('discover',{type:'modpack'})">${ico('compass')}Modpacks entdecken</button>`}${!acc ? `<button class="btn lg" onclick="login()">${ico('user')}Anmelden</button>` : ''}</div></div>${hcard}</div>`;
+  if (soft && el.querySelector('.hgrid')) { el.querySelector('.hero2').outerHTML = head; homeRecent(); return; }
+  el.innerHTML = `${head}<div class="hgrid"><div>
+      <div id="hWorlds"></div><div id="hRecent"></div>
+      <div class="sec"><h2>Beliebte Modpacks</h2><span class="sp"></span><button class="lnk" onclick="go('discover',{type:'modpack'})">Alle ansehen${ico('right')}</button></div><div class="prow" id="hPacks">${'<div class="skel" style="height:220px"></div>'.repeat(4)}</div>
+      <div class="sec"><h2>Mods entdecken</h2><span class="sp"></span><button class="lnk" onclick="go('discover',{type:'mod'})">Alle ansehen${ico('right')}</button></div><div class="prow" id="hMods">${'<div class="skel" style="height:220px"></div>'.repeat(4)}</div>
+    </div><div>
+      <div class="sec" style="margin-top:28px"><h2>Orbit Client</h2></div>
+      <button class="orbitcta" onclick="newInstance('orbit')"><span class="iic">${blockSvg('orbit')}</span><span><b>Eigener PvP-Client</b><small>Keystrokes, CPS, Zoom, Freelook, HUD-Editor und Performance-Mods in einer Instanz.</small></span></button>
+      <div class="sec"><h2>Minecraft-News</h2></div><div class="newsl" id="hNews">${'<div class="skel" style="height:190px"></div>'.repeat(2)}</div>
+    </div></div>`;
+  homeRecent();
+  api('worlds.recent').then(w => {
+    S.recentWorlds = w;
+    $('#hWorlds').innerHTML = w?.length ? `<div class="sec"><h2>Zurück in die Welt</h2></div><div class="wgrid">${w.slice(0, 6).map(x => worldCard(x, x.id, true)).join('')}</div>` : '';
+  }).catch(() => { });
+  const tile = h => `<button class="ptile" onclick="go('project',{id:'${jsq(h.project_id)}'})"><span class="gimg" style="${h.featured_gallery || h.gallery?.[0] ? `background-image:url('${esc(h.featured_gallery || h.gallery[0])}')` : ''}">${picHtml(h.icon_url)}</span>
+    <span class="bd"><b>${esc(h.title)}</b><p>${esc(h.description)}</p><span class="row" style="gap:12px"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico('heart')}<b>${num(h.follows)}</b></span></span></span></button>`;
+  mr(`/search?limit=12&index=follows&facets=${encodeURIComponent('[["project_type:modpack"]]')}`).then(r => $('#hPacks') && ($('#hPacks').innerHTML = r.hits.map(tile).join(''))).catch(() => $('#hPacks') && ($('#hPacks').innerHTML = '<div class="empty">Modrinth ist gerade nicht erreichbar.</div>'));
+  mr(`/search?limit=12&offset=${RND_OFF}&index=downloads&facets=${encodeURIComponent('[["project_type:mod"]]')}`).then(r => $('#hMods') && ($('#hMods').innerHTML = r.hits.map(tile).join(''))).catch(() => $('#hMods') && ($('#hMods').innerHTML = ''));
+  (S.news ? Promise.resolve(S.news) : api('news')).then(n => {
+    S.news = n;
+    $('#hNews').innerHTML = (n || []).slice(0, 4).map(x => `<button class="nwi" onclick="openUrl('https://www.minecraft.net/de-de/article/minecraft-java-edition-${esc((x.version || '').replace(/\./g, '-'))}')">${x.image ? `<i style="background-image:url('${esc(x.image)}')"></i>` : ''}<div><b>${esc(x.title)}</b><small>${esc(dateDe(x.date))}</small><p>${esc(x.text || '')}</p></div></button>`).join('');
+  }).catch(() => { $('#hNews').innerHTML = ''; });
+};
+function homeRecent() {
+  const el = $('#hRecent'); if (!el) return;
+  const list = S.instances.slice(0, 8);
+  el.innerHTML = list.length ? `<div class="sec"><h2>Zuletzt gespielt</h2><span class="sp"></span><button class="lnk" onclick="go('library')">Bibliothek${ico('right')}</button></div><div class="igrid">${list.map(i => instCard(i, true)).join('')}</div>` : '';
 }
-const QUICK = ['keystrokes', 'cps', 'zoom', 'freelook', 'fullbright', 'crosshair', 'togglesprint', 'coords'];
-function renderQuick() {
-  if (!S.orbit.cfg) return;
-  $('#qtog').innerHTML = QUICK.map(id => `<div class="qrow" data-q="${id}"><span class="qi">${ico(OM[id].icon)}</span><span class="tx"><b>${esc(OM[id].name)}</b><small>${(S.orbit.info?.overlay || []).includes(id) ? 'alle Versionen' : 'voller Client'}</small></span><div class="tg sm ${oOn(id) ? 'on' : ''}"></div></div>`).join('');
+function worldCard(w, id, showInst) {
+  const i = instById(id), quick = supportsQuickPlay(i?.mcVersion);
+  return `<div class="wcard">${w.icon ? `<span class="pic" style="background-image:url('${esc(w.icon)}')"></span>` : `<span class="pic">${ico('earth')}</span>`}
+    <div class="tx"><b>${esc(w.name)}</b><small>${showInst ? esc(w.instance || i?.name || '') + ' · ' : ''}${esc(w.mode || 'Welt')} · ${esc(ago(w.lastPlayed))}</small></div>
+    <button class="ib p" title="${quick ? 'Direkt in die Welt' : 'Spielen'}" onclick="play('${jsq(id)}',${quick ? `{world:'${jsq(w.folder)}',worldName:'${jsq(w.name)}'}` : '{}'})">${ico('play')}</button></div>`;
 }
-$('#qtog').addEventListener('click', e => {
-  const r = e.target.closest('[data-q]'); if (!r) return;
-  const id = r.dataset.q, on = !oOn(id);
-  ocfg(id).enabled = on; r.querySelector('.tg').classList.toggle('on', on);
-  oSave(); renderOrbitHero();
-});
-async function loadNews() {
-  if (S.news) return renderNews();
-  try { S.news = await api('news'); renderNews(); } catch { $('#news').innerHTML = '<div class="empty">Neuigkeiten konnten nicht geladen werden.</div>'; }
+/* quick play (straight into a world/server) exists since 1.20 */
+function supportsQuickPlay(v) {
+  if (!v) return false;
+  const m = /^(\d+)\.(\d+)/.exec(v); if (!m) return /^\d\dw\d\d/.test(v) && +v.slice(0, 2) >= 23;
+  return +m[1] > 1 || +m[2] >= 20;
 }
-function renderNews() {
-  $('#news').innerHTML = (S.news || []).slice(0, 6).map(n => `<button class="card hov nw" onclick="api('open.url',{url:'https://www.minecraft.net/de-de/article/minecraft-java-edition-${esc((n.version || '').replace(/\./g, '-'))}'})">
-    <div class="ni" style="${n.image ? `background-image:url('${esc(n.image)}')` : 'background:linear-gradient(135deg,rgba(var(--a-rgb),.35),#151518)'}">${vtypeChip(n.type)}</div>
-    <div class="nt"><b>${esc(n.title)}</b><p>${esc(n.text)}</p><small>${dateDe(n.date)}</small></div></button>`).join('');
+function instCard(i, mini) {
+  const run = S.running.has(i.id);
+  return `<div class="icard ${mini ? 'mini' : ''}" onclick="go('inst',{id:'${jsq(i.id)}'})" oncontextmenu="instCtx(event,'${jsq(i.id)}')">
+    <div class="cv">${instIcon(i)}${run ? '<span class="lv"><i class="dot on"></i>LÄUFT</span>' : ''}</div>
+    <button class="pl ${run ? 'run' : ''}" onclick="event.stopPropagation();play('${jsq(i.id)}')" title="${run ? 'Beenden' : 'Spielen'}">${ico(run ? 'stop' : 'play', '')}</button>
+    <div class="bd"><b>${esc(i.name)}</b><small>${esc(instSub(i))}${mini ? '' : ' · ' + esc(ago(i.lastPlayed))}</small>${mini ? '' : `<div class="chips">${loaderChip(i.loader)}${i.kind !== 'custom' ? `<span class="chip ${i.kind === 'orbit' ? 'a' : 'm'}">${KIND[i.kind]}</span>` : ''}${i.mods ? `<span class="chip m">${i.mods} Mods</span>` : ''}</div>`}</div></div>`;
 }
 
-/* ======================= INSTANCES ======================= */
-async function refreshInstances() { try { S.instances = await api('instances.list'); } catch { } renderAllInstances(); }
-function renderAllInstances() {
-  if (!S.instances.find(i => i.id === S.sel)) S.sel = S.instances[0]?.id || null;
-  runUI();
-  if (curPage === 'instances') renderInstances();
-  if (curPage === 'home') renderHome();
-  if (curPage === 'inst' && S.cur) { S.cur = S.instances.find(i => i.id === S.cur.id) || S.cur; renderInstHead(); }
-  fillTargets();
-}
-let instFilter = 'all';
-$('#instFilter').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; instFilter = b.dataset.f; $$('#instFilter button').forEach(x => x.classList.toggle('on', x === b)); renderInstances(); });
-function renderInstances() {
-  const q = ($('#instQ').value || '').toLowerCase();
-  const list = S.instances.filter(i => (!q || (i.name + ' ' + i.mcVersion + ' ' + i.loader).toLowerCase().includes(q))
-    && (instFilter === 'all' || (instFilter === 'vanilla' && i.loader === 'vanilla') || (instFilter === 'modded' && i.loader !== 'vanilla') || (instFilter === 'modpack' && i.kind === 'modpack')));
-  $('#igrid').innerHTML = list.map(i => {
-    const run = S.running.has(i.id);
-    return `<div class="card hov icard ${run ? 'run' : ''}" onclick="openInst('${i.id}')">
-      <div class="top">${instIcon(i, 'iic lg')}<div class="tx"><b>${esc(i.name)}</b><span>${esc(i.mcVersion)}${i.loaderVersion ? ' · ' + esc(LOADERS[i.loader]?.[0]) + ' ' + esc(i.loaderVersion) : ''}</span></div></div>
-      <div class="chips">${loaderChip(i.loader)}${i.kind === 'orbit' ? '<span class="chip a">Orbit Client</span>' : i.kind === 'modpack' ? '<span class="chip m">Modpack</span>' : ''}${i.mods ? `<span class="chip m">${i.mods} Mods</span>` : ''}</div>
-      <div class="foot">${run ? '<span class="livedot"><i class="dot on"></i>Läuft</span>' : `${ico('clock')}<span>${ago(i.lastPlayed)} · ${ptime(i.playSeconds)}</span>`}
-        <button class="btn sm ${run ? 'd' : 'p'}" onclick="event.stopPropagation();play('${i.id}')">${ico(run ? 'stop' : 'play')}${run ? 'Stop' : 'Spielen'}</button></div></div>`;
-  }).join('') + `<button class="card hov icard new" onclick="newInstance()"><span class="qi">${ico('plus')}</span><b style="font-size:14px">Neue Instanz</b><span style="font-size:12px">Vanilla, Fabric, Quilt, Forge, NeoForge</span></button>`;
-}
-window.renderInstances = renderInstances;
-
-/* ---------- instance detail ---------- */
-async function openInst(id) {
-  S.cur = S.instances.find(i => i.id === id); if (!S.cur) return;
-  S.sel = id; runUI();
-  go('inst');
-  renderInstHead();
-  pageTab('inst', 'mods');
-}
-window.openInst = openInst;
-function renderInstHead() {
-  const i = S.cur, run = S.running.has(i.id);
-  $('#ihead').innerHTML = `${instIcon(i, 'iic xl')}<div class="tx"><button class="btn sm" onclick="go('instances')" style="margin-bottom:6px">${ico('back')}Instanzen</button><h1>${esc(i.name)}</h1>
-    <div class="chips"><span class="chip m">Minecraft ${esc(i.mcVersion)}</span>${loaderChip(i.loader)}${i.loaderVersion ? `<span class="chip m">${esc(i.loaderVersion)}</span>` : ''}<span class="chip m">${ico('clock')}${ptime(i.playSeconds)}</span>${run ? '<span class="chip g"><i class="dot on"></i>Läuft</span>' : ''}</div></div>
-    <div class="acts"><button class="ib" title="Ordner öffnen" onclick="openFolder('')">${ico('folder')}</button><button class="btn" onclick="addContent()">${ico('plus')}Inhalte hinzufügen</button><button class="btn ${run ? 'd' : 'p'}" onclick="play('${i.id}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button></div>`;
-}
-function openFolder(sub) { api('folder.open', { id: S.cur?.id, what: sub }); }
-window.openFolder = openFolder;
-function addContent() { const t = $('[data-tabs="inst"] .tab.on')?.dataset.tab; S.browse.type = ['resourcepack', 'shader'].includes(t) ? t : 'mod'; S.browse.target = S.cur.id; go('browse'); }
-window.addContent = addContent;
-
-const CTYPES = { mods: 'mod', resourcepack: 'resourcepack', shader: 'shader' };
-async function loadContent(tab) {
-  const type = CTYPES[tab], pane = $(`[data-pane="inst:${tab}"]`), i = S.cur;
-  if (type === 'mod' && i.loader === 'vanilla') {
-    pane.innerHTML = `<div class="card note">${ico('info')}<div><b>Vanilla-Instanz</b><p>Mods brauchen einen Mod-Loader. Lege eine neue Instanz mit Fabric, Quilt, Forge oder NeoForge an, oder nutze den Orbit Client. Ressourcenpakete und Shader (mit Iris) gehen trotzdem.</p></div></div>`;
+/* ======================= LIBRARY ======================= */
+S.lib = { tab: 'all', q: '', sort: 'played', group: 'group' };
+try { Object.assign(S.lib, JSON.parse(localStorage.getItem('orbit.lib') || '{}'), { q: '' }); } catch { }
+PAGES.library = el => {
+  crumbs([['Bibliothek']]);
+  const L = S.lib;
+  el.innerHTML = `<div class="ph"><div><div class="kicker">Deine Instanzen</div><h1>Bibliothek</h1></div><div class="ph-r"><button class="btn" onclick="importPack()">${ico('upload')}.mrpack importieren</button><button class="btn p" onclick="newInstance()">${ico('plus')}Instanz erstellen</button></div></div>
+    <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ['orbit', 'Orbit Client']].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="srch">${ico('search')}<input class="in" id="libQ" placeholder="Instanzen durchsuchen…" value="${esc(L.q)}"></div><span class="sp"></span>
+      <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select>
+      <select class="sel" id="libGroup">${[['group', 'Gruppe'], ['loader', 'Loader'], ['version', 'Spielversion'], ['none', 'Keine']].map(([k, n]) => `<option value="${k}" ${L.group === k ? 'selected' : ''}>Gruppieren: ${n}</option>`).join('')}</select></div>
+    <div id="libGrid"></div>`;
+  const save = () => { try { localStorage.setItem('orbit.lib', JSON.stringify(L)); } catch { } renderLibGrid(); };
+  $('#libTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; L.tab = b.dataset.k; $$('#libTabs button').forEach(x => x.classList.toggle('on', x === b)); save(); };
+  $('#libQ').oninput = e => { L.q = e.target.value; renderLibGrid(); };
+  $('#libSort').onchange = e => { L.sort = e.target.value; save(); };
+  $('#libGroup').onchange = e => { L.group = e.target.value; save(); };
+  renderLibGrid();
+};
+const vkey = v => (v || '').split(/[.\-]/).map(x => /^\d+$/.test(x) ? x.padStart(4, '0') : x).join('.');
+function renderLibGrid() {
+  const el = $('#libGrid'); if (!el) return;
+  const L = S.lib, q = L.q.trim().toLowerCase();
+  let list = S.instances.filter(i => (L.tab === 'all' || i.kind === L.tab) && (!q || (i.name + ' ' + i.mcVersion + ' ' + i.loader).toLowerCase().includes(q)));
+  const by = { played: (a, b) => new Date(b.lastPlayed || 0) - new Date(a.lastPlayed || 0), name: (a, b) => a.name.localeCompare(b.name, 'de'), created: (a, b) => new Date(b.created || 0) - new Date(a.created || 0), time: (a, b) => (b.playSeconds || 0) - (a.playSeconds || 0), version: (a, b) => vkey(b.mcVersion).localeCompare(vkey(a.mcVersion)) };
+  list.sort(by[L.sort] || by.played);
+  if (!S.instances.length) {
+    el.innerHTML = `<div class="lempty"><span class="iic">${blockSvg('grass')}</span><h2>Noch keine Instanzen</h2><p>Eine Instanz ist ein eigenes Minecraft mit eigener Version, eigenen Mods und eigenen Welten. Erstell eine oder installier ein Modpack.</p>
+      <div class="row" style="justify-content:center"><button class="btn p" onclick="newInstance()">${ico('plus')}Instanz erstellen</button><button class="btn" onclick="go('discover',{type:'modpack'})">${ico('compass')}Modpacks ansehen</button></div></div>`;
     return;
   }
-  pane.innerHTML = '<div class="skel"></div>';
-  let files = [];
-  try { files = await api('instance.content', { id: i.id, type }); } catch (e) { pane.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
-  const label = { mod: 'Mods', resourcepack: 'Ressourcenpakete', shader: 'Shaderpacks' }[type];
-  $({ mod: '#cntMods', resourcepack: '#cntRp', shader: '#cntSh' }[type]).textContent = files.length;
-  pane.innerHTML = `<div class="ctool"><div class="srch"><svg class="i"><use href="#search"/></svg><input class="in" placeholder="${label} filtern…" oninput="filterRows(this)"></div>
-      ${type === 'mod' ? `<button class="btn" onclick="checkUpdates()">${ico('refresh')}Updates prüfen</button>` : ''}
-      <button class="btn" onclick="openFolder('${type === 'mod' ? 'mods' : type === 'shader' ? 'shaderpacks' : 'resourcepacks'}')">${ico('folder')}Ordner</button>
-      <button class="btn p" onclick="addContent()">${ico('plus')}Hinzufügen</button></div>
-    ${files.length ? `<div class="card clist">${files.map(f => `<div class="crow ${f.on ? '' : 'off'}" data-q="${esc((f.title + ' ' + f.file).toLowerCase())}">
-        <span class="iic">${f.icon ? `<img src="${esc(f.icon)}" alt="" loading="lazy">` : ico(type === 'shader' ? 'sun' : type === 'mod' ? 'puzzle' : 'image')}</span>
-        <div class="tx"><b>${esc(f.title)}</b>${f.dependency ? ' <span class="chip m">Abhängigkeit</span>' : ''}<p>${esc(f.file)}${f.version ? ' · ' + esc(f.version) : ''}${f.size ? ' · ' + bytes(f.size) : ''}</p></div>
-        <span class="up" data-up="${esc(f.projectId || '')}"></span>
-        <div class="tg sm ${f.on ? 'on' : ''}" onclick="toggleContent(this,'${type}','${esc(f.file)}')"></div>
-        <button class="ib sm d" title="Entfernen" onclick="removeContent('${type}','${esc(f.file)}','${esc(f.title)}')">${ico('trash')}</button></div>`).join('')}</div>`
-      : `<div class="empty">${ico(type === 'shader' ? 'sun' : type === 'mod' ? 'puzzle' : 'image')}<p style="margin-top:8px">Noch keine ${label}. Hol dir welche von Modrinth.</p><button class="btn p mt" onclick="addContent()">${ico('compass')}${label} entdecken</button></div>`}`;
+  if (!list.length) { el.innerHTML = `<div class="empty">Keine Instanz passt zu „${esc(L.q)}“.</div>`; return; }
+  const keyOf = { group: i => i.group || (i.kind === 'orbit' ? 'Orbit Client' : i.kind === 'modpack' ? 'Modpacks' : 'Ohne Gruppe'), loader: i => LOADERS[i.loader]?.[0] || i.loader, version: i => 'Minecraft ' + i.mcVersion.split('.').slice(0, 2).join('.'), none: () => '' }[L.group];
+  const groups = new Map();
+  list.forEach(i => { const k = keyOf(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
+  el.innerHTML = [...groups].map(([k, l]) => `<div class="ggrp">${k ? `<h3>${esc(k)}<i>${l.length}</i></h3>` : ''}<div class="igrid">${l.map(i => instCard(i)).join('')}</div></div>`).join('');
 }
-window.filterRows = el => { const q = el.value.toLowerCase(); el.closest('.ipane').querySelectorAll('.crow').forEach(r => r.classList.toggle('hidden', !!q && !r.dataset.q.includes(q))); };
-window.toggleContent = async (el, type, file) => { const on = !el.classList.contains('on'); el.classList.toggle('on', on); el.closest('.crow').classList.toggle('off', !on); try { await api('content.toggle', { id: S.cur.id, type, file, on }); } catch (e) { fail('Fehler', e); } };
-window.removeContent = async (type, file, title) => {
-  if (!await confirmBox('Entfernen?', `„${title}“ wird aus der Instanz gelöscht.`, 'Entfernen', true)) return;
-  try { await api('content.remove', { id: S.cur.id, type, file }); toast('Entfernt', title); loadContent($('[data-tabs="inst"] .tab.on').dataset.tab); refreshInstances(); } catch (e) { fail('Fehler', e); }
-};
-async function checkUpdates() {
-  try {
-    const ups = await api('content.updates', { id: S.cur.id });
-    $$('[data-up]').forEach(e => e.innerHTML = '');
-    if (!ups.length) return toast('Alles aktuell', 'Keine Mod-Updates gefunden');
-    ups.forEach(u => { const e = $(`[data-up="${u.projectId}"]`); if (e) e.innerHTML = `<span class="chip a">${esc(u.from)} → ${esc(u.to)}</span>`; });
-    if (await confirmBox(`${ups.length} Update${ups.length > 1 ? 's' : ''} gefunden`, ups.map(u => `${u.title}: ${u.from} → ${u.to}`).join('\n'), 'Alle aktualisieren')) {
-      await api('content.updateAll', { id: S.cur.id }); toast('Mods aktualisiert', `${ups.length} Mod${ups.length > 1 ? 's' : ''}`); loadContent('mods');
-    }
-  } catch (e) { fail('Update-Prüfung fehlgeschlagen', e); }
-}
-window.checkUpdates = checkUpdates;
-function appendLog(line) {
-  const v = $('#logv'); if (v.querySelector('.muted')) v.innerHTML = '';
-  const d = document.createElement('div'); d.textContent = line;
-  if (/\/(ERROR|FATAL)\]|Exception|Caused by/.test(line)) d.className = 'e'; else if (/\/WARN\]/.test(line)) d.className = 'w';
-  const stick = v.scrollTop + v.clientHeight >= v.scrollHeight - 30;
-  v.append(d); if (v.childElementCount > 2000) v.firstChild.remove();
-  if (stick) v.scrollTop = v.scrollHeight;
-}
-function renderLog() {
-  const v = $('#logv'), lines = S.logs[S.cur.id] || [];
-  v.innerHTML = lines.length ? '' : '<span class="muted">Noch keine Ausgabe. Starte die Instanz, dann erscheint hier das Log.</span>';
-  lines.slice(-1500).forEach(appendLog);
-}
-window.copyLog = () => { navigator.clipboard?.writeText((S.logs[S.cur.id] || []).join('\n')); toast('Log kopiert'); };
-
-function renderOpts() {
-  const i = S.cur;
-  $('#iopts').innerHTML = `<div class="card">
-    <div class="srow"><div><b>Name</b><p>Wie die Instanz im Launcher heißt</p></div><input class="in" id="oName" style="width:280px" value="${esc(i.name)}"></div>
-    <div class="srow"><div><b>Symbol</b></div><div class="icons" id="oIcons">${Object.keys(BLOCKS).concat('orbit').map(k => `<button data-ic="${k}" class="${i.icon === k ? 'on' : ''}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div></div>
-    <div class="srow"><div><b>Arbeitsspeicher</b><p id="oRamV">${i.ramMb ? (i.ramMb / 1024) + ' GB' : 'Standard aus den Einstellungen'}</p></div><input type="range" id="oRamI" min="0" max="32" step="1" value="${(i.ramMb || 0) / 1024}" style="width:200px"></div>
-    <div class="srow"><div><b>Java</b><p>Leer = passendes Java automatisch</p></div><div class="row"><input class="in" id="oJava" style="width:260px" placeholder="automatisch" value="${esc(i.javaPath || '')}"><button class="btn sm" onclick="pickJava('oJava')">Wählen</button></div></div>
-    <div class="srow"><div><b>JVM-Argumente</b><p>Nur für diese Instanz</p></div><input class="in" id="oJvm" style="width:320px" placeholder="Standard" value="${esc(i.jvmArgs || '')}"></div>
-    <div class="srow"><div><b>Fenstergröße</b><p>Leer = Einstellung des Launchers</p></div><div class="row"><input class="in num" id="oW" style="width:90px" placeholder="Breite" value="${i.width || ''}"><span class="muted">×</span><input class="in num" id="oH" style="width:90px" placeholder="Höhe" value="${i.height || ''}"></div></div>
-    <div class="srow"><div><b>Version &amp; Loader</b><p>Minecraft ${esc(i.mcVersion)} · ${LOADERS[i.loader]?.[0]} ${esc(i.loaderVersion || '')}</p></div><button class="btn sm" onclick="api('instance.repair',{id:'${i.id}'}).then(()=>toast('Dateien geprüft','Fehlende Dateien wurden neu geladen')).catch(e=>fail('Fehler',e))">${ico('refresh')}Dateien prüfen</button></div>
-    <div class="srow"><div><b>Instanz löschen</b><p>Welten, Mods und Einstellungen dieser Instanz werden gelöscht</p></div><button class="btn d sm" onclick="deleteInst()">${ico('trash')}Löschen</button></div>
-    <div class="row mt"><span class="sp"></span><button class="btn p" onclick="saveOpts()">${ico('check')}Speichern</button></div></div>`;
-  $('#oRamI').oninput = e => { $('#oRamV').textContent = +e.target.value ? e.target.value + ' GB' : 'Standard aus den Einstellungen'; setRange(e.target); };
-  setRange($('#oRamI'));
-  $('#oIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; $$('#oIcons button').forEach(x => x.classList.toggle('on', x === b)); };
-}
-window.saveOpts = async () => {
-  const patch = { name: $('#oName').value.trim() || S.cur.name, icon: $('#oIcons .on')?.dataset.ic || S.cur.icon, ramMb: +$('#oRamI').value * 1024, javaPath: $('#oJava').value.trim() || null, jvmArgs: $('#oJvm').value.trim() || null, width: +$('#oW').value || 0, height: +$('#oH').value || 0 };
-  try { await api('instance.update', { id: S.cur.id, patch }); Object.assign(S.cur, patch); toast('Gespeichert', S.cur.name); refreshInstances(); renderInstHead(); } catch (e) { fail('Fehler', e); }
-};
-window.deleteInst = async () => {
-  if (!await confirmBox('Instanz löschen?', `„${S.cur.name}“ mit allen Welten und Mods wird endgültig gelöscht.`, 'Endgültig löschen', true)) return;
-  try { await api('instance.delete', { id: S.cur.id }); toast('Gelöscht', S.cur.name); S.cur = null; await refreshInstances(); go('instances'); } catch (e) { fail('Fehler', e); }
-};
-window.pickJava = async target => { try { const r = await api('java.pick'); if (r?.path) $('#' + target).value = r.path; } catch { } };
-
-/* ======================= GENERIC PAGE TABS ======================= */
-function pageTab(group, k) {
-  $$(`[data-tabs="${group}"] .tab`).forEach(b => b.classList.toggle('on', b.dataset.tab === k));
-  $$(`[data-pane^="${group}:"]`).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== group + ':' + k));
-  if (group === 'inst') { if (CTYPES[k]) loadContent(k); else if (k === 'console') renderLog(); else if (k === 'options') renderOpts(); }
-}
-document.addEventListener('click', e => { const b = e.target.closest('[data-tabs] .tab'); if (b) pageTab(b.closest('[data-tabs]').dataset.tabs, b.dataset.tab); });
-function setRange(el) { const p = (el.value - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', p + '%'); }
-document.addEventListener('input', e => { if (e.target.type === 'range') setRange(e.target); });
-
-/* ======================= NEW INSTANCE ======================= */
-async function ensureVersions() { if (!S.versions.length) { const r = await api('versions.list', {}); S.versions = r.versions; S.latest = r.latest; } }
-async function newInstance(pre = {}) {
-  try { await ensureVersions(); } catch (e) { return fail('Versionen nicht erreichbar', e); }
-  const st = { mc: pre.mc || S.latest.release, loader: pre.loader || 'vanilla', type: 'release', q: '', icon: 'grass', ram: (S.settings.ramMb || 4096) / 1024, lv: null, lvs: [], supported: null };
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Neue Instanz</div><h1>Was willst du spielen?</h1>
-    <label class="fl">Mod-Loader</label><div class="seg" id="niLoader">${Object.entries(LOADERS).map(([k, [n]]) => `<button data-l="${k}">${n}</button>`).join('')}</div>
-    <label class="fl">Minecraft-Version</label>
-    <div class="row" style="margin-bottom:8px"><div class="srch"><svg class="i"><use href="#search"/></svg><input class="in" id="niQ" placeholder="Version suchen…" style="height:36px"></div>
-      <div class="seg" id="niType"><button data-t="release">Releases</button><button data-t="snapshot">Snapshots</button><button data-t="old">Beta/Alpha</button></div></div>
-    <div class="vpick" id="niList"></div>
-    <div class="vrow2"><div><label class="fl">Loader-Version</label><select class="in sel wide" id="niLv"></select></div>
-      <div><label class="fl">Name</label><input class="in" id="niName" style="height:36px"></div></div>
-    <label class="fl">Arbeitsspeicher: <span id="niRamT"></span></label><input type="range" id="niRam" min="1" max="32" step="1">
-    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Instanz erstellen</button></div>`, 'form');
-  const nameAuto = () => `${st.loader === 'vanilla' ? 'Vanilla' : LOADERS[st.loader][0]} ${st.mc}`;
-  let userNamed = false;
-  $('#niName').oninput = () => userNamed = true;
-  const list = () => {
-    const vs = S.versions.filter(v => (st.type === 'old' ? v.type.startsWith('old') : v.type === st.type) && (!st.q || v.id.includes(st.q)) && (!st.supported || st.supported.has(v.id)));
-    $('#niList').innerHTML = vs.slice(0, 400).map(v => `<button data-v="${esc(v.id)}" class="${v.id === st.mc ? 'on' : ''}"><b>${esc(v.id)}</b>${vtypeChip(v.type)}<span>${dateDe(v.released)}</span></button>`).join('') || `<div class="muted" style="padding:14px;font-size:12.5px">${st.supported ? 'Keine passende Version für diesen Loader.' : 'Nichts gefunden.'}</div>`;
-    if (!userNamed) $('#niName').value = nameAuto();
-  };
-  const loaderVersions = async () => {
-    const sel = $('#niLv');
-    if (st.loader === 'vanilla') { sel.innerHTML = '<option>–</option>'; sel.disabled = true; return; }
-    sel.disabled = true; sel.innerHTML = '<option>Lade…</option>';
-    try {
-      st.lvs = await api('loader.versions', { loader: st.loader, mc: st.mc });
-      sel.innerHTML = st.lvs.length ? st.lvs.slice(0, 120).map((l, i) => `<option value="${esc(l.version)}">${esc(l.version)}${l.recommended ? ' (empfohlen)' : !l.stable ? ' (beta)' : ''}</option>`).join('') : '<option value="">Nicht verfügbar</option>';
-      const best = st.lvs.find(l => l.recommended) || st.lvs.find(l => l.stable) || st.lvs[0]; if (best) sel.value = best.version;
-      sel.disabled = !st.lvs.length;
-    } catch (e) { sel.innerHTML = `<option value="">${esc(e.message)}</option>`; }
-  };
-  const setLoader = async l => {
-    st.loader = l; $$('#niLoader button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
-    st.supported = null;
-    if (l !== 'vanilla') { try { st.supported = new Set(await api('loader.games', { loader: l })); if (!st.supported.has(st.mc)) st.mc = S.versions.find(v => v.type === 'release' && st.supported.has(v.id))?.id || st.mc; } catch { } }
-    list(); loaderVersions();
-  };
-  const setType = t => { st.type = t; $$('#niType button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); list(); };
-  $('#niLoader').onclick = e => { const b = e.target.closest('button'); if (b) setLoader(b.dataset.l); };
-  $('#niType').onclick = e => { const b = e.target.closest('button'); if (b) setType(b.dataset.t); };
-  $('#niQ').oninput = e => { st.q = e.target.value.trim(); list(); };
-  $('#niList').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; st.mc = b.dataset.v; $$('#niList button').forEach(x => x.classList.toggle('on', x === b)); if (!userNamed) $('#niName').value = nameAuto(); loaderVersions(); };
-  const ram = $('#niRam'); ram.value = st.ram; setRange(ram); $('#niRamT').textContent = st.ram + ' GB';
-  ram.oninput = () => { $('#niRamT').textContent = ram.value + ' GB'; };
-  const vt = S.versions.find(v => v.id === st.mc)?.type;
-  setType(vt === 'snapshot' ? 'snapshot' : vt?.startsWith('old') ? 'old' : 'release'); setLoader(st.loader);
-  $('#niGo').onclick = async () => {
-    const lv = st.loader === 'vanilla' ? null : $('#niLv').value || null;
-    if (st.loader !== 'vanilla' && !lv) return toast('Kein Loader verfügbar', `${LOADERS[st.loader][0]} gibt es nicht für ${st.mc}`, false);
-    $('#niGo').disabled = true;
-    try {
-      const inst = await api('instance.create', { name: $('#niName').value.trim() || nameAuto(), mc: st.mc, loader: st.loader, loaderVersion: lv, icon: st.loader === 'vanilla' ? 'grass' : st.loader === 'fabric' ? 'wood' : st.loader === 'quilt' ? 'amethyst' : st.loader === 'neoforge' ? 'ruby' : 'stone', ramMb: +ram.value * 1024 });
-      closeModal(); toast('Instanz erstellt', `${inst.name} wird im Hintergrund vorbereitet`);
-      await refreshInstances(); selectInstance(inst.id); openInst(inst.id);
-    } catch (e) { $('#niGo').disabled = false; fail('Erstellen fehlgeschlagen', e); }
-  };
-}
-window.newInstance = newInstance;
 async function importPack() {
-  try { const r = await api('pack.import'); if (!r) return; toast('Modpack importiert', `${r.name} · ${r.mcVersion}`); await refreshInstances(); openInst(r.id); }
+  try { const inst = await api('pack.import'); if (!inst) return; toast('Modpack importiert', inst.name); await refreshInstances(); go('inst', { id: inst.id }); }
   catch (e) { fail('Import fehlgeschlagen', e); }
 }
 window.importPack = importPack;
 
-/* ======================= VERSIONS PAGE ======================= */
-let vType = 'release';
-$('#vType').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; vType = b.dataset.t; $$('#vType button').forEach(x => x.classList.toggle('on', x === b)); renderVersions(); });
-async function loadVersions(refresh = false) {
-  $('#vList').innerHTML = '<div class="skel" style="margin:12px 0"></div>';
-  try { const r = await api('versions.list', { refresh }); S.versions = r.versions; S.latest = r.latest; S.installedVersions = new Set(r.installed || []); renderVersions(); }
-  catch (e) { $('#vList').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+/* ======================= INSTANCE PAGE ======================= */
+const CTYPES = [['mod', 'Mods', 'puzzle'], ['resourcepack', 'Ressourcenpakete', 'image'], ['shader', 'Shader', 'sun']];
+PAGES.inst = (el, a) => {
+  const i = instById(a.id); if (!i) return go('library');
+  S.itab = a.tab || (S.itabFor === i.id ? S.itab : 'content'); S.itabFor = i.id;
+  if (!['content', 'worlds', 'logs', 'orbit'].includes(S.itab) || (S.itab === 'orbit' && !hasOrbitMod(i))) S.itab = 'content';
+  crumbs([['Bibliothek', "go('library')"], [i.name]]);
+  el.innerHTML = `<div id="iHead"></div><div class="itabs" id="iTabs"></div><div id="iBody"></div>`;
+  instHead(i);
+  $('#iTabs').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { S.itab = b.dataset.t; S.hist[S.hi].a = { id: i.id, tab: S.itab }; instTabs(i); } };
+  instTabs(i);
+};
+const hasOrbitMod = i => i.kind === 'orbit' && i.loader === 'fabric' && (S.orbitSupported || ['26.3']).includes(i.mcVersion);
+function instHead(i) {
+  const run = S.running.has(i.id), el = $('#iHead'); if (!el) return;
+  el.innerHTML = `<div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1>
+      <div class="meta">${loaderChip(i.loader)}<span class="stat">${ico('cube')}Minecraft <b>${esc(i.mcVersion)}</b></span>${i.loaderVersion ? `<span class="stat">${ico('tag')}${esc(i.loaderVersion)}</span>` : ''}<span class="stat">${ico('clock')}<b>${ptime(i.playSeconds)}</b> gespielt</span><span class="stat">${ico('cal')}${esc(ago(i.lastPlayed))}</span></div></div>
+    <div class="acts"><button class="btn lg ${run ? 'stop' : 'play'}" onclick="play('${jsq(i.id)}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
+      <button class="ib" title="Ordner öffnen" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}</button>
+      <button class="ib" title="Einstellungen" onclick="instSettings('${jsq(i.id)}')">${ico('settings')}</button>
+      <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div>`;
 }
-window.loadVersions = loadVersions;
-function renderVersions() {
-  const q = ($('#vQ').value || '').trim().toLowerCase();
-  const c = t => S.versions.filter(v => v.type === t).length;
-  $('#vStats').innerHTML = `<div><b>${c('release')}</b><span>Releases · neueste ${esc(S.latest.release || '')}</span></div><div><b>${c('snapshot')}</b><span>Snapshots · ${esc(S.latest.snapshot || '')}</span></div><div><b>${c('old_beta')}</b><span>Beta-Versionen</span></div><div><b>${c('old_alpha')}</b><span>Alpha-Versionen</span></div>`;
-  const vs = S.versions.filter(v => (vType === 'all' || v.type === vType) && (!q || v.id.toLowerCase().includes(q))).slice(0, 300);
-  const inst = new Set(S.instances.map(i => i.mcVersion));
-  $('#vList').innerHTML = vs.map(v => `<div class="vrow"><b>${esc(v.id)}</b>${vtypeChip(v.type)}<span class="d">${dateDe(v.released)}${inst.has(v.id) ? ` · <span class="ok">${ico('check')}Instanz vorhanden</span>` : ''}</span>
-    <div class="a"><button class="btn sm" onclick="newInstance({mc:'${esc(v.id)}'})">${ico('plus')}Instanz</button><button class="btn sm p" onclick="quickPlay('${esc(v.id)}')">${ico('play')}Spielen</button></div></div>`).join('') || '<div class="empty" style="margin:12px 0">Keine Version gefunden.</div>';
+function instTabs(i) {
+  const t = [['content', 'Inhalte', 'layers', S.content?.id === i.id ? S.content.all.length : (i.mods || '')], ['worlds', 'Welten', 'earth'], ['logs', 'Logs', 'terminal']];
+  if (hasOrbitMod(i)) t.push(['orbit', 'Orbit Client', 'orbit']);
+  $('#iTabs').innerHTML = t.map(([k, n, ic, c]) => `<button data-t="${k}" class="${S.itab === k ? 'on' : ''}">${ico(ic)}${n}${c ? `<span class="c">${c}</span>` : ''}</button>`).join('');
+  ({ content: instContent, worlds: instWorlds, logs: instLogs, orbit: instOrbit })[S.itab](i);
 }
-window.renderVersions = renderVersions;
-async function quickPlay(mc) {
-  let i = S.instances.find(x => x.mcVersion === mc && x.loader === 'vanilla');
-  if (!i) { try { i = await api('instance.create', { name: 'Vanilla ' + mc, mc, loader: 'vanilla', icon: 'grass', ramMb: 0 }); await refreshInstances(); } catch (e) { return fail('Fehler', e); } }
-  selectInstance(i.id); play(i.id);
-}
-window.quickPlay = quickPlay;
 
-/* ======================= BROWSE (MODRINTH) ======================= */
-S.browse = { type: 'mod', sort: 'relevance', loader: '', ver: '', cats: new Set(), q: '', offset: 0, target: null, total: 0, catList: null, installed: new Set() };
-function fillTargets() {
-  const sel = $('#bTarget'); if (!sel) return;
-  const b = S.browse;
-  const opts = S.instances.map(i => `<option value="${i.id}">${esc(i.name)} · ${esc(instSub(i))}</option>`).join('');
-  sel.innerHTML = `<option value="">Ohne Instanz (nur stöbern)</option>${opts}`;
-  sel.value = b.target && S.instances.find(i => i.id === b.target) ? b.target : '';
-}
-async function browseInit() {
-  const b = S.browse;
-  if (b.target === null) b.target = orbitInstFor(S.orbit.ver)?.id || selInst()?.id || '';
-  fillTargets();
-  $$('#bTabs .tab').forEach(t => t.classList.toggle('on', t.dataset.bt === b.type));
-  try { await ensureVersions(); } catch { }
-  const vs = $('#bVer');
-  if (!vs.options.length) vs.innerHTML = '<option value="">Alle Versionen</option>' + S.versions.filter(v => v.type === 'release').map(v => `<option>${esc(v.id)}</option>`).join('');
-  applyTarget(true);
-  if (!b.catList) { try { b.catList = await api('mr.categories'); } catch { b.catList = []; } }
-  renderCats();
-  browse(true);
-}
-function applyTarget(silent) {
-  const b = S.browse; b.target = $('#bTarget').value;
-  const i = S.instances.find(x => x.id === b.target);
-  if (i) {
-    $('#bVer').value = i.mcVersion;
-    b.loader = b.type === 'mod' || b.type === 'modpack' ? (i.loader === 'vanilla' ? '' : i.loader) : '';
-  }
-  $$('#bLoader button').forEach(x => x.classList.toggle('on', x.dataset.l === b.loader));
-  if (!silent) browse(true);
-}
-window.browseTarget = () => applyTarget(false);
-$('#bTabs').addEventListener('click', e => {
-  const t = e.target.closest('[data-bt]'); if (!t) return;
-  const b = S.browse; b.type = t.dataset.bt; b.cats.clear();
-  $$('#bTabs .tab').forEach(x => x.classList.toggle('on', x === t));
-  $('#bQ').placeholder = { mod: 'Mods suchen, z. B. Sodium, Create, JEI…', modpack: 'Modpacks suchen, z. B. Fabulously Optimized…', resourcepack: 'Ressourcenpakete suchen…', shader: 'Shader suchen, z. B. Complementary, BSL…' }[b.type];
-  $('#bLoader').classList.toggle('hidden', !['mod', 'modpack'].includes(b.type)); $('#bLoaderH').classList.toggle('hidden', !['mod', 'modpack'].includes(b.type));
-  applyTarget(true); renderCats(); browse(true);
-});
-$('#bSort').addEventListener('click', e => { const t = e.target.closest('button'); if (!t) return; S.browse.sort = t.dataset.s; $$('#bSort button').forEach(x => x.classList.toggle('on', x === t)); browse(true); });
-$('#bLoader').addEventListener('click', e => { const t = e.target.closest('button'); if (!t) return; S.browse.loader = t.dataset.l; $$('#bLoader button').forEach(x => x.classList.toggle('on', x === t)); browse(true); });
-let bqT = 0; $('#bQ').addEventListener('input', () => { clearTimeout(bqT); bqT = setTimeout(() => browse(true), 320); });
-const CAT_DE = { adventure: 'Abenteuer', cursed: 'Verflucht', decoration: 'Deko', economy: 'Wirtschaft', equipment: 'Ausrüstung', food: 'Essen', 'game-mechanics': 'Spielmechanik', library: 'Bibliothek', magic: 'Magie', management: 'Verwaltung', minigame: 'Minispiel', mobs: 'Mobs', optimization: 'Optimierung', social: 'Sozial', storage: 'Lager', technology: 'Technik', transportation: 'Transport', utility: 'Werkzeug', worldgen: 'Weltgenerierung', challenging: 'Herausfordernd', combat: 'Kampf', 'kitchen-sink': 'Alles drin', lightweight: 'Leichtgewicht', multiplayer: 'Multiplayer', quests: 'Quests', vanilla: 'Vanilla', realistic: 'Realistisch', simplistic: 'Schlicht', themed: 'Thematisch', tweaks: 'Tweaks', 'vanilla-like': 'Vanilla-ähnlich', cartoon: 'Cartoon', fantasy: 'Fantasy', 'semi-realistic': 'Halb-realistisch', atmosphere: 'Atmosphäre', bloom: 'Bloom', shadows: 'Schatten', pbr: 'PBR', reflections: 'Spiegelungen', 'colored-lighting': 'Farbiges Licht', 'path-tracing': 'Path Tracing', potato: 'Kartoffel-PC', low: 'Schwacher PC', medium: 'Mittlerer PC', high: 'Starker PC', screenshot: 'Screenshot', 'foliage': 'Pflanzen', 'gui': 'GUI', 'fonts': 'Schriften', 'audio': 'Audio', 'blocks': 'Blöcke', 'items': 'Items', 'entities': 'Entities', 'environment': 'Umgebung', 'equipment ': 'Ausrüstung', 'models': 'Modelle', 'locale': 'Sprache', 'core-shaders': 'Core-Shader', '8x-': '8x', '16x': '16x', '32x': '32x', '48x': '48x', '64x': '64x', '128x': '128x', '256x': '256x', '512x+': '512x+' };
-function renderCats() {
-  const b = S.browse, pt = b.type;
-  const cats = (b.catList || []).filter(c => c.project_type === pt && c.header !== 'resolutions' && c.header !== 'performance impact' || (c.project_type === pt && pt === 'shader'));
-  $('#bCats').innerHTML = cats.map(c => `<button class="cat ${b.cats.has(c.name) ? 'on' : ''}" data-c="${esc(c.name)}">${esc(CAT_DE[c.name] || c.name)}</button>`).join('') || '<span class="muted" style="font-size:12px">–</span>';
-}
-$('#bCats').addEventListener('click', e => { const c = e.target.closest('[data-c]'); if (!c) return; const s = S.browse.cats; s.has(c.dataset.c) ? s.delete(c.dataset.c) : s.add(c.dataset.c); c.classList.toggle('on'); browse(true); });
-let bSeq = 0;
-async function browse(reset) {
-  const b = S.browse, seq = ++bSeq;
-  if (reset) { b.offset = 0; $('#bList').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'; }
-  const i = S.instances.find(x => x.id === b.target);
-  b.installed = new Set((i?.content || []).map(c => c.projectId));
-  const args = { query: $('#bQ').value, type: b.type, mc: $('#bVer').value, loader: b.loader, cats: [...b.cats], sort: b.sort, offset: b.offset, limit: 20 };
-  let r;
-  try { r = await api('mr.search', args); } catch (e) { if (seq === bSeq) $('#bList').innerHTML = `<div class="empty">Modrinth nicht erreichbar: ${esc(e.message)}</div>`; return; }
-  if (seq !== bSeq) return;
-  b.total = r.total_hits; b.offset += r.hits.length;
-  $('#bInfo').textContent = `${num(r.total_hits).replace(' Tsd.', '.000')} Ergebnisse${i ? ` · passend für ${i.name}` : ''}`;
-  const html = r.hits.map(h => projRow(h, i)).join('');
-  if (reset) $('#bList').innerHTML = html || '<div class="empty">Nichts gefunden. Andere Suchbegriffe oder weniger Filter?</div>'; else $('#bList').insertAdjacentHTML('beforeend', html);
-  $('#bMore').classList.toggle('hidden', b.offset >= b.total);
-  if (reset) enterPage($('#p-browse'));
-}
-window.browse = browse;
-function projRow(h, i) {
-  const has = S.browse.installed.has(h.project_id), t = S.browse.type;
-  const btn = t === 'modpack' ? `<button class="btn sm p" onclick="event.stopPropagation();installPack('${h.project_id}','${esc(h.title)}')">${ico('download')}Als Instanz</button>`
-    : has ? `<button class="btn sm ok" onclick="event.stopPropagation()">${ico('check')}Installiert</button>`
-      : `<button class="btn sm p" onclick="event.stopPropagation();install(this,'${h.project_id}','${esc(h.title)}')">${ico('download')}Installieren</button>`;
-  const cats = (h.display_categories || h.categories || []).filter(c => !LOADERS[c]).slice(0, 3);
-  const lds = (h.categories || []).filter(c => LOADERS[c] && c !== 'vanilla').slice(0, 3);
-  return `<div class="card hov proj" onclick="projDetail('${h.project_id}')"><span class="pic" style="${h.icon_url ? `background-image:url('${esc(h.icon_url)}')` : ''}"></span>
-    <div class="tx"><div class="t"><b>${esc(h.title)}</b><span>von ${esc(h.author)}</span></div><p>${esc(h.description)}</p>
-    <div class="meta"><span class="st">${ico('download')}${num(h.downloads)}</span><span class="st">${ico('heart')}${num(h.follows)}</span>${lds.map(loaderChip).join('')}${cats.map(c => `<span class="chip m">${esc(CAT_DE[c] || c)}</span>`).join('')}</div></div>
-    <div class="act">${btn}<small class="muted" style="font-size:11px">${h.date_modified ? 'Aktualisiert ' + ago(h.date_modified).replace('Vor', 'vor') : ''}</small></div></div>`;
-}
-async function install(btn, project, title, version) {
-  const b = S.browse;
-  if (!b.target) { toast('Keine Instanz gewählt', 'Wähle oben rechts eine Ziel-Instanz', false); $('#bTarget').focus(); return; }
-  const i = S.instances.find(x => x.id === b.target);
-  if (b.type === 'mod' && i.loader === 'vanilla') return toast('Vanilla-Instanz', 'Mods brauchen Fabric, Quilt, Forge oder NeoForge', false);
-  if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Lädt…'; }
+/* ---------- content ---------- */
+async function instContent(i) {
+  const body = $('#iBody');
+  const C = S.content?.id === i.id ? S.content : (S.content = { id: i.id, all: [], type: 'all', q: '', sel: new Set(), updates: null, loaded: false });
+  const types = i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES;
+  body.innerHTML = `<div class="cbar"><div class="fchips" id="cTypes"></div><div class="srch">${ico('search')}<input class="in" id="cQ" placeholder="Inhalte durchsuchen…" value="${esc(C.q)}"></div><span class="sp"></span>
+    <button class="btn sm" id="cUpd" onclick="checkUpdates()">${ico('refresh')}Updates</button>
+    <button class="btn sm" onclick="addFile()">${ico('file')}Aus Datei</button>
+    <button class="btn sm p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('plus')}Inhalte hinzufügen</button></div>
+    <div id="cSel"></div><div id="cList">${C.loaded ? '' : '<div class="spinner"></div>'}</div>`;
+  const draw = () => renderContent(i, types);
+  $('#cQ').oninput = e => { C.q = e.target.value; draw(); };
+  if (C.loaded) draw();
   try {
-    const r = await api('mr.install', { id: i.id, project, type: b.type, version });
-    toast(`${title} installiert`, r.installed.length > 1 ? `+ ${r.installed.length - 1} Abhängigkeit${r.installed.length > 2 ? 'en' : ''}: ${r.installed.slice(1).join(', ')}` : i.name);
-    if (r.skipped?.length) toast('Nicht alles verfügbar', 'Übersprungen: ' + r.skipped.join(', '), false);
-    b.installed.add(project);
-    if (btn) { btn.disabled = false; btn.className = 'btn sm ok'; btn.innerHTML = ico('check') + 'Installiert'; }
-    refreshInstances();
-  } catch (e) { if (btn) { btn.disabled = false; btn.innerHTML = ico('download') + 'Installieren'; } fail('Installation fehlgeschlagen', e); }
+    const res = await Promise.all(types.map(([t]) => api('instance.content', { id: i.id, type: t }).then(l => l.map(x => ({ ...x, type: t }))).catch(() => [])));
+    if (S.content !== C) return;
+    C.all = res.flat(); C.loaded = true;
+    if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') { draw(); const tb = $('#iTabs [data-t=content] .c'); if (tb) tb.textContent = C.all.length; }
+  } catch (e) { fail('Inhalte', e); }
 }
-window.install = install;
-async function installPack(project, title, version) {
-  if (!await confirmBox('Modpack installieren?', `„${title}“ wird als neue Instanz angelegt. Alle Dateien kommen von Modrinth.`, 'Installieren')) return;
-  try { const inst = await api('mr.modpack', { project, version }); toast('Modpack bereit', inst.name); await refreshInstances(); openInst(inst.id); }
-  catch (e) { fail('Modpack fehlgeschlagen', e); }
+function renderContent(i, types) {
+  const C = S.content, el = $('#cList'); if (!el) return;
+  const counts = Object.fromEntries(types.map(([t]) => [t, C.all.filter(x => x.type === t).length]));
+  $('#cTypes').innerHTML = [['all', 'Alle', null]].concat(types).map(([t, n]) => `<button class="fchip ${C.type === t ? 'on' : ''}" data-t="${t}">${n}<i>${t === 'all' ? C.all.length : counts[t]}</i></button>`).join('');
+  $('#cTypes').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; C.type = b.dataset.t; renderContent(i, types); };
+  const q = C.q.trim().toLowerCase();
+  const list = C.all.filter(x => (C.type === 'all' || x.type === C.type) && (!q || (x.title + ' ' + x.file).toLowerCase().includes(q)))
+    .sort((a, b) => (a.dependency - b.dependency) || a.title.localeCompare(b.title, 'de'));
+  const upd = new Map((C.updates || []).map(u => [u.projectId, u]));
+  if (!C.all.length) {
+    el.innerHTML = `<div class="lempty"><span class="iic">${ico('puzzle')}</span><h2>Noch keine Inhalte</h2><p>Füg Mods, Ressourcenpakete oder Shader von Modrinth hinzu. Abhängigkeiten werden automatisch mitinstalliert.</p>
+      <button class="btn p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('compass')}Inhalte entdecken</button></div>`;
+    $('#cSel').innerHTML = ''; return;
+  }
+  const key = x => x.type + '|' + x.file;
+  const allSel = list.length && list.every(x => C.sel.has(key(x)));
+  el.innerHTML = `<div class="ctable"><div class="ch"><span class="cb ${allSel ? 'on' : ''}" data-all><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>Name</span><span>Version</span><span style="text-align:right">Aktionen</span></div>
+    ${list.length ? list.map(x => {
+      const u = x.projectId && upd.get(x.projectId), k = key(x);
+      return `<div class="cr ${x.on ? '' : 'off'}" data-k="${esc(k)}"><span class="cb ${C.sel.has(k) ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div class="nm">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<div><b>${esc(x.title)}${x.dependency ? '<span class="chip m">Abhängigkeit</span>' : ''}</b><small>${esc(x.file)}</small></div></div>
+        <div class="vr ell">${esc(x.version || '—')}<small>${bytes(x.size)}${x.projectId ? '' : ' · manuell'}</small></div>
+        <div class="ac">${u ? `<button class="ib sm up" title="Update auf ${esc(u.to)}" data-u="${esc(u.projectId)}">${ico('arrowup')}</button>` : ''}${x.projectId ? `<button class="ib sm" title="Auf Modrinth ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<div class="tg sm ${x.on ? 'on' : ''}" data-tg></div><button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></div></div>`;
+    }).join('') : '<div class="cr"><span></span><span class="muted">Nichts gefunden.</span></div>'}</div>`;
+  const selBar = () => {
+    const n = C.sel.size;
+    $('#cSel').innerHTML = n ? `<div class="selbar"><b>${n} ausgewählt</b><span class="sp"></span><button class="btn sm" data-b="on">${ico('check')}Aktivieren</button><button class="btn sm" data-b="off">${ico('x')}Deaktivieren</button><button class="btn sm d" data-b="rm">${ico('trash')}Entfernen</button><button class="ib sm ghost" data-b="clr">${ico('x')}</button></div>` : '';
+  };
+  selBar();
+  $('#cSel').onclick = async e => {
+    const b = e.target.closest('[data-b]'); if (!b) return;
+    const items = C.all.filter(x => C.sel.has(key(x)));
+    if (b.dataset.b === 'clr') { C.sel.clear(); return renderContent(i, types); }
+    if (b.dataset.b === 'rm') { if (!await confirmBox(`${items.length} Einträge entfernen?`, 'Die Dateien werden aus der Instanz gelöscht.', 'Entfernen', true)) return; for (const x of items) { try { await api('content.remove', { id: i.id, type: x.type, file: x.file }); } catch { } } C.all = C.all.filter(x => !C.sel.has(key(x))); }
+    else for (const x of items) { const on = b.dataset.b === 'on'; try { await api('content.toggle', { id: i.id, type: x.type, file: x.file, on }); x.on = on; } catch { } }
+    C.sel.clear(); renderContent(i, types);
+  };
+  el.onclick = async e => {
+    if (e.target.closest('[data-all]')) { if (allSel) list.forEach(x => C.sel.delete(key(x))); else list.forEach(x => C.sel.add(key(x))); return renderContent(i, types); }
+    const row = e.target.closest('.cr[data-k]'); if (!row) return;
+    const x = C.all.find(y => key(y) === row.dataset.k); if (!x) return;
+    if (e.target.closest('[data-s]')) { C.sel.has(row.dataset.k) ? C.sel.delete(row.dataset.k) : C.sel.add(row.dataset.k); e.target.closest('[data-s]').classList.toggle('on'); return selBar(); }
+    if (e.target.closest('[data-p]')) return go('project', { id: x.projectId });
+    if (e.target.closest('[data-tg]')) {
+      const on = !x.on; x.on = on; row.classList.toggle('off', !on); e.target.closest('[data-tg]').classList.toggle('on', on);
+      try { await api('content.toggle', { id: i.id, type: x.type, file: x.file, on }); } catch (er) { fail('Fehler', er); }
+      return;
+    }
+    if (e.target.closest('[data-rm]')) {
+      if (!await confirmBox('Entfernen?', `„${x.title}“ wird aus der Instanz gelöscht.`, 'Entfernen', true)) return;
+      try { await api('content.remove', { id: i.id, type: x.type, file: x.file }); C.all = C.all.filter(y => y !== x); renderContent(i, types); } catch (er) { fail('Fehler', er); }
+      return;
+    }
+    if (e.target.closest('[data-u]')) return updateAll();
+  };
 }
-window.installPack = installPack;
-function md(src) {
-  // tiny, safe markdown subset (text is escaped first)
-  let h = esc(src || '').replace(/&lt;br\s*\/?&gt;/g, '<br>');
-  h = h.replace(/!\[[^\]]*\]\((https:[^)\s]+)\)/g, '<img src="$1" alt="" loading="lazy">')
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="#" onclick="api(\'open.url\',{url:\'$2\'});return false">$1</a>')
-    .replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^\s*[-*] (.*)$/gm, '• $1').replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
-  return h;
+async function checkUpdates() {
+  const i = instById(S.args.id), C = S.content; if (!i || !C) return;
+  const b = $('#cUpd'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…';
+  try {
+    C.updates = await api('content.updates', { id: i.id });
+    const n = C.updates.length;
+    b.disabled = false;
+    if (n) { b.className = 'btn sm p'; b.innerHTML = ico('download') + `Alle aktualisieren (${n})`; b.onclick = updateAll; }
+    else { b.innerHTML = ico('check') + 'Alles aktuell'; }
+    renderContent(i, i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES);
+  } catch (e) { b.disabled = false; b.innerHTML = ico('refresh') + 'Updates prüfen'; fail('Updates', e); }
 }
-async function projDetail(id) {
-  modal('<div class="skel"></div>', 'form');
-  let p; try { p = await api('mr.project', { id }); } catch (e) { return modal(`<h1>Fehler</h1><p>${esc(e.message)}</p><div class="act"><button class="btn" onclick="closeModal()">OK</button></div>`); }
-  const b = S.browse, i = S.instances.find(x => x.id === b.target);
-  const gal = (p.gallery || []).slice(0, 3);
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>
-    <div class="pd-head"><span class="pic" style="${p.icon_url ? `background-image:url('${esc(p.icon_url)}')` : ''}"></span><div style="flex:1;min-width:0"><h1>${esc(p.title)}</h1><p class="sub" style="font-size:13px;margin-top:4px">${esc(p.description)}</p>
-      <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px"><span class="chip m">${ico('download')}${num(p.downloads)}</span><span class="chip m">${esc(p.license?.id || '')}</span>${(p.loaders || []).filter(l => LOADERS[l]).map(loaderChip).join('')}</div></div></div>
-    ${gal.length ? `<div class="pd-gal">${gal.map(g => `<i style="background-image:url('${esc(g.url)}')"></i>`).join('')}</div>` : ''}
-    <div class="pd-body">${md((p.body || '').slice(0, 6000))}</div>
-    <div class="act" style="justify-content:space-between"><button class="btn" onclick="api('open.url',{url:'https://modrinth.com/${esc(p.project_type)}/${esc(p.slug)}'})">${ico('ext')}Auf Modrinth</button>
-      ${p.project_type === 'modpack' ? `<button class="btn p" onclick="closeModal();installPack('${p.id}','${esc(p.title)}')">${ico('download')}Als Instanz installieren</button>`
-      : i ? `<button class="btn p" id="pdInst" onclick="install(this,'${p.id}','${esc(p.title)}')">${ico('download')}In „${esc(i.name)}“ installieren</button>` : '<span class="muted" style="font-size:12px">Wähle eine Ziel-Instanz zum Installieren</span>'}</div>`, 'form');
+window.checkUpdates = checkUpdates;
+async function updateAll() {
+  const i = instById(S.args.id); if (!i) return;
+  try { const r = await api('content.updateAll', { id: i.id }); toast('Aktualisiert', `${r.count} Datei${r.count === 1 ? '' : 'en'} in ${i.name}`); S.content.updates = []; S.content.loaded = false; instContent(i); }
+  catch (e) { fail('Update fehlgeschlagen', e); }
 }
-window.projDetail = projDetail;
+async function addFile() {
+  const i = instById(S.args.id), C = S.content; if (!i) return;
+  const t = C.type === 'all' ? (i.loader === 'vanilla' ? 'resourcepack' : 'mod') : C.type;
+  try { const r = await api('content.addFile', { id: i.id, type: t }); if (r?.count) { toast('Hinzugefügt', `${r.count} Datei${r.count > 1 ? 'en' : ''}`); C.loaded = false; instContent(i); } }
+  catch (e) { fail('Hinzufügen fehlgeschlagen', e); }
+}
+window.addFile = addFile;
 
-/* ======================= ORBIT CLIENT ======================= */
-// mirror of the in-game modules (client-mod/…/Modules.java); values are stored as strings like in the mod
+/* ---------- worlds ---------- */
+async function instWorlds(i) {
+  const body = $('#iBody');
+  body.innerHTML = '<div class="spinner"></div>';
+  let r = { worlds: [], servers: [] };
+  try { r = await api('instance.worlds', { id: i.id }); } catch (e) { fail('Welten', e); }
+  if (S.itab !== 'worlds') return;
+  const quick = supportsQuickPlay(i.mcVersion);
+  body.innerHTML = `${quick ? '' : `<div class="note" style="margin:0 0 14px">Direkt in eine Welt oder auf einen Server springen geht ab Minecraft 1.20. Bei ${esc(i.mcVersion)} startet das Spiel normal${''}.</div>`}
+    <div class="sec" style="margin-top:0"><h2>Welten</h2><span class="muted">${r.worlds.length}</span><span class="sp"></span><button class="btn sm" onclick="api('folder.open',{id:'${jsq(i.id)}',what:'saves'})">${ico('folder')}Ordner</button></div>
+    <div class="wlist">${r.worlds.length ? r.worlds.map(w => `<div class="wcard">${w.icon ? `<span class="pic" style="background-image:url('${esc(w.icon)}')"></span>` : `<span class="pic">${ico('earth')}</span>`}<div class="tx"><b>${esc(w.name)}</b><small>${esc(w.mode || 'Welt')} · ${esc(ago(w.lastPlayed))} · ${esc(w.folder)}</small></div>
+      <button class="ib" title="Ordner" onclick="api('world.open',{id:'${jsq(i.id)}',folder:'${jsq(w.folder)}'})">${ico('folder')}</button><button class="ib d" title="Löschen (Papierkorb)" onclick="delWorld('${jsq(i.id)}','${jsq(w.folder)}','${jsq(w.name)}')">${ico('trash')}</button>
+      <button class="btn sm play" onclick="play('${jsq(i.id)}',${quick ? `{world:'${jsq(w.folder)}',worldName:'${jsq(w.name)}'}` : '{}'})">${ico('play')}Spielen</button></div>`).join('') : '<div class="empty">Noch keine Welten. Starte das Spiel und erstell eine.</div>'}</div>
+    <div class="sec"><h2>Server</h2><span class="muted">${r.servers.length}</span></div>
+    <div class="wlist">${r.servers.length ? r.servers.map(s => `<div class="wcard">${s.icon ? `<span class="pic" style="background-image:url('${esc(s.icon)}')"></span>` : `<span class="pic">${ico('server')}</span>`}<div class="tx"><b>${esc(s.name)}</b><small>${esc(s.ip)}</small></div>
+      <button class="btn sm play" onclick="play('${jsq(i.id)}',{server:'${jsq(s.ip)}'})">${ico('play')}Beitreten</button></div>`).join('') : '<div class="empty">Keine Server gespeichert. Server, die du im Spiel hinzufügst, erscheinen hier.</div>'}</div>`;
+}
+window.delWorld = async (id, folder, name) => {
+  if (!await confirmBox('Welt löschen?', `„${name}“ wird in den Papierkorb verschoben.`, 'Löschen', true)) return;
+  try { await api('world.delete', { id, folder }); toast('Welt gelöscht', name); instWorlds(instById(id)); } catch (e) { fail('Löschen fehlgeschlagen', e); }
+};
+
+/* ---------- logs ---------- */
+async function instLogs(i) {
+  const body = $('#iBody');
+  S.logSel = S.logSel && S.logFor === i.id ? S.logSel : '__live'; S.logFor = i.id;
+  body.innerHTML = `<div class="logs"><div class="loglist" id="logList"></div><div class="logbox"><div class="row"><div class="srch">${ico('search')}<input class="in" id="logQ" placeholder="Im Log suchen…" style="height:36px"></div>
+    <button class="btn sm" onclick="copyLog()">${ico('copy')}Kopieren</button><button class="btn sm" onclick="api('folder.open',{id:'${jsq(i.id)}',what:'logs'})">${ico('folder')}Ordner</button></div><div class="logv" id="logv"></div></div></div>`;
+  let files = [];
+  try { files = await api('instance.logs', { id: i.id }); } catch { }
+  const list = () => $('#logList').innerHTML = `<button data-n="__live" class="${S.logSel === '__live' ? 'on' : ''}"><span class="lv"><i class="dot ${S.running.has(i.id) ? 'on' : ''}"></i><b>Live-Konsole</b></span><small>${S.running.has(i.id) ? 'Läuft gerade' : 'Diese Sitzung'}</small></button>`
+    + files.map(f => `<button data-n="${esc(f.name)}" class="${S.logSel === f.name ? 'on' : ''}"><b>${esc(f.name.split('/')[1])}</b><small>${f.name.startsWith('crash') ? 'Crash-Report · ' : ''}${esc(new Date(f.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))} · ${bytes(f.size)}</small></button>`).join('');
+  list();
+  $('#logList').onclick = e => { const b = e.target.closest('[data-n]'); if (!b) return; S.logSel = b.dataset.n; list(); showLog(i); };
+  $('#logQ').oninput = () => showLog(i, true);
+  showLog(i);
+}
+const logCls = l => /\b(ERROR|FATAL|Exception)\b|^\s+at /.test(l) ? 'e' : /\bWARN\b/.test(l) ? 'w' : '';
+async function showLog(i, filterOnly) {
+  const v = $('#logv'); if (!v) return;
+  if (!filterOnly) {
+    if (S.logSel === '__live') S.logText = (S.logs[i.id] || []);
+    else { v.textContent = 'Lädt…'; try { S.logText = (await api('instance.log', { id: i.id, name: S.logSel })).text.split(/\r?\n/); } catch (e) { S.logText = ['Fehler: ' + e.message]; } }
+  }
+  const q = ($('#logQ')?.value || '').toLowerCase();
+  const lines = (S.logText || []).filter(l => !q || l.toLowerCase().includes(q)).slice(-4000);
+  v.innerHTML = lines.length ? lines.map(l => `<div class="${logCls(l)}">${esc(l)}</div>`).join('') : `<div class="i">${S.logSel === '__live' ? 'Noch keine Ausgabe. Starte das Spiel, dann erscheint das Log hier live.' : 'Leer.'}</div>`;
+  v.scrollTop = v.scrollHeight;
+}
+function appendLog(line) {
+  const v = $('#logv'); if (!v) return;
+  const q = ($('#logQ')?.value || '').toLowerCase(); if (q && !line.toLowerCase().includes(q)) return;
+  if (v.firstChild?.classList?.contains('i')) v.innerHTML = '';
+  const stick = v.scrollTop + v.clientHeight > v.scrollHeight - 30;
+  const d = document.createElement('div'); d.className = logCls(line); d.textContent = line; v.append(d);
+  if (v.childElementCount > 4000) v.firstChild.remove();
+  if (stick) v.scrollTop = v.scrollHeight;
+}
+window.copyLog = () => { navigator.clipboard?.writeText((S.logText || []).join('\n')); toast('Log kopiert'); };
+
+/* ======================= CREATE INSTANCE ======================= */
+async function ensureVersions() { if (!S.versions.length) { const r = await api('versions.list', {}); S.versions = r.versions; S.latest = r.latest; } }
+const ICONS = ['grass', 'stone', 'sand', 'wood', 'diamond', 'ruby', 'amethyst', 'nether', 'snow', 'end'];
+function msShell(title, iconHtml, tabs, cur) {
+  return `<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="mside"><h3>${iconHtml}<span class="ell">${esc(title)}</span></h3>${tabs.map(([k, n, ic]) => `<button data-mt="${k}" class="${k === cur ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div><div class="mmain" id="mMain"></div>`;
+}
+async function newInstance(tab = 'custom', pre = {}) {
+  const N = S.newInst = { tab, name: pre.name || '', icon: pre.icon || 'grass', loader: pre.loader || 'vanilla', mc: pre.mc || '', lv: '', snaps: false, games: {}, orbitVer: null, packs: new Set((S.settings.orbitPacks || 'perf,shaders,qol').split(',').filter(Boolean)), then: pre.then };
+  modal(msShell('Neue Instanz', `<span class="iic">${blockSvg('grass')}</span>`, [['custom', 'Eigene Instanz', 'cube'], ['file', 'Aus Datei', 'file'], ['orbit', 'Orbit Client', 'orbit']], tab), 'ms');
+  $('.mside').onclick = e => { const b = e.target.closest('[data-mt]'); if (!b) return; N.tab = b.dataset.mt; $$('.mside [data-mt]').forEach(x => x.classList.toggle('on', x === b)); niRender(); };
+  try { await ensureVersions(); } catch (e) { fail('Versionen', e); }
+  if (!N.mc) N.mc = S.latest.release;
+  niRender();
+}
+window.newInstance = newInstance;
+async function niGames(loader) {
+  const N = S.newInst;
+  if (loader === 'vanilla') return S.versions.filter(v => N.snaps ? v.type === 'release' || v.type === 'snapshot' : v.type === 'release').map(v => v.id);
+  if (!N.games[loader]) { try { N.games[loader] = await api('loader.games', { loader }); } catch { N.games[loader] = []; } }
+  const rel = new Set(S.versions.filter(v => v.type === 'release').map(v => v.id));
+  return N.games[loader].filter(v => N.snaps || rel.has(v));
+}
+async function niRender() {
+  const N = S.newInst, m = $('#mMain'); if (!m) return;
+  if (N.tab === 'file') {
+    m.innerHTML = `<h2>Aus Datei importieren</h2><p class="sub">Modrinth-Modpacks (.mrpack) werden als neue Instanz angelegt. Alle Dateien kommen direkt von ihren Quellen und werden per Hash geprüft.</p>
+      <button class="mtile" style="margin-top:18px" onclick="closeModal();importPack()"><span class="iic">${ico('upload')}</span><span><b>.mrpack-Datei auswählen</b><small>Modpack von der Festplatte</small></span></button>
+      <button class="mtile" style="margin-top:10px" onclick="closeModal();go('discover',{type:'modpack'})"><span class="iic">${ico('compass')}</span><span><b>Modpack von Modrinth</b><small>Über 10.000 Modpacks durchsuchen</small></span></button>`;
+    return;
+  }
+  if (N.tab === 'orbit') {
+    const sup = S.orbitInfo?.supported || ['26.3'];
+    N.orbitVer = N.orbitVer || sup[0];
+    m.innerHTML = `<h2>Orbit Client</h2><p class="sub">Eigener Client mit 21 Modulen: Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint, HUD-Editor. Plus Performance-Pakete von Modrinth.</p>
+      <label class="fl">Version</label><div class="seg">${sup.map(v => `<button class="${v === N.orbitVer ? 'on' : ''}" data-ov="${esc(v)}">Minecraft ${esc(v)}</button>`).join('')}</div>
+      <label class="fl">Pakete</label><div class="col" style="gap:8px" id="niPacks">${(S.orbitInfo?.packs || [{ id: 'perf', name: 'FPS-Boost', desc: 'Sodium, Lithium, FerriteCore …', icon: 'zap' }, { id: 'shaders', name: 'Shader-Support', desc: 'Iris', icon: 'sun' }, { id: 'qol', name: 'Komfort', desc: 'AppleSkin, Mouse Tweaks …', icon: 'sparkle' }, { id: 'visual', name: 'Optik', desc: 'Dynamische Lichter …', icon: 'layers' }])
+        .map(p => `<button class="mtile ${N.packs.has(p.id) ? 'on' : ''}" data-pk="${p.id}"><span class="iic">${ico(p.icon)}</span><span style="flex:1"><b>${esc(p.name)}</b><small>${esc(p.desc)}</small></span><span class="cb ${N.packs.has(p.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></button>`).join('')}</div>
+      <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Orbit Client einrichten</button></div>`;
+    m.onclick = e => {
+      const v = e.target.closest('[data-ov]'); if (v) { N.orbitVer = v.dataset.ov; niRender(); return; }
+      const p = e.target.closest('[data-pk]'); if (p) { N.packs.has(p.dataset.pk) ? N.packs.delete(p.dataset.pk) : N.packs.add(p.dataset.pk); p.classList.toggle('on'); p.querySelector('.cb').classList.toggle('on'); }
+    };
+    $('#niGo').onclick = async () => {
+      const b = $('#niGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird eingerichtet…';
+      api('settings.set', { key: 'orbitPacks', value: [...N.packs].join(',') });
+      try { const r = await api('orbit.create', { mc: N.orbitVer, packs: [...N.packs], ramMb: 3072 }); closeModal(); toast('Orbit Client bereit', `${r.installed.length} Teile installiert`); await refreshInstances(); go('inst', { id: r.id }); }
+      catch (e) { b.disabled = false; b.innerHTML = ico('plus') + 'Orbit Client einrichten'; fail('Einrichten fehlgeschlagen', e); }
+    };
+    return;
+  }
+  const games = await niGames(N.loader);
+  if (!games.includes(N.mc)) N.mc = games[0] || N.mc;
+  m.innerHTML = `<h2>Eigene Instanz</h2><p class="sub">Wähle Version und Mod-Loader. Alles Nötige wird im Hintergrund geladen, du kannst sofort weitermachen.</p>
+    <label class="fl">Name</label><input class="in" id="niName" placeholder="${esc(niDefName())}" value="${esc(N.name)}">
+    <label class="fl">Symbol</label><div class="icons" id="niIcons">${ICONS.map(k => `<button class="${k === N.icon ? 'on' : ''}" data-ic="${k}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div>
+    <label class="fl">Mod-Loader</label><div class="ldsel" id="niLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === N.loader ? 'on' : ''}" data-ld="${k}"><i style="background:${LCOL[k]}"></i>${n}</button>`).join('')}</div>
+    <div class="vrow2"><div><label class="fl">Spielversion</label><select class="sel wide" id="niMc" style="height:42px">${games.map(v => `<option ${v === N.mc ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
+      <div><label class="fl">Loader-Version</label><select class="sel wide" id="niLv" style="height:42px" ${N.loader === 'vanilla' ? 'disabled' : ''}><option value="">${N.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div></div>
+    <div class="fsw" style="padding:12px 0 0"><span>Snapshots anzeigen</span><div class="tg sm ${N.snaps ? 'on' : ''}" id="niSnap"></div></div>
+    <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Erstellen</button></div>`;
+  $('#niName').oninput = e => N.name = e.target.value;
+  $('#niIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; N.icon = b.dataset.ic; $$('#niIcons button').forEach(x => x.classList.toggle('on', x === b)); $('.mside h3 .iic').innerHTML = blockSvg(N.icon); };
+  $('#niLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; N.loader = b.dataset.ld; N.lv = ''; niRender(); };
+  $('#niMc').onchange = e => { N.mc = e.target.value; N.lv = ''; $('#niName').placeholder = niDefName(); niLoaderVersions(); };
+  $('#niSnap').onclick = () => { N.snaps = !N.snaps; niRender(); };
+  $('#niLv').onchange = e => N.lv = e.target.value;
+  $('#niGo').onclick = niCreate;
+  niLoaderVersions();
+}
+const niDefName = () => { const N = S.newInst; return `${N.loader === 'vanilla' ? 'Minecraft' : LOADERS[N.loader][0]} ${N.mc}`; };
+async function niLoaderVersions() {
+  const N = S.newInst, sel = $('#niLv'); if (!sel || N.loader === 'vanilla') return;
+  sel.innerHTML = '<option value="">Lädt…</option>';
+  try {
+    const l = await api('loader.versions', { loader: N.loader, mc: N.mc });
+    if (S.newInst !== N) return;
+    sel.innerHTML = `<option value="">Empfohlen${l.find(x => x.recommended) ? ' (' + esc(l.find(x => x.recommended).version) + ')' : l[0] ? ' (' + esc(l.find(x => x.stable)?.version || l[0].version) + ')' : ''}</option>` + l.slice(0, 60).map(x => `<option value="${esc(x.version)}">${esc(x.version)}${x.stable ? '' : ' (Beta)'}</option>`).join('');
+  } catch { sel.innerHTML = '<option value="">Empfohlen</option>'; }
+}
+async function niCreate() {
+  const N = S.newInst, b = $('#niGo');
+  b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Erstelle…';
+  try {
+    const inst = await api('instance.create', { name: N.name.trim() || niDefName(), mc: N.mc, loader: N.loader, loaderVersion: N.lv || null, icon: N.icon, ramMb: 0 });
+    closeModal(); toast('Instanz erstellt', `${inst.name} · Dateien werden im Hintergrund geladen`);
+    await refreshInstances();
+    if (N.then) N.then(inst); else go('inst', { id: inst.id });
+  } catch (e) { b.disabled = false; b.innerHTML = ico('plus') + 'Erstellen'; fail('Erstellen fehlgeschlagen', e); }
+}
+
+/* ======================= INSTANCE SETTINGS ======================= */
+async function instSettings(id, tab = 'general') {
+  const i = instById(id); if (!i) return;
+  const E = S.iset = { id, tab, games: {} };
+  modal(msShell(i.name, instIcon(i), [['general', 'Allgemein', 'info'], ['install', 'Installation', 'cube'], ['java', 'Java & Speicher', 'coffee'], ['window', 'Fenster', 'monitor']], tab), 'ms');
+  $('.mside').onclick = e => { const b = e.target.closest('[data-mt]'); if (!b) return; E.tab = b.dataset.mt; $$('.mside [data-mt]').forEach(x => x.classList.toggle('on', x === b)); isRender(); };
+  S.modalClose = () => refreshInstances();
+  isRender();
+}
+window.instSettings = instSettings;
+const isPatch = async patch => { try { await api('instance.update', { id: S.iset.id, patch }); Object.assign(instById(S.iset.id), patch); } catch (e) { fail('Speichern fehlgeschlagen', e); } };
+async function isRender() {
+  const E = S.iset, i = instById(E.id), m = $('#mMain'); if (!i || !m) return;
+  if (E.tab === 'general') {
+    const groups = [...new Set(S.instances.map(x => x.group).filter(Boolean))];
+    m.innerHTML = `<h2>Allgemein</h2><label class="fl">Name</label><input class="in" id="isName" value="${esc(i.name)}">
+      ${i.iconUrl ? '' : `<label class="fl">Symbol</label><div class="icons" id="isIcons">${ICONS.concat(i.kind === 'orbit' ? ['orbit'] : []).map(k => `<button class="${k === i.icon ? 'on' : ''}" data-ic="${k}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div>`}
+      <label class="fl">Gruppe</label><input class="in" id="isGroup" list="isGroups" placeholder="z. B. PvP, Survival, Modpacks" value="${esc(i.group || '')}"><datalist id="isGroups">${groups.map(g => `<option>${esc(g)}</option>`).join('')}</datalist>
+      <div class="sec"><h2>Aktionen</h2></div>
+      <div class="srow"><div><b>Duplizieren</b><p>Kopie mit allen Mods, Welten und Einstellungen.</p></div><button class="btn sm" onclick="closeModal();duplicateInst('${jsq(i.id)}')">${ico('dup')}Duplizieren</button></div>
+      <div class="srow"><div><b>Löschen</b><p>Entfernt die Instanz mit allen Welten. Nicht rückgängig zu machen.</p></div><button class="btn sm d" onclick="closeModal();deleteInst('${jsq(i.id)}')">${ico('trash')}Löschen</button></div>`;
+    let t = 0; const deb = f => { clearTimeout(t); t = setTimeout(f, 400); };
+    $('#isName').oninput = e => deb(() => { const v = e.target.value.trim(); if (v) { isPatch({ name: v }); $('.mside h3 span.ell').textContent = v; } });
+    $('#isGroup').oninput = e => deb(() => isPatch({ group: e.target.value.trim() || null }));
+    $('#isIcons') && ($('#isIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; $$('#isIcons button').forEach(x => x.classList.toggle('on', x === b)); isPatch({ icon: b.dataset.ic }); $('.mside h3 .iic').innerHTML = blockSvg(b.dataset.ic); });
+    return;
+  }
+  if (E.tab === 'install') {
+    try { await ensureVersions(); } catch { }
+    E.loader = E.loader || i.loader; E.mc = E.mc || i.mcVersion;
+    const rel = new Set(S.versions.filter(v => v.type === 'release').map(v => v.id));
+    let games = E.loader === 'vanilla' ? S.versions.filter(v => v.type === 'release' || v.id === i.mcVersion).map(v => v.id) : (E.games[E.loader] || (E.games[E.loader] = await api('loader.games', { loader: E.loader }).catch(() => []))).filter(v => rel.has(v) || v === i.mcVersion);
+    if (!games.includes(E.mc)) games.unshift(E.mc);
+    const locked = i.kind === 'modpack' || i.kind === 'orbit';
+    m.innerHTML = `<h2>Installation</h2><p class="sub">Version oder Mod-Loader wechseln. Mods, die nicht zur neuen Version passen, musst du danach eventuell aktualisieren.</p>
+      ${locked ? `<div class="note w">Diese Instanz ist ${i.kind === 'modpack' ? 'ein Modpack' : 'der Orbit Client'}. Version und Loader zu ändern kann sie kaputt machen.</div>` : ''}
+      <label class="fl">Mod-Loader</label><div class="ldsel" id="isLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === E.loader ? 'on' : ''}" data-ld="${k}"><i style="background:${LCOL[k]}"></i>${n}</button>`).join('')}</div>
+      <div class="vrow2"><div><label class="fl">Spielversion</label><select class="sel wide" id="isMc" style="height:42px">${games.map(v => `<option ${v === E.mc ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
+      <div><label class="fl">Loader-Version</label><select class="sel wide" id="isLv" style="height:42px" ${E.loader === 'vanilla' ? 'disabled' : ''}><option value="">${E.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div></div>
+      <div class="mfoot" style="justify-content:space-between"><button class="btn" id="isRepair">${ico('refresh')}Dateien prüfen &amp; reparieren</button><button class="btn p" id="isApply">${ico('check')}Übernehmen</button></div>`;
+    $('#isLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; E.loader = b.dataset.ld; isRender(); };
+    $('#isMc').onchange = e => { E.mc = e.target.value; fillLv(); };
+    const fillLv = async () => {
+      const sel = $('#isLv'); if (E.loader === 'vanilla') return;
+      try { const l = await api('loader.versions', { loader: E.loader, mc: E.mc }); sel.innerHTML = '<option value="">Empfohlen</option>' + l.slice(0, 60).map(x => `<option value="${esc(x.version)}" ${x.version === i.loaderVersion && E.loader === i.loader ? 'selected' : ''}>${esc(x.version)}</option>`).join(''); } catch { }
+    };
+    fillLv();
+    $('#isApply').onclick = async () => {
+      const patch = { mc: $('#isMc').value, loader: E.loader, loaderVersion: $('#isLv').value || null };
+      if (patch.mc === i.mcVersion && patch.loader === i.loader && (patch.loaderVersion || null) === (i.loaderVersion || null)) return toast('Keine Änderung');
+      try { await api('instance.update', { id: i.id, patch }); toast('Übernommen', 'Wird beim nächsten Start installiert'); closeModal(); } catch (e) { fail('Fehler', e); }
+    };
+    $('#isRepair').onclick = async () => { closeModal(); toast('Prüfe Dateien', i.name); try { await api('instance.repair', { id: i.id }); toast('Alles in Ordnung', i.name); } catch (e) { fail('Reparieren fehlgeschlagen', e); } };
+    return;
+  }
+  if (E.tab === 'java') {
+    const ram = i.ramMb || 0, def = S.settings.ramMb || 4096;
+    m.innerHTML = `<h2>Java &amp; Speicher</h2><p class="sub">Leer lassen = Standard aus den globalen Einstellungen. Java wird pro Version automatisch passend geladen.</p>
+      <label class="fl">Arbeitsspeicher</label><div class="fsw" style="padding:0 0 8px"><span>Eigenen Wert nutzen</span><div class="tg sm ${ram ? 'on' : ''}" id="isRamOn"></div></div>
+      <div class="ramrow ${ram ? '' : 'dim'}" id="isRamRow"><input type="range" min="1024" max="${Math.max(16384, def)}" step="256" value="${ram || def}" id="isRam"><input class="in" id="isRamN" value="${ram || def} MB" readonly></div>
+      <label class="fl">Java-Pfad</label><div class="inline"><input class="in" id="isJava" placeholder="Automatisch (empfohlen)" value="${esc(i.javaPath || '')}"><button class="btn" onclick="pickJava('isJava')">${ico('folder')}Durchsuchen</button></div>
+      <label class="fl">JVM-Argumente</label><input class="in" id="isJvm" placeholder="${esc(S.settings.jvmArgs || 'Mojangs Standard (G1GC)')}" value="${esc(i.jvmArgs || '')}" style="font-family:var(--mono);font-size:12px">`;
+    const r = $('#isRam'); setRange(r);
+    let t = 0; const deb = f => { clearTimeout(t); t = setTimeout(f, 400); };
+    r.oninput = () => { setRange(r); $('#isRamN').value = r.value + ' MB'; if ($('#isRamOn').classList.contains('on')) deb(() => isPatch({ ramMb: +r.value })); };
+    $('#isRamOn').onclick = e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); $('#isRamRow').classList.toggle('dim', !on); isPatch({ ramMb: on ? +r.value : 0 }); };
+    $('#isJava').onchange = e => isPatch({ javaPath: e.target.value.trim() || null });
+    $('#isJvm').oninput = e => deb(() => isPatch({ jvmArgs: e.target.value.trim() || null }));
+    return;
+  }
+  m.innerHTML = `<h2>Fenster</h2><p class="sub">Startgröße des Spielfensters. 0 = Standard aus den Einstellungen.</p>
+    <div class="vrow2"><div><label class="fl">Breite</label><input class="in" id="isW" type="number" min="0" value="${i.width || 0}"></div><div><label class="fl">Höhe</label><input class="in" id="isH" type="number" min="0" value="${i.height || 0}"></div></div>
+    <div class="row" style="margin-top:12px;gap:6px">${[[0, 0, 'Standard'], [1280, 720, '1280×720'], [1600, 900, '1600×900'], [1920, 1080, '1920×1080']].map(([w, h, n]) => `<button class="fchip" data-wh="${w},${h}">${n}</button>`).join('')}</div>`;
+  const save = () => isPatch({ width: +$('#isW').value || 0, height: +$('#isH').value || 0 });
+  $('#isW').onchange = save; $('#isH').onchange = save;
+  m.querySelectorAll('[data-wh]').forEach(b => b.onclick = () => { const [w, h] = b.dataset.wh.split(','); $('#isW').value = w; $('#isH').value = h; save(); });
+}
+window.pickJava = async target => { try { const r = await api('java.pick'); if (r?.path) { const el = $('#' + target); el.value = r.path; el.dispatchEvent(new Event('change')); } } catch (e) { fail('Java', e); } };
+function setRange(el) { const p = (el.value - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', p + '%'); }
+
+/* ======================= DISCOVER ======================= */
+const PTYPES = [['modpack', 'Modpacks', 'box'], ['mod', 'Mods', 'puzzle'], ['resourcepack', 'Ressourcenpakete', 'image'], ['shader', 'Shader', 'sun']];
+const SORTS = [['relevance', 'Relevanz'], ['downloads', 'Downloads'], ['follows', 'Follower'], ['newest', 'Neueste'], ['updated', 'Zuletzt aktualisiert']];
+const PLOADERS = { mod: ['fabric', 'forge', 'neoforge', 'quilt'], modpack: ['fabric', 'forge', 'neoforge', 'quilt'], shader: ['iris', 'optifine', 'canvas', 'vanilla'], resourcepack: [], datapack: [] };
+const CAT_DE = { adventure: 'Abenteuer', cursed: 'Verflucht', decoration: 'Deko', economy: 'Wirtschaft', equipment: 'Ausrüstung', food: 'Essen', 'game-mechanics': 'Spielmechanik', library: 'Bibliothek', magic: 'Magie', management: 'Verwaltung', minigame: 'Minispiel', mobs: 'Mobs', optimization: 'Optimierung', social: 'Sozial', storage: 'Lager', technology: 'Technik', transportation: 'Transport', utility: 'Werkzeug', worldgen: 'Weltgenerierung', challenging: 'Herausfordernd', combat: 'Kampf', 'kitchen-sink': 'Alles drin', lightweight: 'Leichtgewicht', multiplayer: 'Multiplayer', quests: 'Quests', vanilla: 'Vanilla', realistic: 'Realistisch', simplistic: 'Schlicht', themed: 'Thematisch', tweaks: 'Tweaks', 'vanilla-like': 'Vanilla-ähnlich', cartoon: 'Cartoon', fantasy: 'Fantasy', 'semi-realistic': 'Halb-realistisch', atmosphere: 'Atmosphäre', bloom: 'Bloom', shadows: 'Schatten', pbr: 'PBR', reflections: 'Spiegelungen', 'colored-lighting': 'Farbiges Licht', 'path-tracing': 'Path Tracing', potato: 'Kartoffel-PC', low: 'Schwacher PC', medium: 'Mittlerer PC', high: 'Starker PC', screenshot: 'Screenshot', foliage: 'Pflanzen', gui: 'GUI', fonts: 'Schriften', audio: 'Audio', blocks: 'Blöcke', items: 'Items', entities: 'Entities', environment: 'Umgebung', models: 'Modelle', locale: 'Sprache', 'core-shaders': 'Core-Shader' };
+const HEAD_DE = { categories: 'Kategorien', features: 'Funktionen', resolutions: 'Auflösung', 'performance impact': 'Leistungsbedarf' };
+const catName = c => CAT_DE[c] || cap(c).replace(/-/g, ' ');
+const D = S.disc = { type: 'mod', q: '', sort: 'relevance', page: 0, per: 20, vers: new Set(), loaders: new Set(), cats: new Set(), env: new Set(), open: false, compat: true, target: null, vq: '', snaps: false, closed: new Set() };
+PAGES.discover = async (el, a) => {
+  const tgt = a.target ? instById(a.target) : null;
+  if (a.type && a.type !== D.type) { D.type = a.type; D.cats.clear(); D.loaders.clear(); D.page = 0; }
+  if ((a.target || null) !== D.target) { D.target = a.target || null; D.page = 0; D.compat = true; }
+  if (tgt && D.type === 'modpack') D.type = tgt.loader === 'vanilla' ? 'resourcepack' : 'mod';
+  crumbs(tgt ? [['Bibliothek', "go('library')"], [tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Inhalte hinzufügen']] : [['Entdecken']]);
+  const types = PTYPES.filter(t => !tgt || (t[0] !== 'modpack' && (tgt.loader !== 'vanilla' || t[0] !== 'mod')));
+  el.innerHTML = `<div class="ph"><div><div class="kicker">Modrinth</div><h1>Entdecken</h1></div></div>
+    ${tgt ? `<div class="tgtbar">${instIcon(tgt)}<div class="tx"><b>Installieren in „${esc(tgt.name)}“</b><small>${esc(instSub(tgt))} · nur passende Inhalte werden angezeigt</small></div><button class="btn sm" onclick="go('inst',{id:'${jsq(tgt.id)}'})">${ico('left')}Zur Instanz</button><button class="ib sm ghost" title="Ohne Ziel" onclick="go('discover',{type:'${D.type}'})">${ico('x')}</button></div>` : ''}
+    <div class="dtypes" id="dTypes">${types.map(([k, n, ic]) => `<button data-k="${k}" class="${k === D.type ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div>
+    <div class="dgrid"><div class="filters" id="dFil"></div><div>
+      <div class="rbar"><div class="srch">${ico('search')}<input class="in" id="dQ" placeholder="${esc(PTYPES.find(t => t[0] === D.type)[1])} durchsuchen…" value="${esc(D.q)}"></div>
+        <select class="sel" id="dSort">${SORTS.map(([k, n]) => `<option value="${k}" ${k === D.sort ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <select class="sel" id="dPer">${[20, 40, 60].map(n => `<option ${n === D.per ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="rinfo" id="dInfo"></div><div class="rlist" id="dList"></div><div class="pager" id="dPager"></div></div></div>`;
+  $('#dTypes').onclick = e => { const b = e.target.closest('[data-k]'); if (b) go('discover', { type: b.dataset.k, target: D.target || undefined }); };
+  let t = 0;
+  $('#dQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { D.q = e.target.value; D.page = 0; discSearch(); }, 300); };
+  $('#dSort').onchange = e => { D.sort = e.target.value; D.page = 0; discSearch(); };
+  $('#dPer').onchange = e => { D.per = +e.target.value; D.page = 0; discSearch(); };
+  ensureVersions().catch(() => { }).then(() => discFilters());
+  discFilters(); discSearch();
+};
+async function discFilters() {
+  const el = $('#dFil'); if (!el) return;
+  const tgt = D.target ? instById(D.target) : null;
+  let cats = [];
+  try { cats = (await mr('/tag/category')).filter(c => c.project_type === (D.type === 'datapack' ? 'mod' : D.type)); } catch { }
+  if (!$('#dFil')) return;
+  const heads = {};
+  cats.forEach(c => (heads[c.header] = heads[c.header] || []).push(c));
+  const box = (k, title, body) => `<div class="fbox ${D.closed.has(k) ? 'closed' : ''}" data-box="${k}"><button class="fh">${esc(title)}${ico('chevd')}</button><div class="fbody">${body}</div></div>`;
+  const opt = (kind, v, label, on, icon = '') => `<button class="fo ${on ? 'on' : ''}" data-f="${kind}" data-v="${esc(v)}"><span class="cb ${on ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>${icon}${esc(label)}</button>`;
+  let html = '';
+  if (tgt) html += `<div class="fbox"><div class="fsw"><span>Nur passend zu ${esc(tgt.mcVersion)}${D.type === 'mod' ? ' · ' + esc(LOADERS[tgt.loader]?.[0] || '') : ''}</span><div class="tg sm ${D.compat ? 'on' : ''}" id="dCompat"></div></div></div>`;
+  if (!tgt || !D.compat) {
+    const rel = S.versions.filter(v => v.type === 'release' || (D.snaps && v.type === 'snapshot')).map(v => v.id);
+    const vq = D.vq.trim();
+    html += box('ver', 'Spielversion', `<input class="in" id="dVq" placeholder="Version suchen…" value="${esc(D.vq)}">${[...D.vers].filter(v => !rel.includes(v)).concat(rel).filter(v => !vq || v.includes(vq)).slice(0, 120).map(v => opt('ver', v, v, D.vers.has(v))).join('')}<div class="fsw"><span>Snapshots</span><div class="tg sm ${D.snaps ? 'on' : ''}" id="dSnap"></div></div>`);
+    if (PLOADERS[D.type].length) html += box('ld', D.type === 'shader' ? 'Shader-Loader' : 'Loader', PLOADERS[D.type].map(l => opt('ld', l, LOADERS[l]?.[0] || cap(l), D.loaders.has(l))).join(''));
+  }
+  Object.entries(heads).forEach(([h, list]) => { html += box('h:' + h, HEAD_DE[h] || cap(h), list.sort((a, b) => catName(a.name).localeCompare(catName(b.name), 'de')).map(c => opt('cat', c.name, catName(c.name), D.cats.has(c.name), c.icon ? `<span class="ci" style="display:grid;width:15px;height:15px;color:var(--mute)">${c.icon.replace('<svg', '<svg width="15" height="15"')}</span>` : '')).join('')); });
+  if (D.type !== 'resourcepack' && D.type !== 'shader') html += box('env', 'Umgebung', opt('env', 'client', 'Client', D.env.has('client')) + opt('env', 'server', 'Server', D.env.has('server')));
+  html += `<div class="fbox"><div class="fsw"><span>Nur Open Source</span><div class="tg sm ${D.open ? 'on' : ''}" id="dOpen"></div></div></div>`;
+  el.innerHTML = html;
+  el.onclick = e => {
+    const fh = e.target.closest('.fh'); if (fh) { const b = fh.parentElement, k = b.dataset.box; b.classList.toggle('closed'); b.classList.contains('closed') ? D.closed.add(k) : D.closed.delete(k); return; }
+    const o = e.target.closest('[data-f]');
+    if (o) { const set = { ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env }[o.dataset.f], v = o.dataset.v; set.has(v) ? set.delete(v) : set.add(v); o.classList.toggle('on'); o.querySelector('.cb').classList.toggle('on'); D.page = 0; discSearch(); return; }
+    if (e.target.id === 'dCompat') { D.compat = !D.compat; D.page = 0; discFilters(); discSearch(); }
+    if (e.target.id === 'dOpen') { D.open = !D.open; e.target.classList.toggle('on'); D.page = 0; discSearch(); }
+    if (e.target.id === 'dSnap') { D.snaps = !D.snaps; discFilters(); }
+  };
+  const vq = $('#dVq'); if (vq) vq.oninput = e => { D.vq = e.target.value; const pos = e.target.selectionStart; discFilters().then(() => { const n = $('#dVq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }); };
+}
+function discFacets() {
+  const tgt = D.target ? instById(D.target) : null, f = [];
+  f.push([`project_type:${D.type}`]);
+  if (tgt && D.compat) {
+    f.push([`versions:${tgt.mcVersion}`]);
+    if (D.type === 'mod') f.push(tgt.loader === 'quilt' ? ['categories:quilt', 'categories:fabric'] : [`categories:${tgt.loader}`]);
+  } else {
+    if (D.vers.size) f.push([...D.vers].map(v => `versions:${v}`));
+    if (D.loaders.size) f.push([...D.loaders].map(l => `categories:${l}`));
+  }
+  D.cats.forEach(c => f.push([`categories:${c}`]));
+  if (D.env.has('client')) f.push(['client_side:required', 'client_side:optional']);
+  if (D.env.has('server')) f.push(['server_side:required', 'server_side:optional']);
+  if (D.open) f.push(['open_source:true']);
+  return f;
+}
+let dSeq = 0;
+async function discSearch() {
+  const list = $('#dList'); if (!list) return;
+  const seq = ++dSeq;
+  list.innerHTML = '<div class="skel"></div>'.repeat(5);
+  const path = `/search?limit=${D.per}&offset=${D.page * D.per}&index=${D.sort}${D.q.trim() ? '&query=' + encodeURIComponent(D.q.trim()) : ''}&facets=${encodeURIComponent(JSON.stringify(discFacets()))}`;
+  let r;
+  try { r = await mr(path); } catch (e) { if (seq === dSeq) list.innerHTML = `<div class="empty">Modrinth ist nicht erreichbar: ${esc(e.message)}</div>`; return; }
+  if (seq !== dSeq || !$('#dList')) return;
+  const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c => ['cat', c, catName(c)]), [...D.env].map(e => ['env', e, cap(e)]));
+  $('#dInfo').innerHTML = `<span><b style="color:var(--text)">${r.total_hits.toLocaleString('de-DE')}</b> Ergebnisse</span>${chips.map(([k, v, n]) => `<button class="fchip on" data-rm="${k}" data-v="${esc(v)}">${esc(n)}${ico('x')}</button>`).join('')}${chips.length ? '<button class="fchip" data-clr>Alle Filter entfernen</button>' : ''}`;
+  $('#dInfo').onclick = e => {
+    if (e.target.closest('[data-clr]')) { D.vers.clear(); D.loaders.clear(); D.cats.clear(); D.env.clear(); }
+    const b = e.target.closest('[data-rm]'); if (b) ({ ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env })[b.dataset.rm].delete(b.dataset.v);
+    if (b || e.target.closest('[data-clr]')) { D.page = 0; discFilters(); discSearch(); }
+  };
+  S.hits = Object.fromEntries(r.hits.map(h => [h.project_id, h]));
+  list.innerHTML = r.hits.length ? r.hits.map(pcard).join('') : `<div class="lempty"><span class="iic">${ico('search')}</span><h2>Nichts gefunden</h2><p>Versuch einen anderen Suchbegriff oder weniger Filter.</p></div>`;
+  const pages = Math.ceil(Math.min(r.total_hits, 10000) / D.per), cur = D.page;
+  const nums = [...new Set([0, cur - 1, cur, cur + 1, pages - 1])].filter(n => n >= 0 && n < pages).sort((a, b) => a - b);
+  $('#dPager').innerHTML = pages > 1 ? `<button ${cur ? '' : 'disabled'} data-pg="${cur - 1}">${ico('left')}</button>${nums.map((n, i) => (i && n - nums[i - 1] > 1 ? '<span>…</span>' : '') + `<button class="${n === cur ? 'on' : ''}" data-pg="${n}">${n + 1}</button>`).join('')}<button ${cur < pages - 1 ? '' : 'disabled'} data-pg="${cur + 1}">${ico('right')}</button>` : '';
+  $('#dPager').onclick = e => { const b = e.target.closest('[data-pg]'); if (!b) return; D.page = +b.dataset.pg; discSearch(); $('#p-discover').scrollTop = 0; };
+}
+const isInstalled = (inst, pid) => inst && (inst.content || []).some(c => c.projectId === pid);
+function pcard(h) {
+  const tgt = D.target ? instById(D.target) : null, inst = isInstalled(tgt, h.project_id);
+  const lds = (h.categories || []).filter(c => LOADERS[c] || ['iris', 'optifine', 'canvas'].includes(c));
+  const cats = (h.display_categories || h.categories || []).filter(c => !lds.includes(c)).slice(0, 3);
+  return `<div class="pcard" onclick="go('project',{id:'${jsq(h.project_id)}'${D.target ? `,target:'${jsq(D.target)}'` : ''}})">${picHtml(h.icon_url)}
+    <div class="tx"><h3>${esc(h.title)}<small>von ${esc(h.author)}</small></h3><p>${esc(h.description)}</p>
+      <div class="tags">${cats.map(c => `<span class="chip m">${ico('tag')}${esc(catName(c))}</span>`).join('')}${lds.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}</div></div>
+    <div class="rs"><div class="stats"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico('heart')}<b>${num(h.follows)}</b></span><span class="stat">${ico('refresh')}${esc(ago(h.date_modified))}</span></div>
+      ${inst ? `<button class="btn sm ok">${ico('check')}Installiert</button>` : `<button class="btn sm p" onclick="event.stopPropagation();installProject('${jsq(h.project_id)}',this)">${ico('download')}Installieren</button>`}</div></div>`;
+}
+
+/* ---------- install flow ---------- */
+const typeOfInst = t => t === 'shader' ? 'shader' : t === 'resourcepack' ? 'resourcepack' : t === 'datapack' ? 'datapack' : 'mod';
+function compatible(inst, p) {
+  if (!inst) return false;
+  if (p.game_versions && !p.game_versions.includes(inst.mcVersion)) return false;
+  if (p.project_type === 'mod') { const l = p.loaders || []; if (!(l.includes(inst.loader) || (inst.loader === 'quilt' && l.includes('fabric')) || (l.includes('datapack') && inst.loader === 'vanilla'))) return false; }
+  return true;
+}
+async function installProject(pid, btn, versionId) {
+  let p;
+  try { p = await mr('/project/' + pid); } catch (e) { return fail('Modrinth', e); }
+  if (p.project_type === 'modpack') return installModpack(p, versionId, btn);
+  const tgt = D.target && S.page !== 'home' ? instById(D.target) : null;
+  if (tgt && !(S.page === 'project' && !S.args.target)) return installInto(tgt, p, versionId, btn);
+  pickInstance(p, versionId);
+}
+window.installProject = installProject;
+async function installInto(inst, p, versionId, btn) {
+  if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Installiere…'; }
+  try {
+    const r = await api('mr.install', { id: inst.id, project: p.id, type: typeOfInst(p.project_type), version: versionId || null });
+    toast('Installiert', `${r.installed.join(', ')} → ${inst.name}${r.skipped.length ? ' · übersprungen: ' + r.skipped.join(', ') : ''}`);
+    if (btn) { btn.className = 'btn sm ok'; btn.disabled = false; btn.innerHTML = ico('check') + 'Installiert'; }
+    if (S.content?.id === inst.id) S.content.loaded = false;
+    await refreshInstances();
+    return true;
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = ico('download') + 'Installieren'; }
+    fail('Installation fehlgeschlagen', e); return false;
+  }
+}
+async function installModpack(p, versionId, btn) {
+  if (!await confirmBox('Modpack installieren?', `„${p.title}“ wird als neue Instanz angelegt. Alle Dateien kommen direkt von Modrinth.`, 'Installieren')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Installiere…'; }
+  try { const inst = await api('mr.modpack', { project: p.id, version: versionId || null }); toast('Modpack bereit', inst.name); await refreshInstances(); go('inst', { id: inst.id }); }
+  catch (e) { fail('Modpack fehlgeschlagen', e); if (btn) { btn.disabled = false; btn.innerHTML = ico('download') + 'Installieren'; } }
+}
+function pickInstance(p, versionId) {
+  const list = [...S.instances].sort((a, b) => compatible(b, p) - compatible(a, p));
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="pd-head">${picHtml(p.icon_url, 'pic')}<div><div class="kicker">Installieren</div><h1>${esc(p.title)}</h1></div></div>
+    <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">In welche Instanz? Passende Instanzen stehen oben, Abhängigkeiten kommen automatisch mit.</p>
+    <div class="ipick">${list.length ? list.map(i => { const ok = compatible(i, p), has = isInstalled(i, p.id); return `<div class="ir ${ok ? '' : 'no'}">${instIcon(i)}<div class="tx"><b>${esc(i.name)}</b><small>${esc(instSub(i))}${ok ? '' : ' · passt nicht'}</small></div>
+      ${has ? `<button class="btn sm ok">${ico('check')}Installiert</button>` : `<button class="btn sm ${ok ? 'p' : ''}" ${ok ? '' : 'disabled'} data-i="${esc(i.id)}">${ico('download')}Installieren</button>`}</div>`; }).join('') : '<div class="empty">Noch keine Instanz.</div>'}</div>
+    <div class="act" style="justify-content:space-between"><span class="muted" style="font-size:12px">Passt zu: ${esc(summarizeVersions(p.game_versions || []))}</span><button class="btn" id="piNew">${ico('plus')}Neue Instanz dafür</button></div>`, 'form');
+  $('.ipick').onclick = e => { const b = e.target.closest('[data-i]'); if (b) installInto(instById(b.dataset.i), p, versionId, b); };
+  $('#piNew').onclick = async () => {
+    await ensureVersions().catch(() => { });
+    const rel = S.versions.filter(v => v.type === 'release').map(v => v.id);
+    const mc = rel.find(v => (p.game_versions || []).includes(v)) || S.latest.release;
+    const ld = p.project_type === 'mod' ? ['fabric', 'neoforge', 'forge', 'quilt'].find(l => (p.loaders || []).includes(l)) || 'vanilla' : 'vanilla';
+    closeModal();
+    newInstance('custom', { mc, loader: ld, name: `${p.title} ${mc}`, then: inst => installInto(inst, p, versionId).then(() => go('inst', { id: inst.id })) });
+  };
+}
+
+/* summary like "1.20.1–1.21.4" using the Mojang release order */
+function summarizeVersions(list) {
+  if (!list.length) return '—';
+  const order = S.versions.filter(v => v.type === 'release').map(v => v.id).reverse();
+  if (!order.length) return list.length > 3 ? `${list[0]}–${list[list.length - 1]}` : list.join(', ');
+  const has = new Set(list), runs = []; let start = null, prev = null;
+  order.forEach(v => { if (has.has(v)) { if (start === null) start = v; prev = v; } else if (start !== null) { runs.push([start, prev]); start = null; } });
+  if (start !== null) runs.push([start, prev]);
+  if (!runs.length) return list.slice(-3).join(', ');
+  return runs.reverse().slice(0, 4).map(([a, b]) => a === b ? a : `${a}–${b}`).join(', ') + (runs.length > 4 ? ' …' : '');
+}
+
+/* ======================= PROJECT PAGE ======================= */
+PAGES.project = async (el, a) => {
+  if (a.target) D.target = a.target;
+  const tgt = a.target ? instById(a.target) : null;
+  el.innerHTML = '<div class="spinner"></div>';
+  let p;
+  try { p = await mr('/project/' + a.id); } catch (e) { el.innerHTML = `<div class="empty">Projekt nicht gefunden: ${esc(e.message)}</div>`; return; }
+  if (S.args.id !== a.id) return;
+  S.proj = { p, tab: a.tab || 'desc', versions: null, members: null, vf: { ld: '', mc: '', ch: '' } };
+  const tname = PTYPES.find(t => t[0] === p.project_type)?.[1] || 'Projekte';
+  crumbs(tgt ? [[tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Hinzufügen', `go('discover',{type:'${p.project_type}',target:'${jsq(tgt.id)}'})`], [p.title]] : [['Entdecken', "go('discover')"], [tname, `go('discover',{type:'${p.project_type}'})`], [p.title]]);
+  const inst = isInstalled(tgt, p.id);
+  el.innerHTML = `<div class="phead">${picHtml(p.icon_url)}<div class="tx"><div class="kicker">${esc(tname.replace(/e$|s$/, ''))}</div><h1>${esc(p.title)}</h1><p class="d">${esc(p.description)}</p>
+      <div class="meta"><span class="stat">${ico('download')}<b>${num(p.downloads)}</b> Downloads</span><span class="stat">${ico('heart')}<b>${num(p.followers)}</b> Follower</span><span class="stat">${ico('refresh')}Aktualisiert ${esc(ago(p.updated).replace('Vor', 'vor'))}</span>
+        ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(catName(c))}</span>`).join('')}</div></div>
+    <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
+      <button class="ib" title="Auf Modrinth öffnen" onclick="openUrl('https://modrinth.com/${esc(p.project_type)}/${esc(p.slug)}')">${ico('ext')}</button></div></div>
+    <div class="itabs" id="pTabs" style="margin-top:0"></div>
+    <div class="pgrid"><div id="pBody"></div><div class="pside" id="pSide"></div></div>`;
+  if ($('#pInst')) $('#pInst').onclick = () => installProject(p.id, $('#pInst'));
+  $('#pTabs').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { S.proj.tab = b.dataset.t; S.hist[S.hi].a = { ...a, tab: b.dataset.t }; projTabs(); } };
+  projTabs(); projSide();
+  mr(`/project/${p.id}/version`).then(v => { if (S.proj?.p !== p) return; S.proj.versions = v; projTabs(true); projSide(); }).catch(() => { });
+  mr(`/project/${p.id}/members`).then(m => { if (S.proj?.p !== p) return; S.proj.members = m; projSide(); }).catch(() => { });
+};
+function projTabs(soft) {
+  const P = S.proj, p = P.p;
+  const t = [['desc', 'Beschreibung', 'book'], ['versions', 'Versionen', 'layers', P.versions?.length], ['gallery', 'Galerie', 'image', p.gallery?.length]].filter(x => x[0] !== 'gallery' || p.gallery?.length);
+  $('#pTabs').innerHTML = t.map(([k, n, ic, c]) => `<button data-t="${k}" class="${P.tab === k ? 'on' : ''}">${ico(ic)}${n}${c ? `<span class="c">${c}</span>` : ''}</button>`).join('');
+  if (soft && P.tab !== 'versions') return;
+  const b = $('#pBody');
+  if (P.tab === 'desc') { b.innerHTML = `<div class="md" id="pMd">${mdRender(p.body || p.description || '')}</div>`; mdBind($('#pMd')); }
+  if (P.tab === 'gallery') {
+    b.innerHTML = `<div class="gal">${(p.gallery || []).sort((x, y) => (y.featured - x.featured) || (x.ordering - y.ordering)).map((g, i) => `<button data-g="${i}"><i style="background-image:url('${esc(g.url)}')"></i>${g.title || g.description ? `<div><b>${esc(g.title || '')}</b><small>${esc(g.description || '')}</small></div>` : ''}</button>`).join('')}</div>`;
+    b.onclick = e => { const g = e.target.closest('[data-g]'); if (!g) return; const x = p.gallery[+g.dataset.g]; $('#lightbox').innerHTML = `<div><img src="${esc(x.raw_url || x.url)}" alt="">${x.title ? `<p>${esc(x.title)}</p>` : ''}</div>`; $('#lightbox').classList.remove('hidden'); };
+  }
+  if (P.tab === 'versions') projVersions();
+}
+function projVersions() {
+  const P = S.proj, b = $('#pBody'), V = P.versions;
+  if (!V) { b.innerHTML = '<div class="spinner"></div>'; return; }
+  const f = P.vf, tgt = D.target ? instById(D.target) : null;
+  const lds = [...new Set(V.flatMap(v => v.loaders))], mcs = [...new Set(V.flatMap(v => v.game_versions))];
+  const rel = new Set(S.versions.filter(v => v.type === 'release').map(v => v.id));
+  const list = V.filter(v => (!f.ld || v.loaders.includes(f.ld)) && (!f.mc || v.game_versions.includes(f.mc)) && (!f.ch || v.version_type === f.ch));
+  b.innerHTML = `<div class="vfil"><select class="sel" id="vfLd"><option value="">Alle Loader</option>${lds.map(l => `<option value="${esc(l)}" ${f.ld === l ? 'selected' : ''}>${esc(LOADERS[l]?.[0] || cap(l))}</option>`).join('')}</select>
+    <select class="sel" id="vfMc"><option value="">Alle Versionen</option>${mcs.filter(v => rel.has(v) || !rel.size).sort((x, y) => vkey(y).localeCompare(vkey(x))).map(v => `<option ${f.mc === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
+    <select class="sel" id="vfCh"><option value="">Alle Kanäle</option>${[['release', 'Release'], ['beta', 'Beta'], ['alpha', 'Alpha']].map(([k, n]) => `<option value="${k}" ${f.ch === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    ${tgt ? `<button class="fchip" onclick="S.proj.vf={ld:'${jsq(tgt.loader === 'vanilla' ? '' : tgt.loader)}',mc:'${jsq(tgt.mcVersion)}',ch:''};projVersions()">Passend zu ${esc(tgt.name)}</button>` : ''}<span class="sp"></span><span class="muted" style="font-size:12px;align-self:center">${list.length} von ${V.length}</span></div>
+    <div class="vt"><div class="vh"><span></span><span>Name</span><span>Kompatibel</span><span>Downloads</span><span>Datum</span></div>
+    ${list.slice(0, 150).map((v, i) => `<div class="vr2" data-v="${esc(v.id)}"><span class="vtype ${v.version_type}">${v.version_type[0].toUpperCase()}</span><div><b>${esc(v.name || v.version_number)}</b><small>${esc(v.version_number)}</small></div>
+      <div class="chips">${v.loaders.slice(0, 3).map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}<span class="chip m">${esc(summarizeVersions(v.game_versions))}</span></div>
+      <span class="stat">${num(v.downloads)}</span><span class="stat">${esc(dateDe(v.date_published))}</span></div>`).join('') || '<div class="vr2"><span></span><span class="muted">Keine Version passt zu den Filtern.</span></div>'}</div>`;
+  $('#vfLd').onchange = e => { f.ld = e.target.value; projVersions(); };
+  $('#vfMc').onchange = e => { f.mc = e.target.value; projVersions(); };
+  $('#vfCh').onchange = e => { f.ch = e.target.value; projVersions(); };
+  b.querySelector('.vt').onclick = e => { const r = e.target.closest('[data-v]'); if (r) versionDetail(V.find(v => v.id === r.dataset.v)); };
+}
+window.projVersions = projVersions;
+function versionDetail(v) {
+  const p = S.proj.p;
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">${esc(cap(v.version_type))} · ${esc(dateDe(v.date_published))}</div><h1>${esc(v.name || v.version_number)}</h1>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">${v.loaders.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}<span class="chip m">${esc(summarizeVersions(v.game_versions))}</span><span class="chip m">${ico('download')}${num(v.downloads)}</span>${v.dependencies?.filter(d => d.dependency_type === 'required').length ? `<span class="chip a">${v.dependencies.filter(d => d.dependency_type === 'required').length} Abhängigkeit(en)</span>` : ''}</div>
+    <div class="vdet"><label class="fl">Änderungen</label><div class="md" id="vdMd">${v.changelog ? mdRender(v.changelog) : '<p class="muted">Kein Changelog.</p>'}</div>
+    <div class="files">${v.files.map(fl => `<div class="fr">${ico('file')}<span class="ell" style="flex:1">${esc(fl.filename)}</span><span class="muted">${bytes(fl.size)}</span>${fl.primary ? '<span class="chip a">Haupt</span>' : ''}</div>`).join('')}</div></div>
+    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Schließen</button><button class="btn p" id="vdInst">${ico('download')}Diese Version installieren</button></div>`, 'form');
+  mdBind($('#vdMd'));
+  $('#vdInst').onclick = () => { closeModal(); installProject(p.id, null, v.id); };
+}
+function projSide() {
+  const P = S.proj, p = P.p, el = $('#pSide'); if (!el) return;
+  const env = s => ({ required: 'Benötigt', optional: 'Optional', unsupported: 'Nein' })[s] || '—';
+  const links = [[p.issues_url, 'Fehler melden', 'bug'], [p.source_url, 'Quellcode', 'code'], [p.wiki_url, 'Wiki', 'book'], [p.discord_url, 'Discord', 'chat']].concat((p.donation_urls || []).map(d => [d.url, 'Unterstützen (' + d.platform + ')', 'heart'])).filter(l => l[0]);
+  el.innerHTML = `<div class="pbox"><h4>Kompatibilität</h4><div class="kv"><span>Minecraft</span><b>${esc(summarizeVersions(p.game_versions || []))}</b></div>
+      ${p.loaders?.length ? `<div class="kv"><span>Plattformen</span><b></b></div><div class="chips">${p.loaders.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}</div>` : ''}
+      ${p.project_type !== 'resourcepack' && p.project_type !== 'shader' ? `<div class="kv" style="margin-top:6px"><span>Client</span><b>${env(p.client_side)}</b></div><div class="kv"><span>Server</span><b>${env(p.server_side)}</b></div>` : ''}</div>
+    ${links.length ? `<div class="pbox"><h4>Links</h4>${links.map(([u, n, ic]) => `<button class="ln" onclick="openUrl('${jsq(u)}')">${ico(ic)}${esc(n)}</button>`).join('')}</div>` : ''}
+    ${P.members ? `<div class="pbox"><h4>Ersteller</h4>${P.members.slice(0, 8).map(m => `<div class="mem">${picHtml(m.user.avatar_url, 'pic', 'user')}<div><b>${esc(m.user.username)}</b><small>${esc(m.role)}</small></div></div>`).join('')}</div>` : ''}
+    <div class="pbox"><h4>Details</h4><div class="kv"><span>Lizenz</span><b>${esc(p.license?.id === 'LicenseRef-All-Rights-Reserved' ? 'Alle Rechte vorbehalten' : p.license?.id || '—')}</b></div><div class="kv"><span>Veröffentlicht</span><b>${esc(dateDe(p.published))}</b></div><div class="kv"><span>Aktualisiert</span><b>${esc(dateDe(p.updated))}</b></div>${P.versions ? `<div class="kv"><span>Versionen</span><b>${P.versions.length}</b></div>` : ''}</div>`;
+}
+
+/* ---------- markdown + HTML (Modrinth bodies mix both) → sanitized ---------- */
+function mdInline(s) {
+  return s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
+    .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g, '<img alt="$1" src="$2">')
+    .replace(/\[([^\]]+)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g, '<a href="$2">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>')
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a || b}</strong>`)
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+}
+function mdRender(src) {
+  const lines = String(src).replace(/\r/g, '').split('\n'), out = [];
+  let i = 0;
+  const isBlock = l => /^\s*(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|\|)|^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l);
+  while (i < lines.length) {
+    let l = lines[i];
+    if (/^\s*```/.test(l)) { const code = []; i++; while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]); i++; out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); continue; }
+    if (!l.trim()) { i++; continue; }
+    let m;
+    if ((m = /^\s*(#{1,6})\s+(.*?)#*\s*$/.exec(l))) { out.push(`<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>`); i++; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(l)) { const q = []; while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, '')); out.push(`<blockquote>${mdRender(q.join('\n'))}</blockquote>`); continue; }
+    if (/^\s*\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-+/.test(lines[i + 1])) {
+      const row = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => mdInline(c.trim()));
+      const h = row(l); i += 2; const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(row(lines[i++]));
+      out.push(`<table><thead><tr>${h.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`); continue;
+    }
+    if ((m = /^(\s*)([-*+]|\d+[.)])\s+/.exec(l))) {
+      const ordered = /\d/.test(m[2]), items = [];
+      while (i < lines.length && (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        const ln = lines[i++];
+        if (/^\s*([-*+]|\d+[.)])\s+/.test(ln) && ln.search(/\S/) <= m[1].length + 1) items.push(ln.replace(/^\s*([-*+]|\d+[.)])\s+/, '').replace(/^\[( |x)\]\s/i, (_, x) => x.trim() ? '☑ ' : '☐ '));
+        else items[items.length - 1] += '\n' + ln.trim();
+      }
+      out.push(`<${ordered ? 'ol' : 'ul'}>${items.map(t => `<li>${t.includes('\n') ? mdRender(t) : mdInline(t)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`); continue;
+    }
+    if (/^\s*<\/?[a-zA-Z]/.test(l)) { const h = []; while (i < lines.length && lines[i].trim()) h.push(lines[i++]); out.push(mdInline(h.join('\n'))); continue; }
+    const para = []; while (i < lines.length && lines[i].trim() && !isBlock(lines[i]) && !/^\s*<\/?(div|p|center|details|table|h\d)/i.test(lines[i])) para.push(lines[i++]);
+    if (!para.length) { out.push(mdInline(lines[i++])); continue; }
+    out.push(`<p>${para.map(mdInline).join(' ').replace(/ {2,}/g, '<br>')}</p>`);
+  }
+  return sanitize(out.join('\n'));
+}
+const OK_TAGS = new Set('a,b,strong,i,em,u,s,del,code,pre,p,br,hr,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,img,table,thead,tbody,tr,th,td,div,span,center,details,summary,sup,sub,kbd,small,font,picture,source,figure,figcaption,video,iframe'.split(','));
+function sanitize(html) {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html'), root = doc.body.firstChild;
+  const walk = n => {
+    [...n.childNodes].forEach(c => {
+      if (c.nodeType === 8) return c.remove();
+      if (c.nodeType !== 1) return;
+      const t = c.tagName.toLowerCase();
+      if (!OK_TAGS.has(t)) { if (['script', 'style', 'object', 'embed', 'form', 'input', 'button', 'textarea', 'link', 'meta'].includes(t)) c.remove(); else { walk(c); c.replaceWith(...c.childNodes); } return; }
+      if (t === 'iframe' || t === 'video') {
+        const src = c.getAttribute('src') || c.querySelector('source')?.getAttribute('src') || '';
+        const yt = /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([\w-]{6,})/.exec(src);
+        const a = doc.createElement('a'); a.className = 'yt'; a.href = yt ? 'https://www.youtube.com/watch?v=' + yt[1] : src; a.textContent = yt ? '▶ Video auf YouTube ansehen' : '▶ Video öffnen';
+        if (/^https:/.test(a.href)) c.replaceWith(a); else c.remove(); return;
+      }
+      [...c.attributes].forEach(at => {
+        const k = at.name.toLowerCase(), v = at.value;
+        const keep = (k === 'href' && /^https?:/i.test(v)) || ((k === 'src' || k === 'srcset') && /^https:/i.test(v)) || ['alt', 'title', 'width', 'height', 'align', 'colspan', 'rowspan', 'open'].includes(k);
+        if (!keep) c.removeAttribute(at.name);
+      });
+      if (t === 'img') { c.setAttribute('loading', 'lazy'); const w = +c.getAttribute('width'); if (w > 0 && w < 64) c.style.display = 'inline'; }
+      walk(c);
+    });
+  };
+  walk(root);
+  return root.innerHTML;
+}
+function mdBind(el) {
+  if (!el) return;
+  el.onclick = e => {
+    const a = e.target.closest('a[href]'); if (!a) return; e.preventDefault();
+    const u = a.getAttribute('href'), m = /^https:\/\/modrinth\.com\/(mod|modpack|resourcepack|shader|datapack|plugin)\/([^/?#]+)/.exec(u);
+    if (m) return go('project', { id: m[2] });
+    openUrl(u);
+  };
+}
+
+/* ======================= SKINS (CSS 3D viewer, original code) ======================= */
+// cuboid faces in Minecraft skin UV layout: [w,h,d,u,v]
+function cuboid(w, h, d, u, v, U, tex, ox, oy, oz, inflate = 0) {
+  const k = inflate ? 1 + inflate / Math.min(w, h, d) : 1;
+  const W = w * U * (inflate ? (w + inflate) / w : 1), H = h * U * (inflate ? (h + inflate) / h : 1), Dp = d * U * (inflate ? (d + inflate) / d : 1);
+  const sx = inflate ? (w + inflate) / w : 1, sy = inflate ? (h + inflate) / h : 1, sz = inflate ? (d + inflate) / d : 1;
+  const face = (fw, fh, fu, fv, tr, ssx, ssy) => `<div class="f" style="width:${fw * U}px;height:${fh * U}px;margin:${-fh * U / 2}px 0 0 ${-fw * U / 2}px;background-image:url('${tex.url}');background-size:${64 * U}px ${tex.h * U}px;background-position:${-fu * U}px ${-fv * U}px;transform:translate3d(${ox}px,${oy}px,${oz}px) ${tr} scale(${ssx},${ssy})"></div>`;
+  return face(w, h, u + d, v + d, `translateZ(${Dp / 2}px)`, sx, sy)
+    + face(w, h, u + 2 * d + w, v + d, `rotateY(180deg) translateZ(${Dp / 2}px)`, sx, sy)
+    + face(d, h, u, v + d, `rotateY(-90deg) translateZ(${W / 2}px)`, sz, sy)
+    + face(d, h, u + d + w, v + d, `rotateY(90deg) translateZ(${W / 2}px)`, sz, sy)
+    + face(w, d, u + d, v, `rotateX(90deg) translateZ(${H / 2}px)`, sx, sz)
+    + face(w, d, u + d + w, v, `rotateX(-90deg) translateZ(${H / 2}px)`, sx, sz);
+}
+function skinModel(url, slim, U = 8, legacy = false) {
+  const tex = { url: esc(url), h: legacy ? 32 : 64 }, aw = slim ? 3 : 4, ax = 4 + aw / 2;
+  const part = (cls, px, py, inner) => `<div class="pt ${cls}" style="transform:translate3d(${px * U}px,${py * U}px,0)">${inner}</div>`;
+  // part pivots: head at neck, arms at shoulders, legs at hips (y down, model center = 0)
+  const head = cuboid(8, 8, 8, 0, 0, U, tex, 0, -4 * U, 0) + `<div class="ov">${cuboid(8, 8, 8, 32, 0, U, tex, 0, -4 * U, 0, 1)}</div>`;
+  const body = cuboid(8, 12, 4, 16, 16, U, tex, 0, 6 * U, 0) + (legacy ? '' : `<div class="ov">${cuboid(8, 12, 4, 16, 32, U, tex, 0, 6 * U, 0, .5)}</div>`);
+  const rArm = cuboid(aw, 12, 4, 40, 16, U, tex, 0, 4 * U, 0) + (legacy ? '' : `<div class="ov">${cuboid(aw, 12, 4, 40, 32, U, tex, 0, 4 * U, 0, .5)}</div>`);
+  const lArm = legacy ? cuboid(aw, 12, 4, 40, 16, U, tex, 0, 4 * U, 0) : cuboid(aw, 12, 4, 32, 48, U, tex, 0, 4 * U, 0) + `<div class="ov">${cuboid(aw, 12, 4, 48, 48, U, tex, 0, 4 * U, 0, .5)}</div>`;
+  const rLeg = cuboid(4, 12, 4, 0, 16, U, tex, 0, 6 * U, 0) + (legacy ? '' : `<div class="ov">${cuboid(4, 12, 4, 0, 32, U, tex, 0, 6 * U, 0, .5)}</div>`);
+  const lLeg = legacy ? cuboid(4, 12, 4, 0, 16, U, tex, 0, 6 * U, 0) : cuboid(4, 12, 4, 16, 48, U, tex, 0, 6 * U, 0) + `<div class="ov">${cuboid(4, 12, 4, 0, 48, U, tex, 0, 6 * U, 0, .5)}</div>`;
+  return `<div class="mcm">${part('hd', 0, -8, head)}${part('bd', 0, -8, body)}${part('ra', -ax, -6, rArm)}${part('la', ax, -6, lArm)}${part('rl', -2, 4, rLeg)}${part('ll', 2, 4, lLeg)}</div>`;
+}
+const texH = url => new Promise(r => { const im = new Image(); im.onload = () => r(im.naturalHeight); im.onerror = () => r(64); im.src = url; });
+const SV = { rot: -25, tilt: -8, spin: true, walk: false, t: 0, raf: 0 };
+function viewerLoop() {
+  cancelAnimationFrame(SV.raf);
+  const step = () => {
+    const m = $('#skStage .mcm'); if (!m || S.page !== 'skins') return;
+    if (SV.spin && !SV.drag) SV.rot += 0.35;
+    SV.t += 0.06;
+    const sw = SV.walk ? Math.sin(SV.t) * 32 : Math.sin(SV.t / 2) * 3;
+    m.style.transform = `rotateX(${SV.tilt}deg) rotateY(${SV.rot}deg)`;
+    const set = (c, a) => { const p = m.querySelector('.' + c); if (p) p.style.transform = p.style.transform.replace(/ rotateX\([^)]*\)| rotateZ\([^)]*\)/g, '') + a; };
+    set('ra', ` rotateX(${sw}deg) rotateZ(${SV.walk ? 0 : 2}deg)`); set('la', ` rotateX(${-sw}deg) rotateZ(${SV.walk ? 0 : -2}deg)`);
+    set('rl', ` rotateX(${SV.walk ? -sw : 0}deg)`); set('ll', ` rotateX(${SV.walk ? sw : 0}deg)`);
+    SV.raf = requestAnimationFrame(step);
+  };
+  step();
+}
+PAGES.skins = async el => {
+  crumbs([['Skins']]);
+  const acc = activeAcc();
+  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammle Skins, schau sie dir in 3D an und übernimm sie mit einem Klick für dein Konto.</p></div></div>
+    <div class="skwrap"><div class="skview"><div class="stage3" id="skStage"><span class="floor"></span></div><div class="sbar" id="skBar"></div></div><div id="skSide"><div class="spinner"></div></div></div>`;
+  const [lib, prof] = await Promise.all([api('skins.list').catch(() => []), acc ? api('skin.profile').catch(e => ({ error: e.message })) : Promise.resolve(null)]);
+  if (S.page !== 'skins') return;
+  S.skins = { lib, prof, sel: S.skins?.sel };
+  const active = prof?.skins?.find(s => s.state === 'ACTIVE');
+  if (!S.skins.sel || (S.skins.sel !== '__cur' && !lib.find(x => x.id === S.skins.sel))) S.skins.sel = active ? '__cur' : lib[0]?.id || '__def';
+  skinSide(); skinShow();
+  const st = $('#skStage');
+  st.onpointerdown = e => { SV.drag = { x: e.clientX, y: e.clientY, r: SV.rot, t: SV.tilt }; st.setPointerCapture(e.pointerId); };
+  st.onpointermove = e => { if (!SV.drag) return; SV.rot = SV.drag.r + (e.clientX - SV.drag.x) * .6; SV.tilt = Math.max(-35, Math.min(35, SV.drag.t - (e.clientY - SV.drag.y) * .3)); };
+  st.onpointerup = () => SV.drag = null;
+};
+function selSkin() {
+  const K = S.skins, active = K.prof?.skins?.find(s => s.state === 'ACTIVE');
+  if (K.sel === '__cur' && active) return { id: '__cur', name: 'Aktueller Skin', url: active.url.replace('http://', 'https://'), variant: active.variant === 'SLIM' ? 'slim' : 'classic', current: true };
+  if (K.sel === '__def' || !K.lib.length) return { id: '__def', name: 'Orbit (Vorlage)', url: demoSkin(0), variant: 'classic', demo: true };
+  return K.lib.find(x => x.id === K.sel) || K.lib[0];
+}
+async function skinShow() {
+  const s = selSkin(), st = $('#skStage'); if (!st) return;
+  const h = await texH(s.url);
+  st.innerHTML = '<span class="floor"></span>' + skinModel(s.url, s.variant === 'slim', 9, h === 32);
+  viewerLoop();
+  const canApply = !s.current && !s.demo && S.accounts.length;
+  $('#skBar').innerHTML = `<div class="row"><b class="ell" style="flex:1">${esc(s.name)}</b>${s.current ? '<span class="chip g">Aktiv</span>' : ''}</div>
+    <div class="row"><div class="seg" id="skVar"><button data-v="classic" class="${s.variant !== 'slim' ? 'on' : ''}">Klassisch</button><button data-v="slim" class="${s.variant === 'slim' ? 'on' : ''}">Schlank</button></div><span class="sp"></span>
+      <button class="ib ${SV.walk ? 'on' : ''}" id="skWalk" title="Laufen">${ico('walk')}</button><button class="ib ${SV.spin ? 'on' : ''}" id="skSpin" title="Drehen">${ico('rotate')}</button></div>
+    ${canApply ? `<button class="btn p" id="skApply" style="justify-content:center">${ico('check')}Für ${esc(activeAcc().name)} übernehmen</button>` : s.current ? `<button class="btn" id="skSave" style="justify-content:center">${ico('download')}In Bibliothek speichern</button>` : !S.accounts.length ? `<button class="btn" onclick="login()" style="justify-content:center">${ico('user')}Anmelden zum Übernehmen</button>` : ''}`;
+  $('#skVar').onclick = async e => { const b = e.target.closest('[data-v]'); if (!b) return; s.variant = b.dataset.v; if (!s.current && !s.demo) api('skins.update', { id: s.id, variant: s.variant }); skinShow(); skinSide(); };
+  $('#skWalk').onclick = () => { SV.walk = !SV.walk; $('#skWalk').classList.toggle('on', SV.walk); };
+  $('#skSpin').onclick = () => { SV.spin = !SV.spin; $('#skSpin').classList.toggle('on', SV.spin); };
+  if ($('#skApply')) $('#skApply').onclick = async () => {
+    const b = $('#skApply'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird übernommen…';
+    try { const prof = await api('skin.apply', { id: s.id, variant: s.variant }); S.skins.prof = prof; toast('Skin übernommen', 'Im Spiel nach dem nächsten Start sichtbar'); const r = await api('init'); S.accounts = r.accounts; accountUI(); S.skins.sel = '__cur'; skinSide(); skinShow(); }
+    catch (e) { b.disabled = false; b.innerHTML = ico('check') + 'Übernehmen'; fail('Skin', e); }
+  };
+  if ($('#skSave')) $('#skSave').onclick = async () => { try { const e = await api('skins.add', { url: s.url, name: (activeAcc()?.name || 'Skin'), variant: s.variant }); S.skins.lib.unshift(e); toast('Gespeichert'); skinSide(); } catch (e) { fail('Skin', e); } };
+}
+function skinSide() {
+  const K = S.skins, el = $('#skSide'); if (!el) return;
+  const active = K.prof?.skins?.find(s => s.state === 'ACTIVE'), capes = K.prof?.capes || [];
+  const card = (id, name, url, variant, extra = '') => `<div class="skc ${K.sel === id ? 'on' : ''}" data-sk="${esc(id)}">${extra}<div class="thumb">${skinModel(url, variant === 'slim', 4.2).replace('class="mcm"', 'class="mcm" style="transform:rotateX(-8deg) rotateY(-28deg)"')}</div><b>${esc(name)}</b><small>${variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></div>`;
+  el.innerHTML = `${K.prof?.error ? `<div class="note w" style="margin:0 0 14px">Profil konnte nicht geladen werden: ${esc(K.prof.error)}</div>` : ''}
+    ${capes.length ? `<div class="sec" style="margin-top:0"><h2>Umhänge</h2></div><div class="capes" id="skCapes"><button class="capeb ${capes.some(c => c.state === 'ACTIVE') ? '' : 'on'}" data-cape=""><i class="none"></i>Keiner</button>${capes.map(c => `<button class="capeb ${c.state === 'ACTIVE' ? 'on' : ''}" data-cape="${esc(c.id)}"><i style="background-image:url('${esc(c.url.replace('http://', 'https://'))}')"></i>${esc(c.alias || 'Umhang')}</button>`).join('')}</div>` : ''}
+    <div class="sec" ${capes.length ? '' : 'style="margin-top:0"'}><h2>Deine Skins</h2><span class="muted">${K.lib.length}</span></div>
+    <div class="sklib" id="skLib"><button class="skc add" id="skAdd"><span>${ico('plus')}<b>Skin hinzufügen</b><small>PNG, 64×64</small></span></button>
+      ${active ? card('__cur', 'Aktueller Skin', active.url.replace('http://', 'https://'), active.variant === 'SLIM' ? 'slim' : 'classic', '<span class="badge">AKTIV</span>') : ''}
+      ${K.lib.map(x => card(x.id, x.name, x.url, x.variant, `<span class="act"><button class="ib sm" data-ren="${esc(x.id)}" title="Umbenennen">${ico('edit')}</button><button class="ib sm d" data-del="${esc(x.id)}" title="Löschen">${ico('trash')}</button></span>`)).join('')}
+      ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>
+    <p class="fine">Skins werden nur lokal gespeichert, bis du sie übernimmst. Übernehmen geht direkt über Mojangs offizielle Schnittstelle mit deinem Konto.</p>`;
+  $('#skLib').onclick = async e => {
+    if (e.target.closest('#skAdd')) { try { const x = await api('skins.add', { variant: 'classic' }); if (x) { K.lib.unshift(x); K.sel = x.id; skinSide(); skinShow(); } } catch (er) { fail('Skin', er); } return; }
+    const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); if (!await confirmBox('Skin löschen?', 'Er wird aus deiner Bibliothek entfernt.', 'Löschen', true)) return; await api('skins.remove', { id: del.dataset.del }); K.lib = K.lib.filter(x => x.id !== del.dataset.del); if (K.sel === del.dataset.del) K.sel = null; skinSide(); skinShow(); return; }
+    const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); const x = K.lib.find(y => y.id === ren.dataset.ren); const n = await promptBox('Umbenennen', 'Name', x.name); if (n) { x.name = n; api('skins.update', { id: x.id, name: n }); skinSide(); skinShow(); } return; }
+    const c = e.target.closest('[data-sk]'); if (c) { K.sel = c.dataset.sk; $$('#skLib .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow(); }
+  };
+  if ($('#skCapes')) $('#skCapes').onclick = async e => {
+    const b = e.target.closest('[data-cape]'); if (!b) return;
+    try { const prof = await api('skin.cape', { id: b.dataset.cape || null }); if (prof?.capes) K.prof = prof; else K.prof.capes.forEach(c => c.state = c.id === b.dataset.cape ? 'ACTIVE' : 'INACTIVE'); toast('Umhang geändert'); skinSide(); }
+    catch (er) { fail('Umhang', er); }
+  };
+}
+/* original demo skins drawn on a canvas (no Mojang assets) */
+const demoCache = {};
+function demoSkin(n) {
+  if (demoCache[n]) return demoCache[n];
+  const P = [['#E0AC85', '#3B2A1E', '#FF7A3D', '#2A2A33', '#1E1E24', '#4A86FF'], ['#C58C66', '#111', '#2DD4A0', '#33415C', '#222', '#3A2A1A'], ['#F1C9A5', '#E7C35A', '#8B7BFF', '#3C2F55', '#2A2340', '#2EA36B'], ['#8D5A3F', '#1A1A1A', '#F87171', '#E8E8EC', '#3A3A44', '#6B4A2A']][n % 4];
+  const [skin, hair, shirt, pants, shoe, eye] = P;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  let seed = 3 + n * 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const box = (u, v, w, h, d, col) => { const r = [[u + d, v, w, d], [u + d + w, v, w, d], [u, v + d, d, h], [u + d, v + d, w, h], [u + d + w, v + d, d, h], [u + 2 * d + w, v + d, w, h]]; r.forEach(([a, b, cw, ch]) => { x.fillStyle = col; x.fillRect(a, b, cw, ch); for (let i = 0; i < cw * ch / 6; i++) { x.fillStyle = `rgba(0,0,0,${rnd() * .12})`; x.fillRect(a + Math.floor(rnd() * cw), b + Math.floor(rnd() * ch), 1, 1); } }); };
+  box(0, 0, 8, 8, 8, skin); x.fillStyle = hair; x.fillRect(8, 0, 8, 8); x.fillRect(0, 8, 32, 2); x.fillRect(24, 8, 8, 8); x.fillRect(8, 8, 8, 2); x.fillRect(8, 10, 1, 2); x.fillRect(15, 10, 1, 2);
+  x.fillStyle = '#fff'; x.fillRect(9, 12, 2, 1); x.fillRect(13, 12, 2, 1); x.fillStyle = eye; x.fillRect(10, 12, 1, 1); x.fillRect(13, 12, 1, 1);
+  x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(11, 14, 2, 1); x.fillStyle = 'rgba(120,60,40,.5)'; x.fillRect(10, 15, 4, 1);
+  box(16, 16, 8, 12, 4, shirt); x.fillStyle = 'rgba(255,255,255,.18)'; x.fillRect(20, 20, 8, 1); x.fillStyle = pants; x.fillRect(20, 30, 8, 2);
+  x.fillStyle = 'rgba(255,255,255,.85)'; x.fillRect(22, 23, 4, 4); x.fillStyle = shirt; x.fillRect(23, 24, 2, 2);
+  box(40, 16, 4, 12, 4, shirt); x.fillStyle = skin; x.fillRect(40, 28, 16, 4); box(32, 48, 4, 12, 4, shirt); x.fillStyle = skin; x.fillRect(32, 60, 16, 4);
+  box(0, 16, 4, 12, 4, pants); x.fillStyle = shoe; x.fillRect(0, 29, 16, 3); box(16, 48, 4, 12, 4, pants); x.fillStyle = shoe; x.fillRect(16, 61, 16, 3);
+  x.fillStyle = hair; x.fillRect(40, 0, 8, 8); x.fillRect(32, 8, 32, 3);
+  return demoCache[n] = c.toDataURL();
+}
+
+/* ======================= SETTINGS ======================= */
+const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
+const STABS = [['account', 'Konten', 'user', 'Microsoft-Anmeldung'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+PAGES.settings = (el, a) => {
+  S.stab = a.tab || S.stab || 'account';
+  crumbs([['Einstellungen']]);
+  el.innerHTML = `<div class="ph"><div><div class="kicker">OrbitLauncher</div><h1>Einstellungen</h1></div></div>
+    <div class="sgrid"><div class="snav" id="sNav">${STABS.map(([k, n, ic, d]) => `<button class="tab ${S.stab === k ? 'on' : ''}" data-k="${k}">${ico(ic)}<span>${n}<small>${d}</small></span></button>`).join('')}</div><div id="sBody"></div></div>`;
+  $('#sNav').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; S.stab = b.dataset.k; S.hist[S.hi].a = { tab: S.stab }; $$('#sNav .tab').forEach(x => x.classList.toggle('on', x === b)); setBody(); };
+  setBody();
+};
+async function setBody() {
+  const b = $('#sBody'), st = S.settings; if (!b) return;
+  const card = (t, h) => `<div class="card">${t ? `<h2 style="margin-bottom:6px">${t}</h2>` : ''}${h}</div>`;
+  const tg = (k, on) => `<div class="tg ${on ? 'on' : ''}" data-set="${k}"></div>`;
+  if (S.stab === 'account') {
+    b.innerHTML = card('Microsoft-Konten', (S.accounts.length ? S.accounts.map(a => `<div class="acc">${headHtml(a, 'head lg')}<div class="tx"><b>${esc(a.name)}</b><p>${a.uuid === S.active ? 'Aktives Konto' : 'Gespeichert'} · <code class="cc">${esc(a.uuid.slice(0, 8))}…</code></p></div>
+      ${a.uuid === S.active ? '<span class="chip g">Aktiv</span>' : `<button class="btn sm" onclick="selectAccount('${jsq(a.uuid)}')">Wechseln</button>`}<button class="ib sm d" title="Abmelden" onclick="removeAccount('${jsq(a.uuid)}')">${ico('logout')}</button></div>`).join('') : '<p class="sub" style="margin:8px 0">Noch kein Konto. Zum Spielen brauchst du ein Microsoft-Konto mit Minecraft: Java Edition.</p>')
+      + `<div class="row" style="margin-top:14px"><button class="btn p" onclick="login()">${ico('plus')}Konto hinzufügen</button></div><p class="fine">Die Anmeldung läuft über das offizielle Microsoft-Fenster. OrbitLauncher sieht dein Passwort nie und speichert nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI).</p>`);
+  }
+  if (S.stab === 'design') {
+    b.innerHTML = card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
+      + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+        <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start Updates von Modrinth holen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
+        <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>`);
+    $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
+    $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
+  }
+  if (S.stab === 'java') {
+    b.innerHTML = card('Java-Laufzeiten', '<div class="spinner"></div>');
+    let list = []; try { list = await api('java.list'); } catch { }
+    if (S.stab !== 'java') return;
+    b.innerHTML = card('Java-Laufzeiten', `<p class="sub" style="margin-bottom:6px">OrbitLauncher lädt für jede Minecraft-Version automatisch das passende Java (Mojang, sonst Eclipse Temurin).</p>
+      ${list.length ? list.map(j => `<div class="jrow"><span class="iic">${ico('coffee')}</span><div class="tx"><b>Java ${j.major}</b><p>${esc(j.path)}</p></div><span class="chip m">${esc(j.source)}</span></div>`).join('') : '<div class="empty" style="margin-top:10px">Noch keins geladen. Kommt beim ersten Start automatisch.</div>'}`)
+      + '<div class="mt"></div>' + card('Eigenes Java für alle Instanzen', `<div class="inline" style="margin-top:10px"><input class="in" id="sJava" placeholder="Automatisch (empfohlen)" value="${esc(st.javaPath || '')}"><button class="btn" onclick="pickJava('sJava')">${ico('folder')}Durchsuchen</button></div><p class="fine">Nur ändern, wenn du weißt warum. Einzelne Instanzen können ein eigenes Java haben.</p>`);
+    $('#sJava').onchange = e => setS('javaPath', e.target.value.trim() || null);
+  }
+  if (S.stab === 'defaults') {
+    b.innerHTML = card('Arbeitsspeicher', `<div class="ramrow" style="margin-top:12px"><input type="range" min="1024" max="16384" step="256" value="${st.ramMb || 4096}" id="sRam"><input class="in" id="sRamN" readonly value="${st.ramMb || 4096} MB"></div><p class="fine">4–6 GB reichen für die meisten Modpacks. Zu viel kann Ruckler machen.</p>`)
+      + '<div class="mt"></div>' + card('Fenster', `<div class="vrow2" style="margin-top:6px"><div><label class="fl">Breite</label><input class="in" type="number" id="sW" value="${st.width || 0}"></div><div><label class="fl">Höhe</label><input class="in" type="number" id="sH" value="${st.height || 0}"></div></div><p class="fine">0 = Minecraft-Standard.</p>`)
+      + '<div class="mt"></div>' + card('JVM-Argumente', `<input class="in" id="sJvm" style="margin-top:10px;font-family:var(--mono);font-size:12px" placeholder="Leer = Mojangs empfohlene Argumente" value="${esc(st.jvmArgs || '')}">`);
+    const r = $('#sRam'); setRange(r); let t = 0;
+    r.oninput = () => { setRange(r); $('#sRamN').value = r.value + ' MB'; clearTimeout(t); t = setTimeout(() => setS('ramMb', +r.value), 300); };
+    $('#sW').onchange = e => setS('width', +e.target.value || 0); $('#sH').onchange = e => setS('height', +e.target.value || 0);
+    $('#sJvm').onchange = e => setS('jvmArgs', e.target.value.trim() || null);
+  }
+  if (S.stab === 'storage') {
+    b.innerHTML = card('Datenordner', `<div class="inline" style="margin-top:10px"><input class="in" readonly value="${esc(S.root)}" style="font-family:var(--mono);font-size:12px"><button class="btn" onclick="api('folder.open')">${ico('folder')}Öffnen</button></div>`) + '<div class="mt"></div>' + card('Speicherbelegung', '<div class="spinner"></div>');
+    let info = []; try { info = await api('storage.info'); } catch { }
+    if (S.stab !== 'storage') return;
+    const N = { instances: ['Instanzen', 'Welten, Mods, Einstellungen'], versions: ['Versionen', 'Spiel-Clients'], libraries: ['Bibliotheken', 'Geteilt von allen Instanzen'], assets: ['Assets', 'Sounds, Sprachen, Texturen'], runtime: ['Java', 'Laufzeiten'], cache: ['Cache', 'Temporäre Downloads'] };
+    const total = info.reduce((s, x) => s + x.size, 0);
+    b.lastElementChild.outerHTML = card('Speicherbelegung', `<div class="storage">${info.map(x => `<div class="srow"><div><b>${N[x.name]?.[0] || x.name}</b><p>${N[x.name]?.[1] || ''}</p></div><div style="width:180px"><div class="bar"><i style="width:${total ? Math.max(2, x.size / total * 100) : 0}%"></i></div></div><b style="width:80px;text-align:right">${bytes(x.size)}</b>${x.name === 'cache' ? `<button class="btn sm" id="sClr">${ico('trash')}Leeren</button>` : '<span style="width:84px"></span>'}</div>`).join('')}
+      <div class="srow"><div><b>Gesamt</b></div><b>${bytes(total)}</b><span style="width:84px"></span></div></div>`);
+    if ($('#sClr')) $('#sClr').onclick = async () => { await api('cache.clear'); toast('Cache geleert'); setBody(); };
+  }
+  if (S.stab === 'about') {
+    b.innerHTML = card('', `<div class="row" style="gap:16px"><span class="iic" style="width:64px;height:64px;border-radius:18px">${blockSvg('orbit')}</span><div><h2 style="font-size:22px">Orbit<span class="grad">Launcher</span></h2><p class="sub">Version ${esc(S.version)} · Minecraft-Launcher im OrbitTweak-Design</p></div></div>`)
+      + '<div class="mt"></div>' + card('Quellen &amp; Lizenzen', `<div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang, Microsoft oder Modrinth verbunden.</p></div></div>
+        <div class="srow"><div><b>Modrinth</b><p>Mods, Modpacks, Shader und Ressourcenpakete über die öffentliche Modrinth-API, jeweils unter der Lizenz ihrer Autoren.</p></div></div>
+        <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
+        <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium).</p></div></div>
+        <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist und Inter (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
+  }
+  b.querySelectorAll('[data-set]').forEach(t => t.onclick = () => { const on = !t.classList.contains('on'); t.classList.toggle('on', on); setS(t.dataset.set, on); });
+}
+
+/* ======================= ORBIT CLIENT TAB (instance) ======================= */
 const COLORS = ['Weiß', 'Akzent', 'Chroma', 'Grün', 'Rot', 'Blau', 'Gelb', 'Pink'];
 const HUDSET = [['bg', 'Hintergrund', 'bool', true], ['shadow', 'Textschatten', 'bool', true], ['color', 'Farbe', 'choice', 'Weiß', COLORS], ['scale', 'Größe', 'num', 1, 0.5, 2.5, 0.1]];
 const OMODS = [
   ['fps', 'FPS', 'Bilder pro Sekunde', 'HUD', 1, 1, [], 'activity'],
-  ['cps', 'CPS', 'Klicks pro Sekunde, links | rechts, jeder Klick zählt', 'PvP', 1, 1, [], 'sword'],
+  ['cps', 'CPS', 'Klicks pro Sekunde, links | rechts', 'PvP', 1, 1, [], 'sword'],
   ['keystrokes', 'Keystrokes', 'WASD, Maustasten mit CPS und Leertaste live', 'PvP', 1, 1, [['mouse', 'Maustasten', 'bool', true], ['space', 'Leertaste', 'bool', true], ['cpsInKeys', 'CPS in Maustasten', 'bool', true]], 'keyboard'],
   ['coords', 'Koordinaten', 'XYZ, Blickrichtung und Biom', 'HUD', 1, 1, [['biome', 'Biom anzeigen', 'bool', true], ['facing', 'Richtung anzeigen', 'bool', true]], 'compass'],
   ['armor', 'Rüstung', 'Rüstung und Item in der Hand mit Haltbarkeit', 'PvP', 1, 1, [['dura', 'Haltbarkeit', 'choice', 'Prozent', ['Prozent', 'Zahl', 'Aus']], ['hand', 'Item in der Hand', 'bool', true]], 'shield'],
   ['potions', 'Effekte', 'Aktive Tränke mit Restzeit', 'HUD', 1, 1, [], 'sparkle'],
   ['ping', 'Ping', 'Latenz zum Server', 'HUD', 1, 1, [], 'globe'],
   ['reach', 'Reichweite', 'Distanz deines letzten Treffers', 'PvP', 1, 1, [], 'target'],
-  ['combo', 'Combo', 'Treffer in Folge, ohne getroffen zu werden', 'PvP', 1, 1, [], 'zap'],
+  ['combo', 'Combo', 'Treffer in Folge', 'PvP', 1, 1, [], 'zap'],
   ['sprint', 'Sprint-Status', 'Zeigt Toggle-Sprint und Schleichen', 'Komfort', 1, 1, [], 'rocket'],
   ['server', 'Server', 'Aktuelle Server-Adresse', 'HUD', 1, 0, [], 'link'],
   ['clock', 'Uhrzeit', 'Echte Uhrzeit', 'HUD', 1, 0, [['seconds', 'Sekunden', 'bool', false]], 'clock'],
   ['memory', 'Speicher', 'RAM-Verbrauch von Minecraft', 'HUD', 1, 0, [], 'ram'],
-  ['speed', 'Tempo', 'Geschwindigkeit in Blöcken pro Sekunde', 'HUD', 1, 0, [], 'zap'],
+  ['speed', 'Tempo', 'Blöcke pro Sekunde', 'HUD', 1, 0, [], 'zap'],
   ['session', 'Sitzung', 'Spielzeit dieser Sitzung', 'HUD', 1, 0, [], 'clock'],
-  ['zoom', 'Zoom', 'C halten, Mausrad ändert die Stärke, weich animiert', 'PvP', 0, 1, [['factor', 'Zoomstärke', 'num', 4, 2, 12, 1], ['smooth', 'Weicher Zoom', 'bool', true], ['cinematic', 'Kamera glätten', 'bool', true], ['scroll', 'Mausrad-Zoom', 'bool', true]], 'search'],
+  ['zoom', 'Zoom', 'C halten, Mausrad ändert die Stärke', 'PvP', 0, 1, [['factor', 'Zoomstärke', 'num', 4, 2, 12, 1], ['smooth', 'Weicher Zoom', 'bool', true], ['cinematic', 'Kamera glätten', 'bool', true], ['scroll', 'Mausrad-Zoom', 'bool', true]], 'search'],
   ['freelook', 'Freelook', 'Linke Alt-Taste halten und frei umschauen', 'PvP', 0, 1, [['invert', 'Maus umkehren', 'bool', false]], 'eye'],
   ['fullbright', 'Fullbright', 'Alles hell, auch in Höhlen (Taste G)', 'Grafik', 0, 0, [], 'sun'],
   ['crosshair', 'Fadenkreuz', 'Eigenes Fadenkreuz: Form, Größe, Farbe', 'Grafik', 0, 0, [['style', 'Form', 'choice', 'Plus', ['Plus', 'Plus+Punkt', 'Punkt', 'Kreis', 'X', 'T']], ['size', 'Länge', 'num', 5, 1, 15, 1], ['gap', 'Abstand', 'num', 2, 0, 10, 1], ['thick', 'Dicke', 'num', 1, 1, 4, 1], ['ccolor', 'Farbe', 'choice', 'Weiß', ['Weiß', 'Akzent', 'Grün', 'Rot', 'Cyan', 'Gelb', 'Pink']], ['outline', 'Umrandung', 'bool', true]], 'target'],
@@ -681,97 +1412,54 @@ const OMODS = [
 ].map(([id, name, desc, cat, hud, def, extra, icon]) => ({ id, name, desc, cat, hud: !!hud, def: !!def, icon, settings: (hud ? HUDSET : []).concat(extra) }));
 const OM = Object.fromEntries(OMODS.map(m => [m.id, m]));
 const fmtNum = v => Number.isInteger(+v) ? String(+v) : (+v).toFixed(1);
-
-S.orbit = { packs: null, info: null, inst: null, cfg: null, cat: '' };
+S.orbit = { cfg: null, cat: '' };
 const ocfg = id => (S.orbit.cfg.modules = S.orbit.cfg.modules || {})[id] = S.orbit.cfg.modules[id] || {};
 const oOn = id => { const c = S.orbit.cfg?.modules?.[id]; return c && c.enabled !== undefined ? !!c.enabled : OM[id].def; };
 const oGet = (id, key) => { const v = S.orbit.cfg?.modules?.[id]?.opts?.[key]; if (v !== undefined) return v; const s = OM[id].settings.find(x => x[0] === key); return s ? (s[2] === 'num' ? fmtNum(s[3]) : String(s[3])) : ''; };
 const oSet = (id, key, v) => { const c = ocfg(id); (c.opts = c.opts || {})[key] = String(v); oSave(); };
 let oSaveT = 0;
+const oSync = t => { const e = $('#oSync'); if (e) e.textContent = t; };
 function oSave() {
-  $('#oSync').textContent = 'Speichert…';
+  oSync('Speichert…');
   clearTimeout(oSaveT);
   oSaveT = setTimeout(async () => {
-    try { await api('orbit.config.set', { config: S.orbit.cfg }); const t = [...S.running].some(id => S.instances.find(i => i.id === id)?.kind === 'orbit') ? 'Live im Spiel übernommen' : 'Gespeichert · gilt für alle Versionen'; $('#oSync').textContent = t; $('#hudSync').textContent = t; }
-    catch (e) { $('#oSync').textContent = ''; fail('Speichern fehlgeschlagen', e); }
+    try { await api('orbit.config.set', { config: S.orbit.cfg }); oSync([...S.running].some(id => instById(id)?.kind === 'orbit') ? 'Live im Spiel übernommen' : 'Gespeichert · gilt live im Spiel'); }
+    catch (e) { oSync(''); fail('Speichern fehlgeschlagen', e); }
   }, 250);
 }
-
-async function loadOrbit() {
-  let info;
-  try { info = S.orbit.info = await api('orbit.info'); } catch (e) { return fail('Orbit Client', e); }
+function orbitCfgEvent(d) {
+  if (hbDrag || JSON.stringify(d) === JSON.stringify(S.orbit.cfg)) return;
+  S.orbit.cfg = d; S.orbit.cfg.modules = S.orbit.cfg.modules || {};
+  if (S.page === 'inst' && S.itab === 'orbit') { renderOMods(); renderStage(); oSync('Aus dem Spiel übernommen'); }
+}
+async function instOrbit(i) {
+  const body = $('#iBody');
+  body.innerHTML = '<div class="spinner"></div>';
   try { S.orbit.cfg = await api('orbit.config.get'); } catch { S.orbit.cfg = {}; }
   S.orbit.cfg.modules = S.orbit.cfg.modules || {};
-  S.orbit.ver = S.orbit.ver || S.settings.orbitVersion || info.last;
-  S.orbit.packs = new Set((info.selPacks || 'perf,shaders,qol').split(',').filter(Boolean));
-  renderOrbitHero(); renderOMods(); renderPacks(info); renderKeys(); renderQuick();
-  if (curPage === 'hud') renderStage();
+  if (S.itab !== 'orbit') return;
+  body.innerHTML = `<div class="cbar"><div class="fchips" id="oCat">${['', 'HUD', 'PvP', 'Grafik', 'Komfort'].map(c => `<button class="fchip ${S.orbit.cat === c ? 'on' : ''}" data-c="${c}">${c || 'Alle'}</button>`).join('')}</div><span class="sp"></span><span class="muted" id="oSync" style="font-size:12px">Gilt live im Spiel · Menü im Spiel: Rechts-Shift</span><button class="btn sm" onclick="orbitReset()">${ico('refresh')}Zurücksetzen</button></div>
+    <div class="omods" id="oMods"></div>
+    <div class="sec"><h2>HUD-Layout</h2><span class="muted" style="font-size:12px">Ziehen zum Verschieben · Mausrad = Größe · Doppelklick = automatisch</span><span class="sp"></span><button class="btn sm" onclick="hudAuto()">${ico('grid')}Alles automatisch</button></div>
+    <div class="card hudc"><div class="stage" id="stage"><div class="stage-bg" id="stageBg"></div><i class="xh"></i></div></div>
+    <div class="sec"><h2>Tasten</h2></div><div class="card keys">${[['Rechts-Shift', 'Orbit-Menü öffnen'], ['C (halten)', 'Zoom'], ['Linke Alt (halten)', 'Freelook'], ['G', 'Fullbright'], ['Strg', 'Toggle Sprint']].map(([k, n]) => `<div class="srow"><div><b>${esc(n)}</b></div><kbd>${esc(k)}</kbd></div>`).join('')}<p class="fine">Änderbar im Spiel unter Optionen → Steuerung → „Orbit Client“.</p></div>`;
+  $('#oCat').onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; S.orbit.cat = b.dataset.c; $$('#oCat .fchip').forEach(x => x.classList.toggle('on', x === b)); renderOMods(); };
+  $('#oMods').onclick = e => {
+    const st = e.target.closest('[data-oms]'); if (st) return orbitSettings(st.dataset.oms);
+    const card = e.target.closest('[data-om]'); if (!card) return;
+    const id = card.dataset.om, on = !oOn(id);
+    ocfg(id).enabled = on; card.classList.toggle('on', on); card.querySelector('.tg').classList.toggle('on', on);
+    oSave(); renderStage();
+  };
+  bindStage();
+  renderOMods(); setTimeout(renderStage, 30);
 }
-function orbitInstFor(v) { return (S.orbit.info?.existing || []).find(i => i.mcVersion === v) || S.instances.find(i => i.kind === 'orbit' && i.mcVersion === v); }
-function renderOrbitHero() {
-  const info = S.orbit.info; if (!info || !$('#cverTxt')) return;
-  const v = S.orbit.ver, full = info.supported.includes(v), inst = orbitInstFor(v), run = inst && S.running.has(inst.id);
-  const on = OMODS.filter(m => oOn(m.id)).length;
-  $('#cverTxt').textContent = v;
-  const go = $('#oPlay'); go.classList.toggle('run', !!run);
-  if (!go.disabled) go.innerHTML = `${ico(run ? 'stop' : 'play')}<span>${run ? 'Beenden' : 'Spielen'}</span>`;
-  $('#cmode').innerHTML = `<span class="omode ${full ? 'full' : ''}">${ico(full ? 'sparkle' : 'layers')}<span><b>${full ? 'Voller Client im Spiel' : 'Overlay-Client'}</b><small>${full ? 'Alle 21 Mods, Menü auf Rechts-Shift' : 'Keystrokes, CPS, Fadenkreuz und Uhr über dem Spiel'}${inst ? '' : ' · erster Start richtet alles ein'}</small></span></span>`;
-  $('#ohStats').innerHTML = `<div><b>${on}/${OMODS.length}</b><span>Mods aktiv</span></div><div><b>${ptime(S.instances.filter(i => i.kind === 'orbit').reduce((a, i) => a + (i.playSeconds || 0), 0))}</b><span>gespielt</span></div><div><b>${info.versions.filter(x => x.type === 'release').length}</b><span>Versionen</span></div>`;
-  if ($('#oCnt')) $('#oCnt').textContent = on + '/' + OMODS.length;
-  $('#navMods').textContent = on;
-  runUI();
-}
-function orbitPickVersion(e, anchor = 'cver') {
-  e.stopPropagation();
-  if (!S.orbit.info) return;
-  const pop = $('#pop'), info = S.orbit.info;
-  if (!pop.classList.contains('hidden')) return closePop();
-  const r = $('#' + anchor).getBoundingClientRect();
-  const types = ['release'].concat(S.settings.showSnapshots ? ['snapshot'] : [], S.settings.showOld ? ['old_beta', 'old_alpha'] : []);
-  const list = info.versions.filter(x => types.includes(x.type));
-  const has = new Set((info.existing || []).map(i => i.mcVersion));
-  pop.innerHTML = `<div class="vps"><input class="in" id="vpq" placeholder="Version suchen…"></div><div id="vpl">${list.map(x => `<button data-v="${esc(x.id)}" class="${x.id === S.orbit.ver ? 'on' : ''}"><span class="tx"><b>${esc(x.id)}</b><small>${info.supported.includes(x.id) ? 'Voller Client' : 'Overlay-Client'}${has.has(x.id) ? ' · installiert' : ''}</small></span>${info.supported.includes(x.id) ? '<span class="chip a">MOD</span>' : x.type !== 'release' ? vtypeChip(x.type) : ''}</button>`).join('')}</div>`;
-  pop.style.left = r.left + 'px'; pop.style.width = '300px';
-  pop.classList.remove('hidden');
-  pop.style.top = (anchor === 'isel' ? Math.max(60, r.top - pop.offsetHeight - 8) : r.bottom + 6) + 'px';
-  $('#vpq').focus();
-  $('#vpq').oninput = ev => { const q = ev.target.value.trim(); $$('#vpl button').forEach(b => b.classList.toggle('hidden', !!q && !b.dataset.v.includes(q))); };
-  $('#vpl').onclick = ev => { const b = ev.target.closest('[data-v]'); if (!b) return; S.orbit.ver = b.dataset.v; setS('orbitVersion', b.dataset.v); closePop(); renderOrbitHero(); };
-}
-window.orbitPickVersion = orbitPickVersion;
-async function orbitPlay() {
-  const v = S.orbit.ver, inst = orbitInstFor(v);
-  if (inst && S.running.has(inst.id)) return play(inst.id);
-  if (!S.accounts.length) return gate(true);
-  const btns = [$('#oPlay'), $('#launchBtn')];
-  btns.forEach(b => b.classList.add('busy'));
-  $('#oPlay').disabled = true; $('#oPlay').innerHTML = ico('refresh', 'i spin') + `<span>${inst ? 'Startet…' : 'Richte ein…'}</span>`;
-  try {
-    const r = await api('orbit.play', { mc: v });
-    toast('Orbit Client startet', `Minecraft ${v} · ${r.mod ? 'voller Client' : 'Overlay-Client'}`);
-    await refreshInstances();
-    S.orbit.info = await api('orbit.info');
-  } catch (e) { fail('Start fehlgeschlagen', e); }
-  finally { btns.forEach(b => b.classList.remove('busy')); $('#oPlay').disabled = false; renderOrbitHero(); }
-}
-window.orbitPlay = orbitPlay;
-
 function renderOMods() {
-  const list = OMODS.filter(m => !S.orbit.cat || m.cat === S.orbit.cat);
-  $('#oMods').innerHTML = list.map(m => `<div class="card mcard ${oOn(m.id) ? 'on' : ''}" data-om="${m.id}"><span class="ti">${ico(m.icon)}</span>
-    <div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.cat}${m.hud && m.cat !== 'HUD' ? ' · HUD' : ''}</span>${(S.orbit.info?.overlay || []).includes(m.id) ? '<span class="chip a">Alle Versionen</span>' : '<span class="chip m">26.3</span>'}</div>
-    <div class="mact"><div class="tg sm ${oOn(m.id) ? 'on' : ''}" data-omt="${m.id}"></div>${m.settings.length ? `<button class="ib sm" title="Einstellungen" data-oms="${m.id}">${ico('settings')}</button>` : ''}</div></div>`).join('');
-  if (!$('#oSync').textContent) $('#oSync').textContent = 'Gilt für alle Versionen · live im Spiel';
+  const el = $('#oMods'); if (!el) return;
+  el.innerHTML = OMODS.filter(m => !S.orbit.cat || m.cat === S.orbit.cat).map(m => `<div class="card tcard mcard ${oOn(m.id) ? 'on' : ''}" data-om="${m.id}"><span class="ti">${ico(m.icon)}</span>
+    <div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.cat}</span></div>
+    <div class="mact"><div class="tg sm ${oOn(m.id) ? 'on' : ''}"></div>${m.settings.length ? `<button class="ib sm" title="Einstellungen" data-oms="${m.id}">${ico('settings')}</button>` : ''}</div></div>`).join('');
 }
-$('#oCat').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.orbit.cat = b.dataset.c; $$('#oCat button').forEach(x => x.classList.toggle('on', x === b)); renderOMods(); });
-$('#oMods').addEventListener('click', e => {
-  const st = e.target.closest('[data-oms]'); if (st) return orbitSettings(st.dataset.oms);
-  const card = e.target.closest('[data-om]'); if (!card) return;
-  const id = card.dataset.om, on = !oOn(id);
-  ocfg(id).enabled = on; card.classList.toggle('on', on); card.querySelector('.tg').classList.toggle('on', on);
-  renderOrbitHero();
-  oSave();
-});
 function orbitSettings(id) {
   const m = OM[id];
   const row = s => {
@@ -792,11 +1480,10 @@ function orbitSettings(id) {
     if (t.dataset.t === 'choice') { const b = e.target.closest('button'); if (!b) return; t.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); oSet(id, t.dataset.ok, b.dataset.v); }
     xhDraw();
   });
-  box.addEventListener('input', e => { const t = e.target; if (t.dataset.t !== 'num') return; const v = fmtNum(t.value); box.querySelector(`[data-nv="${t.dataset.ok}"]`).textContent = v; oSet(id, t.dataset.ok, v); xhDraw(); });
-  S.modalClose = () => { renderOMods(); renderOrbitHero(); };
+  box.addEventListener('input', e => { const t = e.target; if (t.dataset.t !== 'num') return; setRange(t); const v = fmtNum(t.value); box.querySelector(`[data-nv="${t.dataset.ok}"]`).textContent = v; oSet(id, t.dataset.ok, v); xhDraw(); });
+  S.modalClose = () => { renderOMods(); renderStage(); };
   xhDraw();
 }
-window.orbitSettings = orbitSettings;
 function xhDraw() {
   const c = $('#xhPrev'); if (!c) return;
   const x = c.getContext('2d'), sc = 4; x.clearRect(0, 0, c.width, c.height);
@@ -811,13 +1498,10 @@ function xhDraw() {
   else if (st === 'X') { x.save(); x.translate(cx, cy); x.rotate(Math.PI / 4); x.translate(-cx, -cy); plus(true); x.restore(); }
   else { plus(st !== 'T'); if (st === 'Plus+Punkt') R(-h0, -h0, h1, h1); }
 }
-async function orbitReset() {
+window.orbitReset = async () => {
   if (!await confirmBox('Alles zurücksetzen?', 'Alle Module, Einstellungen und HUD-Positionen gehen auf Standard zurück.', 'Zurücksetzen', true)) return;
-  S.orbit.cfg = { modules: {} }; oSave(); renderOMods(); renderOrbitHero(); renderStage();
-}
-window.orbitReset = orbitReset;
-
-/* ---------- HUD layout stage (mirror of the in-game auto layout) ---------- */
+  S.orbit.cfg = { modules: {} }; oSave(); renderOMods(); renderStage();
+};
 const HUDBOX = { fps: [52, 16, '60 FPS'], cps: [62, 16, '9 | 2 CPS'], coords: [150, 36, 'X 128.5  Y 64.0  Z -42.3\nRichtung Nord (-Z)\nBiom Plains'], keystrokes: [70, 108, 'keys'], armor: [52, 90, 'armor'],
   potions: [116, 26, 'Stärke II  1:24\nSchnelligkeit  3:00'], ping: [42, 16, '23 ms'], server: [96, 16, 'play.example.net'], clock: [38, 16, '18:42'], memory: [126, 16, 'RAM 41%  1.2/3.0 GB'],
   speed: [60, 16, '5.61 m/s'], reach: [46, 16, '3.12 m'], combo: [54, 16, '4 Combo'], sprint: [140, 16, '[Sprinten (umgeschaltet)]'], session: [104, 16, 'Sitzung 0:42:10'] };
@@ -848,165 +1532,30 @@ function renderStage() {
     d.style.cssText = `left:${x * k}px;top:${y * k}px;width:${w * k}px;height:${h * k}px;--fs:${8.4 * sc * k}px`;
     const txt = HUDBOX[id][2];
     d.innerHTML = txt === 'keys' ? `<div class="ks">${['', 'W', '', 'A', 'S', 'D'].map(t => `<i class="${t ? '' : 'e'}">${t}</i>`).join('')}<i class="w2">LMB 9</i><i class="w2">RMB 2</i><i class="w3">▬</i></div>`
-      : txt === 'armor' ? '<div class="arm"><i></i><i></i><i></i><i></i><i></i></div>'
-        : txt.split('\n').map(l => `<span>${esc(l)}</span>`).join('');
+      : txt === 'armor' ? '<div class="arm"><i></i><i></i><i></i><i></i><i></i></div>' : txt.split('\n').map(l => `<span>${esc(l)}</span>`).join('');
     st.append(d);
   }
 }
 let hbDrag = null;
-$('#stage').addEventListener('pointerdown', e => {
-  const b = e.target.closest('.hb'); if (!b) return;
-  const r = b.getBoundingClientRect();
-  hbDrag = { id: b.dataset.id, el: b, ox: e.clientX - r.left, oy: e.clientY - r.top };
-  b.classList.add('drag'); b.setPointerCapture(e.pointerId);
-});
-$('#stage').addEventListener('pointermove', e => {
-  if (!hbDrag) return;
-  const st = $('#stage').getBoundingClientRect(), b = hbDrag.el;
-  let x = e.clientX - st.left - hbDrag.ox, y = e.clientY - st.top - hbDrag.oy;
-  const w = b.offsetWidth, h = b.offsetHeight, sn = 6;
-  x = Math.max(0, Math.min(st.width - w, x)); y = Math.max(0, Math.min(st.height - h, y));
-  if (Math.abs(x + w / 2 - st.width / 2) < sn) x = st.width / 2 - w / 2;
-  if (Math.abs(y + h / 2 - st.height / 2) < sn) y = st.height / 2 - h / 2;
-  b.style.left = x + 'px'; b.style.top = y + 'px';
-  hbDrag.x = x / st.width; hbDrag.y = y / st.height;
-});
-$('#stage').addEventListener('pointerup', () => {
-  if (!hbDrag) return;
-  hbDrag.el.classList.remove('drag');
-  if (hbDrag.x !== undefined) { const c = ocfg(hbDrag.id); c.x = +hbDrag.x.toFixed(4); c.y = +hbDrag.y.toFixed(4); oSave(); }
-  hbDrag = null;
-});
-$('#stage').addEventListener('wheel', e => {
-  const b = e.target.closest('.hb'); if (!b) return; e.preventDefault();
-  const id = b.dataset.id, v = Math.max(0.5, Math.min(2.5, Math.round(((+oGet(id, 'scale') || 1) + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10));
-  oSet(id, 'scale', fmtNum(v)); renderStage();
-}, { passive: false });
-$('#stage').addEventListener('dblclick', e => { const b = e.target.closest('.hb'); if (!b) return; const c = ocfg(b.dataset.id); delete c.x; delete c.y; oSave(); renderStage(); });
+function bindStage() {
+  const stg = $('#stage');
+  stg.addEventListener('pointerdown', e => { const b = e.target.closest('.hb'); if (!b) return; const r = b.getBoundingClientRect(); hbDrag = { id: b.dataset.id, el: b, ox: e.clientX - r.left, oy: e.clientY - r.top }; b.classList.add('drag'); b.setPointerCapture(e.pointerId); });
+  stg.addEventListener('pointermove', e => {
+    if (!hbDrag) return;
+    const st = stg.getBoundingClientRect(), b = hbDrag.el;
+    let x = e.clientX - st.left - hbDrag.ox, y = e.clientY - st.top - hbDrag.oy;
+    const w = b.offsetWidth, h = b.offsetHeight, sn = 6;
+    x = Math.max(0, Math.min(st.width - w, x)); y = Math.max(0, Math.min(st.height - h, y));
+    if (Math.abs(x + w / 2 - st.width / 2) < sn) x = st.width / 2 - w / 2;
+    if (Math.abs(y + h / 2 - st.height / 2) < sn) y = st.height / 2 - h / 2;
+    b.style.left = x + 'px'; b.style.top = y + 'px'; hbDrag.x = x / st.width; hbDrag.y = y / st.height;
+  });
+  stg.addEventListener('pointerup', () => { if (!hbDrag) return; hbDrag.el.classList.remove('drag'); if (hbDrag.x !== undefined) { const c = ocfg(hbDrag.id); c.x = +hbDrag.x.toFixed(4); c.y = +hbDrag.y.toFixed(4); oSave(); } hbDrag = null; });
+  stg.addEventListener('wheel', e => { const b = e.target.closest('.hb'); if (!b) return; e.preventDefault(); const id = b.dataset.id, v = Math.max(0.5, Math.min(2.5, Math.round(((+oGet(id, 'scale') || 1) + (e.deltaY < 0 ? 0.1 : -0.1)) * 10) / 10)); oSet(id, 'scale', fmtNum(v)); renderStage(); }, { passive: false });
+  stg.addEventListener('dblclick', e => { const b = e.target.closest('.hb'); if (!b) return; const c = ocfg(b.dataset.id); delete c.x; delete c.y; oSave(); renderStage(); });
+}
 window.hudAuto = () => { Object.values(S.orbit.cfg.modules || {}).forEach(c => { delete c.x; delete c.y; }); oSave(); renderStage(); };
-window.addEventListener('resize', () => { if (curPage === 'hud') renderStage(); });
-
-/* ---------- packs + install + keys ---------- */
-function renderPacks(info) {
-  const cur = orbitInstFor(S.orbit.ver);
-  $('#oPacks').innerHTML = info.packs.map(m => `<div class="card mcard ${S.orbit.packs.has(m.id) ? 'on' : ''}" data-m="${m.id}"><span class="ti">${ico(m.icon)}</span><div class="tx"><b>${esc(m.name)}</b><p>${esc(m.desc)}</p><span class="chip m">${m.mods} Mod${m.mods > 1 ? 's' : ''}</span></div>
-    <span class="cb ${S.orbit.packs.has(m.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
-    ${cur && cur.loader === 'fabric' ? `<button class="btn sm" onclick="event.stopPropagation();addPack('${m.id}',this)">${ico('download')}In ${esc(cur.mcVersion)} nachladen</button>` : ''}</div>`).join('');
-}
-$('#oPacks').addEventListener('click', e => {
-  const c = e.target.closest('[data-m]'); if (!c || e.target.closest('button')) return;
-  const s = S.orbit.packs; s.has(c.dataset.m) ? s.delete(c.dataset.m) : s.add(c.dataset.m);
-  c.classList.toggle('on'); c.querySelector('.cb')?.classList.toggle('on');
-  setS('orbitPacks', [...s].join(','));
-});
-const PACK_MODS = { perf: ['sodium', 'lithium', 'ferrite-core', 'entityculling', 'immediatelyfast', 'dynamic-fps', 'sodium-extra', 'reeses-sodium-options'], shaders: ['iris'], qol: ['appleskin', 'mouse-tweaks', 'betterf3', 'no-chat-reports'], visual: ['lambdynamiclights', 'continuity', '3dskinlayers'] };
-async function addPack(id, btn) {
-  const i = orbitInstFor(S.orbit.ver); if (!i) return; btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
-  let n = 0;
-  for (const slug of PACK_MODS[id] || []) { try { await api('mr.install', { id: i.id, project: slug, type: 'mod' }); n++; } catch { } }
-  btn.disabled = false; btn.innerHTML = ico('check') + 'Installiert';
-  toast('Paket installiert', `${n} Mod${n === 1 ? '' : 's'} in ${i.name}`); refreshInstances();
-}
-window.addPack = addPack;
-function renderKeys() {
-  $('#oKeys').innerHTML = [['Rechts-Shift', 'Orbit-Menü öffnen', 'Module an/aus, Einstellungen, HUD bearbeiten'], ['C (halten)', 'Zoom', 'Mausrad ändert die Stärke'], ['Linke Alt (halten)', 'Freelook', 'Kamera dreht, du läufst geradeaus'], ['G', 'Fullbright', 'An/aus, auch wenn das Modul aus ist'], ['Strg (Sprint)', 'Toggle Sprint', 'Einmal drücken, bleibt an']]
-    .map(([k, n, d]) => `<div class="srow"><div><b>${esc(n)}</b><p>${esc(d)}</p></div><kbd>${esc(k)}</kbd></div>`).join('')
-    + '<p class="fine">Alle Tasten kannst du im Spiel unter Optionen → Steuerung → Kategorie „Orbit Client“ ändern.</p>';
-}
-
-/* ======================= SCREENSHOTS ======================= */
-async function loadShots() {
-  let list = [];
-  try { list = await api('screenshots.list'); } catch { }
-  $('#sgal').innerHTML = list.length ? list.map((x, i) => `<button class="card hov shot" data-i="${i}"><i style="background-image:url('${esc(x.url)}')"></i><span><b>${esc(x.version)}</b><small>${new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</small></span></button>`).join('')
-    : `<div class="empty">${ico('image')}<p style="margin-top:8px">Noch keine Screenshots. Drück im Spiel F2.</p></div>`;
-  S.shots = list;
-}
-window.loadShots = loadShots;
-$('#sgal').addEventListener('click', e => {
-  const b = e.target.closest('[data-i]'); if (!b) return;
-  const x = S.shots[+b.dataset.i];
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><img class="shotbig" src="${esc(x.url)}" alt="">
-    <div class="act" style="justify-content:space-between"><span class="muted" style="font-size:12px">${esc(x.file)} · Minecraft ${esc(x.version)}</span>
-    <span class="row"><button class="btn" onclick="api('screenshots.open',{id:'${esc(x.id)}',file:'${esc(x.file)}'})">${ico('folder')}Im Ordner zeigen</button><button class="btn d" onclick="api('screenshots.delete',{id:'${esc(x.id)}',file:'${esc(x.file)}'}).then(()=>{closeModal();loadShots();})">${ico('trash')}Löschen</button></span></div>`, 'form wide');
-});
-
-/* ======================= SETTINGS ======================= */
-function setTab(k) {
-  $$('#setTabs .tab').forEach(b => b.classList.toggle('on', b.dataset.st === k));
-  $$('.stab').forEach(p => p.classList.toggle('hidden', p.dataset.stp !== k));
-  if (k === 'java') loadJava();
-}
-window.setTab = setTab;
-$('#setTabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) setTab(b.dataset.st); });
-const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-function renderSettings() {
-  const s = S.settings;
-  renderAccounts();
-  const ram = $('#sRam'); ram.value = (s.ramMb || 4096) / 1024; setRange(ram); $('#sRamTxt').textContent = ram.value + ' GB für neue Instanzen';
-  $('#sW').value = s.width || ''; $('#sH').value = s.height || '';
-  $$('#sOnLaunch button').forEach(b => b.classList.toggle('on', b.dataset.v === (s.onLaunch || 'minimize')));
-  $('#sSnap').classList.toggle('on', !!s.showSnapshots); $('#sOld').classList.toggle('on', !!s.showOld); $('#sAutoUp').classList.toggle('on', !!s.autoUpdateMods);
-  $('#sJvm').value = s.jvmArgs || ''; $('#sJava').value = s.javaPath || '';
-  $('#themes').innerHTML = Object.entries(THEMES).map(([k, [n, a, b]]) => `<div class="sw ${k === (s.accent || 'ember') ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${a},${b})"></i>${n}</div>`).join('');
-  $('#aboutVer').textContent = 'OrbitLauncher ' + S.version; $('#aboutRoot').textContent = S.root;
-}
-window.renderSettings = renderSettings;
-$('#sRam').addEventListener('input', e => { $('#sRamTxt').textContent = e.target.value + ' GB für neue Instanzen'; });
-$('#sRam').addEventListener('change', e => setS('ramMb', +e.target.value * 1024));
-$('#sW').addEventListener('change', e => setS('width', +e.target.value || 0));
-$('#sH').addEventListener('change', e => setS('height', +e.target.value || 0));
-$('#sJvm').addEventListener('change', e => setS('jvmArgs', e.target.value.trim() || null));
-$('#sJava').addEventListener('change', e => setS('javaPath', e.target.value.trim() || null));
-$('#sOnLaunch').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('#sOnLaunch button').forEach(x => x.classList.toggle('on', x === b)); setS('onLaunch', b.dataset.v); });
-[['#sSnap', 'showSnapshots'], ['#sOld', 'showOld'], ['#sAutoUp', 'autoUpdateMods']].forEach(([sel, key]) => $(sel).addEventListener('click', e => { const on = !e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on', on); setS(key, on); }));
-$('#themes').addEventListener('click', e => { const t = e.target.closest('[data-th]'); if (!t) return; applyTheme(t.dataset.th); setS('accent', t.dataset.th); $$('#themes .sw').forEach(x => x.classList.toggle('on', x === t)); $('#bnScene').innerHTML = bannerSvg(); });
-
-function renderAccounts() {
-  $('#accList').innerHTML = S.accounts.length ? S.accounts.map(a => `<div class="acc">${headHtml(a, 'head lg')}<div class="tx"><b>${esc(a.name)}</b><p>${a.uuid === S.active ? 'Aktives Konto' : 'Microsoft-Konto'} · UUID ${esc(a.uuid.slice(0, 8))}…</p></div>
-      ${a.uuid === S.active ? '<span class="chip g">Aktiv</span>' : `<button class="btn sm" onclick="selectAccount('${a.uuid}')">Verwenden</button>`}<button class="ib sm d" title="Abmelden" onclick="removeAccount('${a.uuid}','${esc(a.name)}')">${ico('logout')}</button></div>`).join('')
-    : `<div class="acc"><span class="head lg">?</span><div class="tx"><b>Kein Konto</b><p>Melde dich mit dem Microsoft-Konto an, das Minecraft besitzt.</p></div></div>`;
-}
-window.selectAccount = async uuid => { await api('auth.select', { uuid }); S.active = uuid; renderAccounts(); accountUI(); };
-window.removeAccount = async (uuid, name) => {
-  if (!await confirmBox('Abmelden?', `${name} wird aus dem Launcher entfernt. Das gespeicherte Token wird gelöscht.`, 'Abmelden', true)) return;
-  const r = await api('auth.remove', { uuid }); S.accounts = r.accounts; S.active = r.active; renderAccounts(); accountUI();
-};
-async function login() {
-  const err = $('#gateErr'); if (err) err.textContent = '';
-  const btn = $('.g-ms'); if (btn) { btn.disabled = true; btn.classList.add('busy'); }
-  try {
-    const r = await api('auth.login');
-    if (!r) return;   // window closed
-    S.accounts = r.accounts; S.active = r.active; accountUI(); renderAccounts();
-    gate(false);
-    toast('Angemeldet', `Willkommen, ${r.account.name}!`);
-  } catch (e) {
-    if (e.message === 'NO_APP_ID') { gate(true); $('#gateDev').classList.remove('hidden'); $('#gateErr').textContent = ''; $('#gateAppId').focus(); }
-    else if (!$('#gate').classList.contains('hidden')) $('#gateErr').textContent = e.message; else fail('Anmeldung fehlgeschlagen', e);
-  } finally { if (btn) { btn.disabled = false; btn.classList.remove('busy'); } }
-}
-function gate(show) {
-  $('#gate').classList.toggle('hidden', !show);
-  if (show && !$('#gateBg').innerHTML) $('#gateBg').innerHTML = bannerSvg();
-}
-window.gate = gate;
-async function saveAppId() {
-  try {
-    await api('auth.appid', { id: $('#gateAppId').value });
-    $('#gateDev').classList.add('hidden'); $('#gateErr').textContent = '';
-    toast('App-ID gespeichert', 'Jetzt mit Microsoft anmelden');
-  } catch (e) { $('#gateErr').textContent = e.message; }
-}
-window.saveAppId = saveAppId;
-window.login = login;
-async function loadJava() {
-  try {
-    const j = await api('java.list');
-    $('#javaList').innerHTML = j.length ? j.map(x => `<div class="jrow"><span class="iic">${ico('coffee')}</span><div class="tx"><b>Java ${x.major || '?'} · ${esc(x.source)}</b><p>${esc(x.path)}</p></div></div>`).join('')
-      : '<div class="jrow"><div class="tx"><b>Noch keine Runtime geladen</b><p>Wird beim ersten Start automatisch heruntergeladen</p></div></div>';
-  } catch { }
-}
+window.addEventListener('resize', () => { if (S.page === 'inst' && S.itab === 'orbit') renderStage(); moveInd(); });
 
 /* ======================= BOOT ======================= */
 async function boot() {
@@ -1015,101 +1564,121 @@ async function boot() {
   try { init = await api('init'); } catch (e) { fail('Start fehlgeschlagen', e); init = { settings: {}, instances: [], accounts: [] }; }
   S.settings = init.settings || {}; S.instances = init.instances || []; S.accounts = init.accounts || []; S.active = init.active; S.version = init.version || S.version; S.root = init.root || '';
   (init.running || []).forEach(id => S.running.add(id));
-  S.sel = S.settings.lastInstance && S.instances.find(i => i.id === S.settings.lastInstance) ? S.settings.lastInstance : S.instances[0]?.id;
   applyTheme(S.settings.accent || 'ember');
-  $('#verTxt').textContent = 'v' + S.version;
-  accountUI();
-  S.orbit.ver = S.settings.orbitVersion || '26.3';
-  try { await loadOrbit(); } catch { }
-  runUI();
-  if (!S.accounts.length) { gate(true); if (init.needAppId) $('#gateDev').classList.remove('hidden'); }
-  api('versions.list', {}).then(r => { S.versions = r.versions; S.latest = r.latest; if (curPage === 'home') $('#bnLatest').textContent = `Neueste Version ${r.latest.release}`; }).catch(() => { });
-  renderHome();
+  accountUI(); runUI();
+  api('orbit.info').then(r => { S.orbitInfo = r; S.orbitSupported = r.supported; }).catch(() => { });
+  ensureVersions().catch(() => { });
+  const q = new URLSearchParams(location.search);
+  const args = {}; ['id', 'tab', 'target', 'type'].forEach(k => { if (q.get(k)) args[k] = q.get(k); });
+  go(q.get('page') || 'home', args);
+  if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (init.needAppId) $('#gateDev').classList.remove('hidden'); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
-  setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 900 - (performance.now() - t0)));
-  const q = new URLSearchParams(location.search).get('page'); if (q) setTimeout(() => go(q), 50);
+  if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
+  if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 700 - (performance.now() - t0)));
 }
 
 /* ======================= MOCK BACKEND (browser preview) ======================= */
+const H = 3600e3, DAY = 86400e3, iso = ms => new Date(Date.now() - ms).toISOString();
 const Mock = {
-  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', lastInstance: 'orbit-client-26-3' },
+  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', firstRun: false, orbitPacks: 'perf,shaders,qol' },
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
-    { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: new Date(Date.now() - 3600e3).toISOString(), mods: 19 },
-    { id: 'survival-1-21-11', name: 'Survival mit Freunden', mcVersion: '1.21.11', loader: 'vanilla', kind: 'custom', icon: 'grass', ramMb: 0, playSeconds: 210000, lastPlayed: new Date(Date.now() - 86400e3 * 2).toISOString(), mods: 0 },
-    { id: 'technik-abenteuer', name: 'Technik-Abenteuer', mcVersion: '1.21.1', loader: 'neoforge', loaderVersion: '21.1.266', kind: 'modpack', icon: 'ruby', ramMb: 8192, playSeconds: 92000, lastPlayed: new Date(Date.now() - 86400e3 * 5).toISOString(), mods: 214 },
-    { id: 'pvp-1-8-9', name: 'PvP 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', kind: 'custom', icon: 'diamond', ramMb: 2048, playSeconds: 12000, lastPlayed: new Date(Date.now() - 86400e3 * 12).toISOString(), mods: 0 },
-    { id: 'fabric-snapshot', name: 'Snapshot-Test', mcVersion: '26.4-snapshot-8', loader: 'vanilla', kind: 'custom', icon: 'amethyst', ramMb: 0, playSeconds: 1800, lastPlayed: null, mods: 0 },
-    { id: 'beta-nostalgie', name: 'Beta-Nostalgie', mcVersion: 'b1.7.3', loader: 'vanilla', kind: 'custom', icon: 'sand', ramMb: 1024, playSeconds: 5400, lastPlayed: new Date(Date.now() - 86400e3 * 40).toISOString(), mods: 0 },
+    { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: iso(H), created: iso(DAY * 20), mods: 19, group: 'PvP', content: [] },
+    { id: 'fabulously-optimized', name: 'Fabulously Optimized', mcVersion: '1.21.11', loader: 'fabric', loaderVersion: '0.18.4', kind: 'modpack', icon: 'box', iconUrl: null, mpSlug: 'fabulously-optimized', ramMb: 4096, playSeconds: 72000, lastPlayed: iso(DAY), created: iso(DAY * 30), mods: 49, content: [] },
+    { id: 'survival-1-21-11', name: 'Survival mit Freunden', mcVersion: '1.21.11', loader: 'vanilla', kind: 'custom', icon: 'grass', ramMb: 0, playSeconds: 210000, lastPlayed: iso(DAY * 2), created: iso(DAY * 90), mods: 0, group: 'Survival', content: [] },
+    { id: 'technik-abenteuer', name: 'Technik-Abenteuer', mcVersion: '1.21.1', loader: 'neoforge', loaderVersion: '21.1.266', kind: 'custom', icon: 'ruby', ramMb: 8192, playSeconds: 92000, lastPlayed: iso(DAY * 5), created: iso(DAY * 60), mods: 214, group: 'Survival', content: [] },
+    { id: 'pvp-1-8-9', name: 'PvP 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', kind: 'custom', icon: 'diamond', ramMb: 2048, playSeconds: 12000, lastPlayed: iso(DAY * 12), created: iso(DAY * 120), mods: 0, group: 'PvP', content: [] },
+    { id: 'beta-nostalgie', name: 'Beta-Nostalgie', mcVersion: 'b1.7.3', loader: 'vanilla', kind: 'custom', icon: 'sand', ramMb: 1024, playSeconds: 5400, lastPlayed: iso(DAY * 40), created: iso(DAY * 200), mods: 0, content: [] },
   ],
-  content: {
-    mod: [['Sodium', 'sodium-fabric-0.8.14+mc26.3.jar', 'mc26.3-0.8.14', 1.2e6], ['Iris Shaders', 'iris-fabric-1.10.4+mc26.3.jar', '1.10.4', 2.6e6], ['Lithium', 'lithium-fabric-0.18.1+mc26.3.jar', '0.18.1', 0.8e6], ['AxolotlClient', 'axolotlclient-3.2.0+26.3.jar', '3.2.0', 3.1e6], ['Zoomify (Zoom)', 'zoomify-2.16.0+26.3.jar', '2.16.0', 0.4e6], ['Fabric API', 'fabric-api-0.142.1+26.3.jar', '0.142.1', 2.2e6, true], ['YetAnotherConfigLib (YACL)', 'yet_another_config_lib_v3-3.9.0.jar', '3.9.0', 1.1e6, true], ['Mod Menu', 'modmenu-17.0.0.jar', '17.0.0', 0.6e6]],
-  },
+  mods: { 'orbit-client-26-3': ['fabric-api', 'modmenu', 'sodium', 'lithium', 'iris', 'ferrite-core', 'entityculling', 'immediatelyfast', 'dynamic-fps', 'appleskin', 'mouse-tweaks', 'no-chat-reports'], 'fabulously-optimized': ['sodium', 'lithium', 'iris', 'continuity', 'entityculling', 'ferrite-core', 'zoomify', 'modmenu', 'fabric-api', 'yacl', 'cloth-config', 'lambdynamiclights'], 'technik-abenteuer': ['create', 'jei', 'jade', 'sophisticated-backpacks', 'waystones', 'appleskin'] },
   versions: null,
+  async projs(slugs) {
+    try { const r = await (await fetch('https://api.modrinth.com/v2/projects?ids=' + encodeURIComponent(JSON.stringify(slugs)))).json(); return r; } catch { return []; }
+  },
   async call(cmd, a) {
-    await sleep(60); const M = this;
+    await sleep(50); const M = this;
+    const inst = () => M.instances.find(x => x.id === a.id);
     switch (cmd) {
-      case 'init': if (/gate/.test(location.search)) M.accounts = []; if (/noid/.test(location.search)) { M.accounts = []; return { needAppId: true, version: '0.1.0', root: '', settings: M.settings, instances: M.instances, accounts: [], active: null, running: [] }; } return { version: '0.1.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
+      case 'init': {
+        if (/gate|noid/.test(location.search)) M.accounts = [];
+        if (!M.fo) { M.fo = 1; try { const p = await (await fetch('https://api.modrinth.com/v2/project/fabulously-optimized')).json(); M.instances[1].iconUrl = p.icon_url; M.instances[1].modpackProject = p.id; } catch { } }
+        if (/running/.test(location.search)) setTimeout(() => onEvent('state', { id: 'orbit-client-26-3', running: true }), 400);
+        return { needAppId: /noid/.test(location.search), version: '0.2.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
+      }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
-      case 'versions.list': {
+      case 'versions.list':
         if (!M.versions) {
           try { const m = await (await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')).json(); M.versions = { latest: m.latest, versions: m.versions.map(v => ({ id: v.id, type: v.type, released: v.releaseTime })) }; }
-          catch { M.versions = { latest: { release: '26.3', snapshot: '26.4-snapshot-8' }, versions: ['26.3', '26.2', '26.1.2', '26.1', '1.21.11', '1.21.10', '1.21.4', '1.21.1', '1.20.6', '1.20.1', '1.19.4', '1.18.2', '1.16.5', '1.12.2', '1.8.9', '1.7.10'].map((id, i) => ({ id, type: 'release', released: new Date(Date.now() - i * 864e5 * 60).toISOString() })) }; }
+          catch { M.versions = { latest: { release: '26.3', snapshot: '26.4-snapshot-8' }, versions: ['26.3', '26.2', '26.1', '1.21.11', '1.21.10', '1.21.4', '1.21.1', '1.20.6', '1.20.1', '1.19.4', '1.18.2', '1.16.5', '1.12.2', '1.8.9'].map((id, i) => ({ id, type: 'release', released: iso(i * DAY * 60) })) }; }
         }
-        return { ...M.versions, installed: ['26.3', '1.21.11', '1.8.9'] };
-      }
+        return { ...M.versions, installed: [] };
       case 'loader.versions': return a.loader === 'forge' ? [{ version: a.mc + '-60.1.4', stable: true, recommended: true }, { version: a.mc + '-60.1.3', stable: true }] : a.loader === 'neoforge' ? [{ version: '21.1.266', stable: true }, { version: '21.1.265', stable: true }] : [{ version: '0.20.1', stable: true }, { version: '0.20.0', stable: true }, { version: '0.19.2', stable: true }];
-      case 'loader.games': return (M.versions?.versions || []).filter(v => v.type === 'release').map(v => v.id).slice(0, a.loader === 'neoforge' ? 14 : 60);
-      case 'instance.create': { const i = { id: a.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: a.name, mcVersion: a.mc, loader: a.loader, loaderVersion: a.loaderVersion, kind: 'custom', icon: a.icon, ramMb: a.ramMb, playSeconds: 0, lastPlayed: null, mods: 0 }; M.instances.unshift(i); return i; }
-      case 'instance.update': Object.assign(M.instances.find(i => i.id === a.id), a.patch); return {};
+      case 'loader.games': return (await M.call('versions.list', {})).versions.filter(v => v.type === 'release').map(v => v.id).slice(0, a.loader === 'neoforge' ? 14 : 60);
+      case 'instance.create': { const i = { id: a.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: a.name, mcVersion: a.mc, loader: a.loader, loaderVersion: a.loaderVersion, kind: 'custom', icon: a.icon, ramMb: a.ramMb, playSeconds: 0, lastPlayed: null, created: iso(0), mods: 0, content: [] }; M.instances.unshift(i); return i; }
+      case 'instance.update': Object.assign(inst(), a.patch); return inst();
       case 'instance.delete': M.instances = M.instances.filter(i => i.id !== a.id); return {};
+      case 'instance.duplicate': { const c = { ...inst(), id: a.id + '-kopie', name: inst().name + ' (Kopie)', lastPlayed: null, playSeconds: 0 }; M.instances.unshift(c); return c; }
+      case 'instance.repair': await sleep(800); return { ok: true };
       case 'instance.content': {
-        const i = M.instances.find(x => x.id === a.id);
-        if (a.type === 'mod' && i.kind === 'orbit') return M.content.mod.map(([title, file, version, size, dep]) => ({ title, file, version, size, on: true, dependency: !!dep, projectId: title }));
-        if (a.type === 'shader' && i.kind === 'orbit') return [{ title: 'ComplementaryReimagined_r5.6.zip', file: 'ComplementaryReimagined_r5.6.zip', on: true, size: 4.1e6 }];
-        if (a.type === 'resourcepack') return [{ title: 'Faithful 32x', file: 'Faithful 32x - 26.3.zip', on: true, size: 9.8e6, version: '26.3' }];
+        const i = inst();
+        if (a.type === 'mod') {
+          const slugs = M.mods[a.id] || []; if (!slugs.length) return [];
+          const ps = await M.projs(slugs);
+          return slugs.map((s, k) => { const p = ps.find(x => x.slug === s); return { title: p?.title || s, file: `${s}-${i.mcVersion}.jar`, version: p ? (p.versions?.length ? `${(k % 3) + 1}.${k + 2}.${k * 3 % 10}` : '1.0') : '1.0', size: (0.3 + (k * 0.37) % 3) * 1e6, on: k !== 7, dependency: ['fabric-api', 'yacl', 'cloth-config'].includes(s), projectId: p?.id, icon: p?.icon_url }; });
+        }
+        if (a.type === 'shader' && i.loader === 'fabric') return [{ title: 'Complementary Reimagined', file: 'ComplementaryReimagined_r5.6.zip', on: true, size: 4.1e6, version: 'r5.6' }];
+        if (a.type === 'resourcepack' && i.kind !== 'orbit') return [{ title: 'Fresh Animations', file: 'FreshAnimations_v1.10.zip', on: true, size: 2.2e6, version: '1.10' }];
         return [];
       }
-      case 'content.updates': return [{ projectId: 'Sodium', title: 'Sodium', from: 'mc26.3-0.8.14', to: 'mc26.3-0.8.15' }];
+      case 'content.updates': return [{ projectId: 'AANobbMI', title: 'Sodium', from: '0.8.14', to: '0.8.15' }];
+      case 'content.updateAll': await sleep(600); return { count: 1 };
+      case 'content.addFile': return { count: 0 };
+      case 'instance.worlds': {
+        const i = inst();
+        if (i.loader === 'vanilla' && i.mcVersion.startsWith('b')) return { worlds: [{ folder: 'World1', name: 'World1', lastPlayed: iso(DAY * 40), mode: 'Überleben' }], servers: [] };
+        return { worlds: [{ folder: 'Neue Welt', name: 'Basis am Fluss', lastPlayed: iso(H * 3), mode: 'Überleben', icon: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(true, 675)) }, { folder: 'Kreativ', name: 'Bauprojekt Burg', lastPlayed: iso(DAY * 4), mode: 'Kreativ', icon: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(false, 675)) }, { folder: 'HC', name: 'Hardcore #3', lastPlayed: iso(DAY * 16), mode: 'Hardcore' }],
+          servers: [{ name: 'Hypixel', ip: 'mc.hypixel.net' }, { name: 'Freunde-Server', ip: 'freunde.example.net:25565' }] };
+      }
+      case 'worlds.recent': return [{ id: 'survival-1-21-11', instance: 'Survival mit Freunden', mcVersion: '1.21.11', folder: 'Neue Welt', name: 'Basis am Fluss', lastPlayed: iso(H * 3), mode: 'Überleben', icon: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(true, 675)) }, { id: 'technik-abenteuer', instance: 'Technik-Abenteuer', mcVersion: '1.21.1', folder: 'Fabrik', name: 'Create-Fabrik', lastPlayed: iso(DAY * 5), mode: 'Überleben', icon: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(false, 675)) }, { id: 'orbit-client-26-3', instance: 'Orbit Client 26.3', mcVersion: '26.3', folder: 'pvp', name: 'PvP-Training', lastPlayed: iso(H * 26), mode: 'Kreativ' }];
+      case 'world.delete': return {};
+      case 'instance.logs': return [{ name: 'logs/latest.log', size: 48211, date: iso(H) }, { name: 'logs/2026-11-14-2.log.gz', size: 9120, date: iso(DAY) }, { name: 'logs/2026-11-14-1.log.gz', size: 11002, date: iso(DAY + H * 4) }, { name: 'crash-reports/crash-2026-11-12_20.14.03-client.txt', size: 18200, date: iso(DAY * 3) }];
+      case 'instance.log': return { text: ['[18:42:01] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader 0.20.1', '[18:42:02] [main/INFO]: Loading 19 mods:', '\t- fabric-api 0.166.2+26.3', '\t- orbitclient 1.0.0', '\t- sodium 0.8.14', '[18:42:05] [Render thread/INFO]: Backend library: LWJGL version 3.4.3', '[18:42:06] [Render thread/WARN]: Shader complementary: option not found', '[18:42:09] [Render thread/INFO]: Sound engine started', '[18:55:12] [Render thread/ERROR]: Failed to load skin texture', 'java.io.IOException: connection reset', '\tat net.minecraft.client.resources.SkinManager.load(SkinManager.java:120)', '[18:58:40] [Render thread/INFO]: Stopping!'].join('\n') };
       case 'launch': {
         const id = a.id; await sleep(200);
-        for (const [st, n] of [['Bibliotheken', 64], ['Assets', 120]]) for (let k = 0; k <= n; k += 8) { onEvent('progress', { task: 'l' + id, stage: st, pct: Math.round(k / n * 100), total: n, detail: `${k}/${n}` }); await sleep(30); }
+        for (const [st, n] of [['Bibliotheken', 64], ['Assets', 120]]) for (let k = 0; k <= n; k += 8) { onEvent('progress', { task: 'l' + id, stage: st, pct: Math.round(k / n * 100), total: n, detail: `${k}/${n}` }); await sleep(25); }
         onEvent('progress', { task: 'l' + id, done: true });
         onEvent('state', { id, running: true });
-        ['[OrbitLauncher] java -Xmx3072M … net.fabricmc.loader.impl.launch.knot.KnotClient', '[18:42:01] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader 0.20.1', '[18:42:02] [main/INFO]: Loading 19 mods', '[18:42:05] [Render thread/INFO]: Backend library: LWJGL version 3.4.3', '[18:42:06] [Render thread/WARN]: Shader complementary: option not found', '[18:42:09] [Render thread/INFO]: Sound engine started'].forEach(l => onEvent('log', { id, line: l }));
+        ['[OrbitLauncher] java -Xmx3072M … net.fabricmc.loader.impl.launch.knot.KnotClient', '[18:42:01] [main/INFO]: Loading Minecraft with Fabric Loader 0.20.1', '[18:42:05] [Render thread/INFO]: Backend library: LWJGL version 3.4.3', '[18:42:06] [Render thread/WARN]: Shader complementary: option not found', '[18:42:09] [Render thread/INFO]: Sound engine started'].forEach(l => onEvent('log', { id, line: l }));
         return {};
       }
       case 'stop': onEvent('state', { id: a.id, running: false, code: 0 }); return {};
       case 'news': try {
         const j = await (await fetch('https://launchercontent.mojang.com/v2/javaPatchNotes.json')).json();
         return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
-      } catch { return [{ title: 'Minecraft 26.4 Snapshot 8', type: 'snapshot', date: '2026-11-10', text: 'Fixes für den Enderdrachen und zwei neue Sprachen.' }, { title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }, { title: 'Minecraft 26.3 Release Candidate 2', type: 'snapshot', date: '2026-10-16', text: 'Letzte Fehlerbehebungen.' }]; }
-      case 'mr.categories': try { return await (await fetch('https://api.modrinth.com/v2/tag/category')).json(); } catch { return [{ name: 'optimization', project_type: 'mod', header: 'categories' }, { name: 'utility', project_type: 'mod', header: 'categories' }]; }
-      case 'mr.search': {
-        const facets = [['project_type:' + a.type]]; if (a.mc) facets.push(['versions:' + a.mc]); if (a.loader && ['mod', 'modpack'].includes(a.type)) facets.push(['categories:' + a.loader]); (a.cats || []).forEach(c => facets.push(['categories:' + c]));
-        const u = `https://api.modrinth.com/v2/search?limit=${a.limit}&offset=${a.offset}&index=${a.sort}&facets=${encodeURIComponent(JSON.stringify(facets))}${a.query ? '&query=' + encodeURIComponent(a.query) : ''}`;
-        try { return await (await fetch(u)).json(); } catch { return { total_hits: 2, hits: [{ project_id: 'AANobbMI', title: 'Sodium', author: 'jellysquid3', description: 'The fastest and most compatible rendering optimization mod for Minecraft.', downloads: 98e6, follows: 31e3, categories: ['optimization', 'fabric', 'neoforge'], icon_url: null }, { project_id: 'YL57xq9U', title: 'Iris Shaders', author: 'coderbot', description: 'A modern shader pack loader for Minecraft.', downloads: 76e6, follows: 22e3, categories: ['decoration', 'fabric'], icon_url: null }] }; }
-      }
-      case 'mr.project': return await (await fetch('https://api.modrinth.com/v2/project/' + a.id)).json();
-      case 'mr.install': await sleep(900); return { installed: ['Zoomify (Zoom)', 'Fabric API', 'YetAnotherConfigLib (YACL)'], skipped: [] };
-      case 'mr.modpack': await sleep(800); return M.instances[0];
-      case 'orbit.info': return {
-        best: '26.3', supported: ['26.3'], overlay: ['keystrokes', 'cps', 'crosshair', 'clock', 'session', 'memory'], last: '26.3',
-        versions: (await Mock.call('versions.list', {})).versions,
-        packs: [['perf', 'FPS-Boost', 'Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, Dynamic FPS', 'zap', 1, 8], ['shaders', 'Shader-Support', 'Iris für Shaderpacks wie Complementary oder BSL', 'sun', 1, 1], ['qol', 'Komfort', 'AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports', 'sparkle', 1, 4], ['visual', 'Optik', 'Dynamische Lichter, Connected Textures, 3D-Skin-Layer', 'layers', 0, 3]].map(([id, name, desc, icon, d, mods]) => ({ id, name, desc, icon, default: !!d, mods })),
-        selPacks: M.settings.orbitPacks || 'perf,shaders,qol',
-        existing: M.instances.filter(i => i.kind === 'orbit'),
-      };
-      case 'orbit.play': { await sleep(500); let i = M.instances.find(x => x.kind === 'orbit' && x.mcVersion === a.mc); if (!i) { i = { id: 'orbit-client-' + a.mc.replace(/\./g, '-'), name: 'Orbit Client ' + a.mc, mcVersion: a.mc, loader: 'fabric', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 0, mods: 14 }; M.instances.unshift(i); } await M.call('launch', { id: i.id }); return { id: i.id, mod: a.mc === '26.3' }; }
-      case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true }, armor: { opts: { color: 'Akzent' } } } });
+      } catch { return [{ title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }]; }
+      case 'mr.get': { const r = await fetch('https://api.modrinth.com/v2' + a.path); if (!r.ok) throw new Error('Modrinth ' + r.status); return r.json(); }
+      case 'mr.install': { await sleep(900); const i = inst(); i.content = (i.content || []).concat([{ projectId: a.project, type: a.type }]); return { installed: ['Projekt'], skipped: [] }; }
+      case 'mr.modpack': await sleep(800); return M.instances[1];
+      case 'pack.import': return null;
+      case 'orbit.info': return { supported: ['26.3'], packs: [['perf', 'FPS-Boost', 'Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, Dynamic FPS', 'zap'], ['shaders', 'Shader-Support', 'Iris für Shaderpacks wie Complementary oder BSL', 'sun'], ['qol', 'Komfort', 'AppleSkin, Mouse Tweaks, BetterF3, No Chat Reports', 'sparkle'], ['visual', 'Optik', 'Dynamische Lichter, Connected Textures, 3D-Skin-Layer', 'layers']].map(([id, name, desc, icon]) => ({ id, name, desc, icon })) };
+      case 'orbit.create': await sleep(900); return { id: 'orbit-client-26-3', installed: ['Orbit Client', 'Sodium', 'Iris'], skipped: [] };
+      case 'orbit.config.get': return M.ocfg || (M.ocfg = { accent: '#FF7A3D', modules: { crosshair: { enabled: true, opts: { style: 'Plus+Punkt', ccolor: 'Akzent' } }, fullbright: { enabled: true }, clock: { enabled: true } } });
       case 'orbit.config.set': M.ocfg = JSON.parse(JSON.stringify(a.config)); return {};
-      case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\java.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\java.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\java.exe', major: 8, source: 'Mojang' }];
-      case 'auth.appid': return { ok: true };
+      case 'java.list': return [{ path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-epsilon\\bin\\javaw.exe', major: 25, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\java-runtime-delta\\bin\\javaw.exe', major: 21, source: 'Mojang' }, { path: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher\\runtime\\jre-legacy\\bin\\javaw.exe', major: 8, source: 'Mojang' }];
+      case 'java.pick': return null;
+      case 'storage.info': return [['instances', 14.2e9], ['versions', 1.1e9], ['libraries', 2.4e9], ['assets', 1.9e9], ['runtime', 0.9e9], ['cache', 0.21e9]].map(([name, size]) => ({ name, size }));
+      case 'cache.clear': return {};
+      case 'skins.list': return M.skins || (M.skins = [['Orbit', 0, 'classic'], ['Waldläufer', 1, 'classic'], ['Lila Hoodie', 2, 'slim'], ['Rotes Trikot', 3, 'classic']].map(([name, n, variant]) => ({ id: 's' + n, name, variant, url: demoSkin(n), added: iso(n * DAY) })));
+      case 'skins.add': if (a.url) { const e = { id: 's' + Date.now(), name: a.name, variant: a.variant, url: a.url }; M.skins.unshift(e); return e; } return null;
+      case 'skins.update': { const e = M.skins.find(x => x.id === a.id); if (a.name) e.name = a.name; if (a.variant) e.variant = a.variant; return {}; }
+      case 'skins.remove': M.skins = M.skins.filter(x => x.id !== a.id); return {};
+      case 'skin.profile': return M.prof || (M.prof = { id: M.accounts[0]?.uuid, name: 'Ky3ls', skins: [{ id: 'cur', state: 'ACTIVE', url: demoSkin(0), variant: 'CLASSIC' }], capes: [] });
+      case 'skin.apply': { await sleep(700); const e = M.skins.find(x => x.id === a.id); M.prof.skins = [{ id: 'cur', state: 'ACTIVE', url: e.url, variant: a.variant === 'slim' ? 'SLIM' : 'CLASSIC' }]; return M.prof; }
+      case 'skin.cape': return M.prof;
+      case 'auth.appid': M.appid = a.id; return { ok: true };
       case 'auth.login': if (/noid/.test(location.search) && !M.appid) throw new Error('NO_APP_ID'); await sleep(900); M.accounts = [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }]; return { account: M.accounts[0], accounts: M.accounts, active: M.accounts[0].uuid };
-      case 'screenshots.list': return ['26.3', '26.3', '1.8.9', '1.21.11', '26.3', '1.21.11'].map((v, i) => ({ id: 'orbit-client-26-3', version: v, file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0)), date: new Date(Date.now() - i * 86400e3 / 2).toISOString() }));
-      case 'auth.start': return { userCode: 'K7Q2-M9XD', verificationUri: 'https://www.microsoft.com/link' };
-      case 'auth.finish': await sleep(600000); return {};
+      case 'auth.select': return { accounts: M.accounts, active: a.uuid };
       case 'auth.remove': M.accounts = M.accounts.filter(x => x.uuid !== a.uuid); return { accounts: M.accounts, active: M.accounts[0]?.uuid };
       default: return {};
     }

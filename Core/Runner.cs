@@ -30,14 +30,14 @@ public class Runner
         return (plan, java);
     }
 
-    public async Task<Process> Launch(Instance inst, Session s, Settings set, IProgress<Progress>? p, CancellationToken ct = default, string? server = null)
+    public async Task<Process> Launch(Instance inst, Session s, Settings set, IProgress<Progress>? p, CancellationToken ct = default, string? server = null, string? world = null)
     {
         if (_running.ContainsKey(inst.Id)) throw new InvalidOperationException($"„{inst.Name}“ läuft bereits.");
         var (plan, java) = await Prepare(inst, set, p, ct);
         var ram = inst.RamMb > 0 ? inst.RamMb : set.RamMb;
         var extra = inst.Kind == "orbit" ? new[] { "-Dorbit.config=" + OrbitClient.ConfigPath } : null;
         var args = LaunchBuilder.Build(plan, s, inst.Dir, ram, string.IsNullOrWhiteSpace(inst.JvmArgs) ? set.JvmArgs : inst.JvmArgs,
-            inst.Width > 0 ? inst.Width : set.Width, inst.Height > 0 ? inst.Height : set.Height, server, extra);
+            inst.Width > 0 ? inst.Width : set.Width, inst.Height > 0 ? inst.Height : set.Height, server, extra, world);
         p?.Report(new Progress("Minecraft startet", 1, 1, inst.Name));
         Log?.Invoke(inst.Id, "[OrbitLauncher] " + LaunchBuilder.Pretty(java, args, s));
 

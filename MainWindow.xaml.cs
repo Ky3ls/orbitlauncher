@@ -203,8 +203,8 @@ public partial class MainWindow : Window
         try { var d = Path.Combine(i.Dir, "mods"); if (Directory.Exists(d)) mods = Directory.EnumerateFiles(d, "*.jar").Count(); } catch { }
         return new
         {
-            i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
-            i.PlaySeconds, i.LastPlayed, i.Created, mods, running = _runner.IsRunning(i.Id),
+            i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
+            i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, mods, running = _runner.IsRunning(i.Id),
             content = i.Content.Select(c => new { c.ProjectId, c.Type }),
         };
     }
@@ -313,6 +313,14 @@ public partial class MainWindow : Window
                     if (pt.ContainsKey("jvmArgs")) inst.JvmArgs = StrN(pt, "jvmArgs");
                     if (pt.ContainsKey("width")) inst.Width = Int(pt, "width");
                     if (pt.ContainsKey("height")) inst.Height = Int(pt, "height");
+                    if (pt.ContainsKey("group")) inst.Group = StrN(pt, "group");
+                    var mc = StrN(pt, "mc"); var ld = StrN(pt, "loader"); var lv = pt.ContainsKey("loaderVersion") ? StrN(pt, "loaderVersion") : inst.LoaderVersion;
+                    if ((mc != null && mc != inst.McVersion) || (ld != null && ld != inst.Loader) || lv != inst.LoaderVersion)
+                    {
+                        if (_runner.IsRunning(inst.Id)) throw new InvalidOperationException("Die Instanz läuft noch.");
+                        inst.McVersion = mc ?? inst.McVersion; inst.Loader = ld ?? inst.Loader; inst.LoaderVersion = inst.Loader == "vanilla" ? null : lv;
+                        inst.VersionId = null;   // installed again on the next start / repair
+                    }
                 }
                 Instances.Save(inst);
                 return Dto(inst);
@@ -336,6 +344,74 @@ public partial class MainWindow : Window
             case "content.updates": return await Modrinth.CheckUpdates(Inst(a));
             case "content.updateAll": { var inst = Inst(a); return await WithTask(async p => new { count = await Modrinth.UpdateAll(inst, p) }); }
 
+            case "instance.duplicate":
+            {
+                var src = Inst(a);
+                var copy = await Task.Run(() =>
+                {
+                    var c = Instances.Create(src.Name + " (Kopie)", src.McVersion, src.Loader, src.LoaderVersion, src.Kind);
+                    foreach (var f in Directory.EnumerateFiles(src.Dir, "*", SearchOption.AllDirectories))
+                    {
+                        var rel = Path.GetRelativePath(src.Dir, f);
+                        if (rel == "instance.json" || rel.StartsWith("logs") || rel.StartsWith("crash-reports")) continue;
+                        var t = Path.Combine(c.Dir, rel);
+                        Directory.CreateDirectory(Path.GetDirectoryName(t)!);
+                        File.Copy(f, t, true);
+                    }
+                    c.VersionId = src.VersionId; c.Icon = src.Icon; c.RamMb = src.RamMb; c.JavaPath = src.JavaPath; c.JvmArgs = src.JvmArgs;
+                    c.Width = src.Width; c.Height = src.Height; c.Group = src.Group; c.Content = src.Content; c.ModpackProject = src.ModpackProject; c.ModpackVersion = src.ModpackVersion;
+                    Instances.Save(c);
+                    return c;
+                });
+                return Dto(copy);
+            }
+            case "instance.worlds":
+            {
+                var inst = Inst(a);
+                return await Task.Run(() => new
+                {
+                    worlds = Worlds.List(inst).Select(w => new { w.Folder, w.Name, w.LastPlayed, w.Mode, w.Hardcore, icon = w.Icon ? $"https://shots.orbit/{Uri.EscapeDataString(inst.Id)}/saves/{Uri.EscapeDataString(w.Folder)}/icon.png" : null }),
+                    servers = Worlds.Servers(inst).Select(sv => new { sv.Name, sv.Ip, icon = sv.Icon ? "data:image/png;base64," + Worlds.ServerIcon(inst, sv.Ip) : null }),
+                });
+            }
+            case "worlds.recent":
+                return await Task.Run(() => Instances.All().SelectMany(i => { try { return Worlds.List(i).Take(4).Select(w => (i, w)); } catch { return Enumerable.Empty<(Instance, Worlds.World)>(); } })
+                    .OrderByDescending(x => x.Item2.LastPlayed).Take(8)
+                    .Select(x => new { id = x.Item1.Id, instance = x.Item1.Name, x.Item1.McVersion, x.Item2.Folder, x.Item2.Name, x.Item2.LastPlayed, x.Item2.Mode,
+                        icon = x.Item2.Icon ? $"https://shots.orbit/{Uri.EscapeDataString(x.Item1.Id)}/saves/{Uri.EscapeDataString(x.Item2.Folder)}/icon.png" : null }).ToList());
+            case "world.open":
+            {
+                var d = Worlds.WorldDir(Inst(a), Str(a, "folder"));
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{d}\"") { UseShellExecute = true });
+                return null;
+            }
+            case "world.delete":
+            {
+                var inst = Inst(a);
+                if (_runner.IsRunning(inst.Id)) throw new InvalidOperationException("Die Instanz läuft noch.");
+                var d = Worlds.WorldDir(inst, Str(a, "folder"));
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(d, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                return new { };
+            }
+            case "instance.logs": return Worlds.Logs(Inst(a));
+            case "instance.log": { var inst = Inst(a); return new { text = await Task.Run(() => Worlds.ReadLog(inst, Str(a, "name"))) }; }
+            case "content.addFile":
+            {
+                var inst = Inst(a); var type = Str(a, "type");
+                var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "Dateien hinzufügen",
+                    Filter = type == "mod" ? "Mods (*.jar)|*.jar" : "Pakete (*.zip)|*.zip" };
+                if (dlg.ShowDialog(this) != true) return new { count = 0 };
+                var dir = Instances.ContentDir(inst, type); Directory.CreateDirectory(dir);
+                foreach (var f in dlg.FileNames) File.Copy(f, Path.Combine(dir, Path.GetFileName(f)), true);
+                return new { count = dlg.FileNames.Length };
+            }
+            case "storage.info":
+                return await Task.Run(() => new[] { "instances", "versions", "libraries", "assets", "runtime", "cache" }
+                    .Select(n => new { name = n, size = DirSize(Path.Combine(Paths.Root, n)) }).ToList());
+            case "cache.clear":
+                await Task.Run(() => { try { Directory.Delete(Paths.Cache, true); } catch { } });
+                return new { };
+
             // ---------------- launch
             case "launch":
             {
@@ -345,7 +421,7 @@ public partial class MainWindow : Window
                 await WithTask(async p =>
                 {
                     if (S.AutoUpdateMods && inst.Content.Count > 0) { try { await Modrinth.UpdateAll(inst, p); } catch { } }
-                    await _runner.Launch(inst, session, S, p);
+                    await _runner.Launch(inst, session, S, p, default, StrN(a, "server"), StrN(a, "world"));
                     return 0;
                 });
                 if (S.OnLaunch is "minimize" or "close")
@@ -358,6 +434,13 @@ public partial class MainWindow : Window
             case "stop": _runner.Kill(Str(a, "id")); return new { };
 
             // ---------------- modrinth
+            case "mr.get":
+            {
+                // read-only proxy for the Modrinth API (proper user agent, no CORS); only relative API paths
+                var path = Str(a, "path");
+                if (!path.StartsWith('/') || path.Contains("://") || path.Contains("..") || path.Contains('\\')) throw new ArgumentException("Ungültiger Pfad");
+                return await Net.Json("https://api.modrinth.com/v2" + path);
+            }
             case "mr.categories": return await Modrinth.Categories();
             case "mr.search":
             {
@@ -459,6 +542,48 @@ public partial class MainWindow : Window
                 return null;
             }
             case "screenshots.delete": { var f = ShotPath(a); File.Delete(f); return new { }; }
+
+            // ---------------- skins
+            case "skins.list": return Skins.All().Where(x => File.Exists(Skins.FileOf(x.Id))).Select(x => new { x.Id, x.Name, x.Variant, x.Added, url = Skins.DataUrl(x.Id) });
+            case "skins.add":
+            {
+                byte[] png; string name = StrN(a, "name") ?? "Skin";
+                if (StrN(a, "data") is string b64) png = Convert.FromBase64String(b64[(b64.IndexOf(',') + 1)..]);
+                else if (StrN(a, "url") is string url) png = await Skins.Texture(url);
+                else
+                {
+                    var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "Skin (*.png)|*.png", Title = "Skin hinzufügen" };
+                    if (dlg.ShowDialog(this) != true) return null;
+                    png = await File.ReadAllBytesAsync(dlg.FileName); name = Path.GetFileNameWithoutExtension(dlg.FileName);
+                }
+                var e = Skins.Add(png, name, Str(a, "variant"));
+                return new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) };
+            }
+            case "skins.update": Skins.Update(Str(a, "id"), StrN(a, "name"), StrN(a, "variant")); return new { };
+            case "skins.remove": Skins.Remove(Str(a, "id")); return new { };
+            case "skin.profile":
+            {
+                var acc = _auth.Active ?? throw new InvalidOperationException("Bitte zuerst anmelden.");
+                var ses = await _auth.GetSession(acc);
+                return await Skins.Profile(ses.AccessToken);
+            }
+            case "skin.apply":
+            {
+                var acc = _auth.Active ?? throw new InvalidOperationException("Bitte zuerst anmelden.");
+                var ses = await _auth.GetSession(acc);
+                var e = Skins.All().FirstOrDefault(x => x.Id == Str(a, "id")) ?? throw new InvalidOperationException("Skin nicht gefunden");
+                var variant = StrN(a, "variant") ?? e.Variant;
+                var prof = await Skins.Upload(ses.AccessToken, await File.ReadAllBytesAsync(Skins.FileOf(e.Id)), variant);
+                acc.SkinUrl = (string?)prof["skins"]?.AsArray().FirstOrDefault(x => (string?)x!["state"] == "ACTIVE")?["url"] ?? acc.SkinUrl;
+                _auth.Save();
+                return prof;
+            }
+            case "skin.cape":
+            {
+                var acc = _auth.Active ?? throw new InvalidOperationException("Bitte zuerst anmelden.");
+                var ses = await _auth.GetSession(acc);
+                return await Skins.SetCape(ses.AccessToken, StrN(a, "id"));
+            }
 
             // ---------------- java
             case "java.list": return Java.Installed().Select(j => new { j.Path, j.Major, j.Source });
@@ -562,6 +687,12 @@ public partial class MainWindow : Window
         "crimson" => "#FF3B4E", "sunset" => "#FF6B3D", "magenta" => "#E040FB", "sky" => "#38BDF8", "teal" => "#14B8A6", "lime" => "#84CC16",
         "copper" => "#D97745", "ice" => "#93C5FD", _ => "#FF7A3D",
     };
+
+    private static long DirSize(string d)
+    {
+        try { return Directory.Exists(d) ? new DirectoryInfo(d).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => { try { return f.Length; } catch { return 0L; } }) : 0; }
+        catch { return 0; }
+    }
 
     private static void OpenUrl(string url)
     {

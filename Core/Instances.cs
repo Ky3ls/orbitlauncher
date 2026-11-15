@@ -15,6 +15,8 @@ public class Instance
     /// <summary>custom | orbit | modpack</summary>
     public string Kind { get; set; } = "custom";
     public string Icon { get; set; } = "grass";
+    /// <summary>Project icon for modpack instances (Modrinth CDN).</summary>
+    public string? IconUrl { get; set; }
     public int RamMb { get; set; } = 0;
     public string? JavaPath { get; set; }
     public string? JvmArgs { get; set; }
