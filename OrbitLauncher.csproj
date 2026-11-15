@@ -28,7 +28,10 @@
   <PropertyGroup>
     <OrbitClientId Condition="'$(OrbitClientId)' == ''">1be45128-ad50-4832-9b1e-f44c0bff2956</OrbitClientId>
   </PropertyGroup>
-  <!-- API key for the extended catalog: dotnet publish ... -p:CatalogKey=<key> -->
+  <!-- API key for the extended catalog: from .secrets/catalog.key (never committed) or -p:CatalogKey=<key> -->
+  <PropertyGroup Condition="'$(CatalogKey)' == '' And Exists('$(MSBuildProjectDirectory)/.secrets/catalog.key')">
+    <CatalogKey>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/.secrets/catalog.key').Trim())</CatalogKey>
+  </PropertyGroup>
   <ItemGroup Condition="'$(CatalogKey)' != ''">
     <AssemblyMetadata Include="CatalogKey" Value="$(CatalogKey)" />
   </ItemGroup>
