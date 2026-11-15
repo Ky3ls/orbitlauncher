@@ -1,6 +1,6 @@
 'use strict';
 /* OrbitLauncher – frontend. Talks to the C# host via WebView2 postMessage ({id,cmd,args} → {id,ok,data}, events via {event,data});
-   in a normal browser a mock backend (bottom of this file) supplies demo data and live Mojang/Modrinth data. */
+   in a normal browser a mock backend (bottom of this file) supplies demo data and live Mojang/catalog data. */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -35,7 +35,7 @@ if (HOST) window.chrome.webview.addEventListener('message', e => {
 document.addEventListener('mousedown', e => { if (e.button === 0 && e.target.closest('[data-drag]') && !e.target.closest('button')) api('win.drag'); });
 document.addEventListener('dblclick', e => { if (e.target.closest('[data-drag]') && !e.target.closest('button')) api('win.max'); });
 
-/* Modrinth API (read-only) – through the host (proper user agent), live fetch in the browser preview */
+/* catalog API (read-only) – through the host (proper user agent), live fetch in the browser preview */
 const mrCache = new Map();
 async function mr(path, cache = true) {
   if (cache && mrCache.has(path)) return mrCache.get(path);
@@ -421,7 +421,7 @@ PAGES.home = async (el, a, soft) => {
   }).catch(() => { });
   const tile = h => `<button class="ptile tilt" onclick="go('project',{id:'${jsq(h.project_id)}'})"><span class="gimg" style="${h.featured_gallery || h.gallery?.[0] ? `background-image:url('${esc(h.featured_gallery || h.gallery[0])}')` : ''}">${picHtml(h.icon_url)}</span>
     <span class="bd"><b>${esc(h.title)}</b><p>${esc(h.description)}</p><span class="row" style="gap:12px"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico('heart')}<b>${num(h.follows)}</b></span></span></span></button>`;
-  const fill = (id, path, f) => mr(path).then(r => { if ($(id)) { $(id).innerHTML = r.hits.map(tile).join(''); f?.(r.hits); } }).catch(() => { if ($(id)) $(id).innerHTML = '<div class="empty">Modrinth ist gerade nicht erreichbar.</div>'; });
+  const fill = (id, path, f) => mr(path).then(r => { if ($(id)) { $(id).innerHTML = r.hits.map(tile).join(''); f?.(r.hits); } }).catch(() => { if ($(id)) $(id).innerHTML = '<div class="empty">Der Mod-Katalog ist gerade nicht erreichbar.</div>'; });
   const fac = t => encodeURIComponent(`[["project_type:${t}"]]`);
   fill('#hPacks', `/search?limit=12&index=follows&facets=${fac('modpack')}`, hits => spotlight(hits.filter(h => h.featured_gallery || h.gallery?.length).slice(0, 6)));
   fill('#hMods', `/search?limit=12&offset=${RND_OFF}&index=downloads&facets=${fac('mod')}`);
@@ -579,7 +579,7 @@ async function instContent(i) {
     <button class="btn sm" id="cUpd" onclick="checkUpdates()">${ico('refresh')}Updates</button>
     <button class="btn sm" onclick="addFile()">${ico('file')}Aus Datei</button>
     <button class="btn sm p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('plus')}Inhalte hinzufügen</button></div>
-    ${i.manualDownloads?.length ? `<div class="note w" style="margin:0 0 12px"><b>${i.manualDownloads.length} Datei(en) musst du selbst laden</b>, weil die Autoren nur Downloads über curseforge.com erlauben. Leg sie danach in den passenden Ordner.<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${i.manualDownloads.map(m => { const [n, u] = m.split('|'); return `<button class="fchip" onclick="openUrl('${jsq(u)}')">${ico('ext')}${esc(n)}</button>`; }).join('')}</div></div>` : ''}
+    ${i.manualDownloads?.length ? `<div class="note w" style="margin:0 0 12px"><b>${i.manualDownloads.length} Datei(en) musst du selbst laden</b>, weil die Autoren nur Downloads über ihre eigene Website erlauben. Leg sie danach in den passenden Ordner.<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${i.manualDownloads.map(m => { const [n, u] = m.split('|'); return `<button class="fchip" onclick="openUrl('${jsq(u)}')">${ico('ext')}${esc(n)}</button>`; }).join('')}</div></div>` : ''}
     <div id="cSel"></div><div id="cList">${C.loaded ? '' : '<div class="spinner"></div>'}</div>`;
   const draw = () => renderContent(i, types);
   $('#cQ').oninput = e => { C.q = e.target.value; draw(); };
@@ -601,7 +601,7 @@ function renderContent(i, types) {
     .sort((a, b) => (a.dependency - b.dependency) || a.title.localeCompare(b.title, 'de'));
   const upd = new Map((C.updates || []).map(u => [u.projectId, u]));
   if (!C.all.length) {
-    el.innerHTML = `<div class="lempty"><span class="iic">${ico('puzzle')}</span><h2>Noch keine Inhalte</h2><p>Füg Mods, Ressourcenpakete oder Shader von Modrinth hinzu. Abhängigkeiten werden automatisch mitinstalliert.</p>
+    el.innerHTML = `<div class="lempty"><span class="iic">${ico('puzzle')}</span><h2>Noch keine Inhalte</h2><p>Füg Mods, Ressourcenpakete oder Shader aus dem Katalog hinzu. Abhängigkeiten werden automatisch mitinstalliert.</p>
       <button class="btn p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('compass')}Inhalte entdecken</button></div>`;
     $('#cSel').innerHTML = ''; return;
   }
@@ -611,9 +611,9 @@ function renderContent(i, types) {
     ${list.length ? list.map(x => {
       const u = x.projectId && upd.get(x.projectId), k = key(x);
       return `<div class="cr ${x.on ? '' : 'off'}" data-k="${esc(k)}"><span class="cb ${C.sel.has(k) ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
-        <div class="nm">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<div><b>${esc(x.title)}${x.dependency ? '<span class="chip m">Abhängigkeit</span>' : ''}${x.projectId?.startsWith('cf:') ? '<span class="chip src cf"><i></i>CF</span>' : ''}</b><small>${esc(x.file)}</small></div></div>
+        <div class="nm">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<div><b>${esc(x.title)}${x.dependency ? '<span class="chip m">Abhängigkeit</span>' : ''}</b><small>${esc(x.file)}</small></div></div>
         <div class="vr ell">${esc(x.version || '—')}<small>${bytes(x.size)}${x.projectId ? '' : ' · manuell'}</small></div>
-        <div class="ac">${u ? `<button class="ib sm up" title="Update auf ${esc(u.to)}" data-u="${esc(u.projectId)}">${ico('arrowup')}</button>` : ''}${x.projectId ? `<button class="ib sm" title="Auf Modrinth ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<div class="tg sm ${x.on ? 'on' : ''}" data-tg></div><button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></div></div>`;
+        <div class="ac">${u ? `<button class="ib sm up" title="Update auf ${esc(u.to)}" data-u="${esc(u.projectId)}">${ico('arrowup')}</button>` : ''}${x.projectId ? `<button class="ib sm" title="Projekt ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<div class="tg sm ${x.on ? 'on' : ''}" data-tg></div><button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></div></div>`;
     }).join('') : '<div class="cr"><span></span><span class="muted">Nichts gefunden.</span></div>'}</div>`;
   const selBar = () => {
     const n = C.sel.size;
@@ -728,7 +728,7 @@ window.delWorld = async (id, folder, name) => {
 function exportInst(id) {
   const i = instById(id); if (!i) return;
   modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Teilen</div><h1>Als Modpack exportieren</h1>
-    <p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Erstellt eine .mrpack-Datei, die jeder Launcher mit Modrinth-Support öffnen kann. Mods von Modrinth werden verlinkt, alles andere kommt mit in die Datei.</p>
+    <p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Erstellt eine .mrpack-Datei, die viele Launcher öffnen können. Mods aus dem Katalog werden verlinkt, alles andere kommt mit in die Datei.</p>
     <label class="fl">Version</label><input class="in" id="exVer" value="1.0.0">
     <div class="fsw" style="padding:14px 0 0"><span>Welten mitnehmen</span><div class="tg sm" id="exW" onclick="this.classList.toggle('on')"></div></div>
     <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="exGo">${ico('upload')}Exportieren</button></div>`, 'form');
@@ -739,16 +739,16 @@ function exportInst(id) {
 }
 window.exportInst = exportInst;
 function importMenu(e) {
-  ctxMenu(e, [['file', 'Modpack-Datei (.mrpack / CurseForge .zip)', importPack], ['dup', 'Aus anderem Launcher übernehmen', importLaunchers]]);
+  ctxMenu(e, [['file', 'Modpack-Datei (.mrpack / .zip)', importPack], ['dup', 'Aus anderem Launcher übernehmen', importLaunchers]]);
 }
 window.importMenu = importMenu;
 async function importLaunchers() {
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Import</div><h1>Aus anderen Launchern</h1><p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Prism Launcher, MultiMC, PolyMC und die CurseForge-App. Welten, Mods und Einstellungen werden kopiert, das Original bleibt unverändert.</p><div class="ipick" id="imList"><div class="spinner"></div></div>`, 'form');
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Import</div><h1>Aus anderen Launchern</h1><p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Prism Launcher, MultiMC, PolyMC und weitere Launcher. Welten, Mods und Einstellungen werden kopiert, das Original bleibt unverändert.</p><div class="ipick" id="imList"><div class="spinner"></div></div>`, 'form');
   let list = [];
   try { list = await api('import.scan'); } catch (e) { fail('Suche fehlgeschlagen', e); }
   if (!$('#imList')) return;
   $('#imList').innerHTML = list.length ? list.map(f => `<div class="ir"><span class="iic">${ico('box')}</span><div class="tx"><b>${esc(f.name)}</b><small>${esc(f.launcher)} · ${esc(LOADERS[f.loader]?.[0] || f.loader)} ${esc(f.mc)}</small></div><button class="btn sm p" data-i="${f.i}">${ico('download')}Übernehmen</button></div>`).join('')
-    : '<div class="empty">Keine Instanzen von Prism, MultiMC oder CurseForge gefunden.</div>';
+    : '<div class="empty">Keine Instanzen aus anderen Launchern gefunden.</div>';
   $('#imList').onclick = async e => {
     const b = e.target.closest('[data-i]'); if (!b) return;
     b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Kopiere…';
@@ -843,16 +843,16 @@ async function niGames(loader) {
 async function niRender() {
   const N = S.newInst, m = $('#mMain'); if (!m) return;
   if (N.tab === 'file') {
-    m.innerHTML = `<h2>Importieren</h2><p class="sub">Modpacks von Modrinth (.mrpack) und CurseForge (.zip) oder Instanzen aus anderen Launchern werden als neue Instanz angelegt. Alle Dateien kommen direkt von ihren Quellen und werden per Hash geprüft.</p>
-      <button class="mtile" style="margin-top:18px" onclick="closeModal();importPack()"><span class="iic">${ico('upload')}</span><span><b>Modpack-Datei auswählen</b><small>.mrpack oder CurseForge-.zip</small></span></button>
-      <button class="mtile" style="margin-top:10px" onclick="closeModal();importLaunchers()"><span class="iic">${ico('dup')}</span><span><b>Aus anderem Launcher</b><small>Prism, MultiMC, PolyMC, CurseForge-App</small></span></button>
-      <button class="mtile" style="margin-top:10px" onclick="closeModal();go('discover',{type:'modpack'})"><span class="iic">${ico('compass')}</span><span><b>Modpack von Modrinth</b><small>Über 10.000 Modpacks durchsuchen</small></span></button>`;
+    m.innerHTML = `<h2>Importieren</h2><p class="sub">Modpacks (.mrpack oder .zip) oder Instanzen aus anderen Launchern werden als neue Instanz angelegt. Alle Dateien kommen direkt von ihren Quellen und werden per Hash geprüft.</p>
+      <button class="mtile" style="margin-top:18px" onclick="closeModal();importPack()"><span class="iic">${ico('upload')}</span><span><b>Modpack-Datei auswählen</b><small>.mrpack oder .zip</small></span></button>
+      <button class="mtile" style="margin-top:10px" onclick="closeModal();importLaunchers()"><span class="iic">${ico('dup')}</span><span><b>Aus anderem Launcher</b><small>Prism, MultiMC, PolyMC und weitere</small></span></button>
+      <button class="mtile" style="margin-top:10px" onclick="closeModal();go('discover',{type:'modpack'})"><span class="iic">${ico('compass')}</span><span><b>Modpack aus dem Katalog</b><small>Tausende Modpacks durchsuchen</small></span></button>`;
     return;
   }
   if (N.tab === 'orbit') {
     const sup = S.orbitInfo?.supported || ['26.3'];
     N.orbitVer = N.orbitVer || sup[0];
-    m.innerHTML = `<h2>Orbit Client</h2><p class="sub">Eigener Client mit 21 Modulen: Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint, HUD-Editor. Plus Performance-Pakete von Modrinth.</p>
+    m.innerHTML = `<h2>Orbit Client</h2><p class="sub">Eigener Client mit 21 Modulen: Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint, HUD-Editor. Plus Performance-Pakete.</p>
       <label class="fl">Version</label><div class="seg">${sup.map(v => `<button class="${v === N.orbitVer ? 'on' : ''}" data-ov="${esc(v)}">Minecraft ${esc(v)}</button>`).join('')}</div>
       <label class="fl">Pakete</label><div class="col" style="gap:8px" id="niPacks">${(S.orbitInfo?.packs || [{ id: 'perf', name: 'FPS-Boost', desc: 'Sodium, Lithium, FerriteCore …', icon: 'zap' }, { id: 'shaders', name: 'Shader-Support', desc: 'Iris', icon: 'sun' }, { id: 'qol', name: 'Komfort', desc: 'AppleSkin, Mouse Tweaks …', icon: 'sparkle' }, { id: 'visual', name: 'Optik', desc: 'Dynamische Lichter …', icon: 'layers' }])
         .map(p => `<button class="mtile ${N.packs.has(p.id) ? 'on' : ''}" data-pk="${p.id}"><span class="iic">${ico(p.icon)}</span><span style="flex:1"><b>${esc(p.name)}</b><small>${esc(p.desc)}</small></span><span class="cb ${N.packs.has(p.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></button>`).join('')}</div>
@@ -989,17 +989,17 @@ async function isRender() {
 window.pickJava = async target => { try { const r = await api('java.pick'); if (r?.path) { const el = $('#' + target); el.value = r.path; el.dispatchEvent(new Event('change')); } } catch (e) { fail('Java', e); } };
 function setRange(el) { const p = (el.value - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', p + '%'); }
 
-/* ======================= DISCOVER (Modrinth + CurseForge) ======================= */
+/* ======================= DISCOVER (two catalogs) ======================= */
 const PTYPES = [['modpack', 'Modpacks', 'box'], ['mod', 'Mods', 'puzzle'], ['resourcepack', 'Ressourcenpakete', 'image'], ['shader', 'Shader', 'sun']];
 const SORTS = [['relevance', 'Relevanz'], ['downloads', 'Downloads'], ['follows', 'Beliebt'], ['newest', 'Neueste'], ['updated', 'Zuletzt aktualisiert']];
 const PLOADERS = { mod: ['fabric', 'forge', 'neoforge', 'quilt'], modpack: ['fabric', 'forge', 'neoforge', 'quilt'], shader: ['iris', 'optifine', 'canvas', 'vanilla'], resourcepack: [] };
 const CAT_DE = { adventure: 'Abenteuer', cursed: 'Verflucht', decoration: 'Deko', economy: 'Wirtschaft', equipment: 'Ausrüstung', food: 'Essen', 'game-mechanics': 'Spielmechanik', library: 'Bibliothek', magic: 'Magie', management: 'Verwaltung', minigame: 'Minispiel', mobs: 'Mobs', optimization: 'Optimierung', social: 'Sozial', storage: 'Lager', technology: 'Technik', transportation: 'Transport', utility: 'Werkzeug', worldgen: 'Weltgenerierung', challenging: 'Herausfordernd', combat: 'Kampf', 'kitchen-sink': 'Alles drin', lightweight: 'Leichtgewicht', multiplayer: 'Multiplayer', quests: 'Quests', vanilla: 'Vanilla', realistic: 'Realistisch', simplistic: 'Schlicht', themed: 'Thematisch', tweaks: 'Tweaks', 'vanilla-like': 'Vanilla-ähnlich', cartoon: 'Cartoon', fantasy: 'Fantasy', 'semi-realistic': 'Halb-realistisch', atmosphere: 'Atmosphäre', bloom: 'Bloom', shadows: 'Schatten', pbr: 'PBR', reflections: 'Spiegelungen', 'colored-lighting': 'Farbiges Licht', 'path-tracing': 'Path Tracing', potato: 'Kartoffel-PC', low: 'Schwacher PC', medium: 'Mittlerer PC', high: 'Starker PC', screenshot: 'Screenshot', foliage: 'Pflanzen', gui: 'GUI', fonts: 'Schriften', audio: 'Audio', blocks: 'Blöcke', items: 'Items', entities: 'Entities', environment: 'Umgebung', models: 'Modelle', locale: 'Sprache', 'core-shaders': 'Core-Shader' };
 const HEAD_DE = { categories: 'Kategorien', features: 'Funktionen', resolutions: 'Auflösung', 'performance impact': 'Leistungsbedarf' };
 const catName = c => CAT_DE[c] || cap(c).replace(/-/g, ' ');
-const SRC = { mr: ['Modrinth', '#1BD96A'], cf: ['CurseForge', '#F16436'] };
+const SRC = { mr: ['Standard', '#1BD96A'], cf: ['Erweitert', '#F16436'] };
 const srcChip = s => `<span class="chip src ${s}"><i></i>${SRC[s][0]}</span>`;
 
-/* ---------- CurseForge (official Core API through the host) ---------- */
+/* ---------- extended catalog (official Core API through the host) ---------- */
 const CF_CLASS = { mod: 6, modpack: 4471, resourcepack: 12, shader: 6552 };
 const CF_TYPE = { 6: 'mod', 4471: 'modpack', 12: 'resourcepack', 6552: 'shader' };
 const CF_LOADER = { 1: 'forge', 4: 'fabric', 5: 'quilt', 6: 'neoforge' }, CF_LT = { forge: 1, fabric: 4, quilt: 5, neoforge: 6 };
@@ -1044,12 +1044,12 @@ PAGES.discover = async (el, a) => {
   if (tgt && D.type === 'modpack') D.type = tgt.loader === 'vanilla' ? 'resourcepack' : 'mod';
   crumbs(tgt ? [['Bibliothek', "go('library')"], [tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Inhalte hinzufügen']] : [['Entdecken']]);
   const types = PTYPES.filter(t => !tgt || (t[0] !== 'modpack' && (tgt.loader !== 'vanilla' || t[0] !== 'mod')));
-  el.innerHTML = `<div class="dhero ${D.src}"><div class="dh-bg"></div><div class="dh-l"><div class="kicker">${SRC[D.src][0]}</div><h1>Entdecken</h1><p class="pd">Über 100.000 Mods, Modpacks, Shader und Ressourcenpakete. Ein Klick, Abhängigkeiten inklusive.</p></div>
+  el.innerHTML = `<div class="dhero ${D.src}"><div class="dh-bg"></div><div class="dh-l"><div class="kicker">${D.src === 'cf' ? 'Erweiterter Katalog' : 'Mod-Katalog'}</div><h1>Entdecken</h1><p class="pd">Über 100.000 Mods, Modpacks, Shader und Ressourcenpakete. Ein Klick, Abhängigkeiten inklusive.</p></div>
       <div class="srcsw" id="dSrc">${Object.entries(SRC).map(([k, [n]]) => `<button data-s="${k}" class="${D.src === k ? 'on' : ''} ${k}"><i></i>${n}</button>`).join('')}</div></div>
     ${tgt ? `<div class="tgtbar">${instIcon(tgt)}<div class="tx"><b>Installieren in „${esc(tgt.name)}“</b><small>${esc(instSub(tgt))} · nur passende Inhalte werden angezeigt</small></div><button class="btn sm" onclick="go('inst',{id:'${jsq(tgt.id)}'})">${ico('left')}Zur Instanz</button><button class="ib sm ghost" title="Ohne Ziel" onclick="go('discover',{type:'${D.type}'})">${ico('x')}</button></div>` : ''}
     <div class="dtypes" id="dTypes">${types.map(([k, n, ic]) => `<button data-k="${k}" class="${k === D.type ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div>
     <div class="dgrid"><div class="filters" id="dFil"></div><div>
-      <div class="rbar"><div class="srch">${ico('search')}<input class="in" id="dQ" placeholder="${esc(PTYPES.find(t => t[0] === D.type)[1])} auf ${SRC[D.src][0]} durchsuchen…" value="${esc(D.q)}"></div>
+      <div class="rbar"><div class="srch">${ico('search')}<input class="in" id="dQ" placeholder="${esc(PTYPES.find(t => t[0] === D.type)[1])} durchsuchen…" value="${esc(D.q)}"></div>
         <select class="sel" id="dSort">${SORTS.map(([k, n]) => `<option value="${k}" ${k === D.sort ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <div class="seg vsw" id="dView"><button data-v="list" class="${D.view === 'list' ? 'on' : ''}" title="Liste">${ico('list')}</button><button data-v="grid" class="${D.view === 'grid' ? 'on' : ''}" title="Kacheln">${ico('grid')}</button></div></div>
       <div class="rinfo" id="dInfo"></div><div class="rlist ${D.view}" id="dList"></div><div class="pager" id="dPager"></div></div></div>`;
@@ -1066,15 +1066,15 @@ PAGES.discover = async (el, a) => {
 async function cfReady() { if (S.cfReady === undefined) { try { S.cfReady = (await api('cf.status')).ready; } catch { S.cfReady = false; } } return S.cfReady; }
 function cfNoKey(el, full) {
   if (full) { $('#dFil').innerHTML = ''; $('#dInfo').innerHTML = ''; $('#dPager').innerHTML = ''; }
-  el.innerHTML = `<div class="lempty cfkey"><span class="iic" style="background:rgba(241,100,54,.12);color:#F16436">${ico('zap')}</span><h2>CurseForge freischalten</h2>
-    <p>CurseForge lässt Launcher nur mit einem eigenen, kostenlosen API-Schlüssel zu. Du holst ihn dir einmal auf <b>console.curseforge.com</b> (mit Google oder Discord anmelden, „API Keys“) und fügst ihn hier ein. Keine Bankdaten.</p>
+  el.innerHTML = `<div class="lempty cfkey"><span class="iic" style="background:rgba(241,100,54,.12);color:#F16436">${ico('zap')}</span><h2>Erweiterten Katalog freischalten</h2>
+    <p>Der erweiterte Katalog braucht einen kostenlosen API-Schlüssel. Du holst ihn dir einmal über den Button unten (mit Google oder Discord anmelden, „API Keys“) und fügst ihn hier ein. Keine Bankdaten.</p>
     <div class="inline" style="max-width:520px;margin:0 auto"><input class="in" id="cfKeyIn" placeholder="$2a$10$…" style="font-family:var(--mono);font-size:12px"><button class="btn p" onclick="saveCfKey()">${ico('check')}Speichern</button></div>
-    <div class="row" style="justify-content:center;margin-top:12px"><button class="btn sm" onclick="openUrl('https://console.curseforge.com/')">${ico('ext')}console.curseforge.com öffnen</button><button class="btn sm" onclick="S.disc.src='mr';go('discover',{type:S.disc.type},false)">Modrinth nutzen</button></div></div>`;
+    <div class="row" style="justify-content:center;margin-top:12px"><button class="btn sm" onclick="openUrl('https://console.curseforge.com/')">${ico('ext')}Schlüssel holen</button><button class="btn sm" onclick="S.disc.src='mr';go('discover',{type:S.disc.type},false)">Standard-Katalog nutzen</button></div></div>`;
 }
 window.saveCfKey = async () => {
   const k = $('#cfKeyIn')?.value.trim(); if (!k) return;
   await setS('curseForgeKey', k); S.cfReady = undefined;
-  if (await cfReady()) { toast('CurseForge verbunden'); go(S.page, S.args, false); } else fail('CurseForge', 'Schlüssel wird nicht angenommen');
+  if (await cfReady()) { toast('Erweiterter Katalog verbunden'); go(S.page, S.args, false); } else fail('Erweiterter Katalog', 'Schlüssel wird nicht angenommen');
 };
 async function discFilters() {
   const el = $('#dFil'); if (!el) return;
@@ -1147,11 +1147,11 @@ async function discSearch() {
   try {
     if (D.src === 'cf') { const r = await cf(discPath()); hits = r.data.map(cfHit); total = Math.min(r.pagination.totalCount, 10000); }
     else { const r = await mr(discPath()); hits = r.hits.map(h => ({ ...h, src: 'mr' })); total = r.total_hits; }
-  } catch (e) { if (seq === dSeq) { if (e.message === 'NO_CF_KEY') return cfNoKey(list, true); list.innerHTML = `<div class="empty">${SRC[D.src][0]} ist nicht erreichbar: ${esc(e.message)}</div>`; } return; }
+  } catch (e) { if (seq === dSeq) { if (e.message === 'NO_CF_KEY') return cfNoKey(list, true); list.innerHTML = `<div class="empty">Der Katalog ist nicht erreichbar: ${esc(e.message)}</div>`; } return; }
   if (seq !== dSeq || !$('#dList')) return;
   const catLabel = c => D.src === 'cf' ? ($(`#dFil [data-f=cat][data-v="${c}"]`)?.textContent.trim() || c) : catName(c);
   const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c => ['cat', c, catLabel(c)]), [...D.env].map(e => ['env', e, cap(e)]));
-  $('#dInfo').innerHTML = `<span><b style="color:var(--text)">${total.toLocaleString('de-DE')}</b> Ergebnisse auf ${SRC[D.src][0]}</span>${chips.map(([k, v, n]) => `<button class="fchip on" data-rm="${k}" data-v="${esc(v)}">${esc(n)}${ico('x')}</button>`).join('')}${chips.length ? '<button class="fchip" data-clr>Alle Filter entfernen</button>' : ''}`;
+  $('#dInfo').innerHTML = `<span><b style="color:var(--text)">${total.toLocaleString('de-DE')}</b> Ergebnisse</span>${chips.map(([k, v, n]) => `<button class="fchip on" data-rm="${k}" data-v="${esc(v)}">${esc(n)}${ico('x')}</button>`).join('')}${chips.length ? '<button class="fchip" data-clr>Alle Filter entfernen</button>' : ''}`;
   $('#dInfo').onclick = e => {
     if (e.target.closest('[data-clr]')) { D.vers.clear(); D.loaders.clear(); D.cats.clear(); D.env.clear(); }
     const b = e.target.closest('[data-rm]'); if (b) ({ ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env })[b.dataset.rm].delete(b.dataset.v);
@@ -1191,7 +1191,7 @@ async function loadProject(id) {
 }
 async function installProject(pid, btn, versionId) {
   let p;
-  try { p = await loadProject(pid); } catch (e) { return fail(isCf(pid) ? 'CurseForge' : 'Modrinth', e); }
+  try { p = await loadProject(pid); } catch (e) { return fail('Katalog', e); }
   if (p.project_type === 'modpack') return installModpack(p, versionId, btn);
   const tgt = D.target && S.page !== 'home' ? instById(D.target) : null;
   if (tgt && !(S.page === 'project' && !S.args.target)) return installInto(tgt, p, versionId, btn);
@@ -1211,7 +1211,7 @@ async function installInto(inst, p, versionId, btn) {
   } catch (e) { if (btn) { btn.disabled = false; btn.innerHTML = ico('download') + 'Installieren'; } fail('Installation fehlgeschlagen', e); return false; }
 }
 async function installModpack(p, versionId, btn) {
-  if (!await confirmBox('Modpack installieren?', `„${p.title}“ wird als neue Instanz angelegt. Alle Dateien kommen direkt von ${SRC[p.src][0]}.`, 'Installieren')) return;
+  if (!await confirmBox('Modpack installieren?', `„${p.title}“ wird als neue Instanz angelegt. Alle Dateien kommen direkt von der Quelle des Modpacks.`, 'Installieren')) return;
   if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Installiere…'; }
   try {
     const inst = p.src === 'cf' ? await api('cf.modpack', { project: cfNum(p.id), file: versionId ? +versionId : 0 }) : await api('mr.modpack', { project: p.id, version: versionId || null });
@@ -1220,7 +1220,7 @@ async function installModpack(p, versionId, btn) {
 }
 function pickInstance(p, versionId) {
   const list = [...S.instances].sort((a, b) => compatible(b, p) - compatible(a, p));
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="pd-head">${picHtml(p.icon_url, 'pic')}<div><div class="kicker">Installieren · ${SRC[p.src][0]}</div><h1>${esc(p.title)}</h1></div></div>
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="pd-head">${picHtml(p.icon_url, 'pic')}<div><div class="kicker">Installieren</div><h1>${esc(p.title)}</h1></div></div>
     <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">In welche Instanz? Passende Instanzen stehen oben, Abhängigkeiten kommen automatisch mit.</p>
     <div class="ipick">${list.length ? list.map(i => { const ok = compatible(i, p), has = isInstalled(i, p.id); return `<div class="ir ${ok ? '' : 'no'}">${instIcon(i)}<div class="tx"><b>${esc(i.name)}</b><small>${esc(instSub(i))}${ok ? '' : ' · passt nicht'}</small></div>
       ${has ? `<button class="btn sm ok">${ico('check')}Installiert</button>` : `<button class="btn sm ${ok ? 'p' : ''}" ${ok ? '' : 'disabled'} data-i="${esc(i.id)}">${ico('download')}Installieren</button>`}</div>`; }).join('') : '<div class="empty">Noch keine Instanz.</div>'}</div>
@@ -1265,7 +1265,7 @@ PAGES.project = async (el, a) => {
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
     <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p glow" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
       ${web ? `<button class="ib" title="Im Browser öffnen" onclick="openUrl('${jsq(web)}')">${ico('ext')}</button>` : ''}</div></div></div>
-    ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur über curseforge.com. OrbitLauncher öffnet dann die Download-Seite, statt die Datei selbst zu laden.</div>' : ''}
+    ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur über seine eigene Website. OrbitLauncher öffnet dann die Download-Seite, statt die Datei selbst zu laden.</div>' : ''}
     <div class="itabs" id="pTabs" style="margin-top:18px"></div>
     <div class="pgrid"><div id="pBody"></div><div class="pside" id="pSide"></div></div>`;
   if ($('#pInst')) $('#pInst').onclick = () => installProject(p.id, $('#pInst'));
@@ -1329,10 +1329,10 @@ function projSide() {
       ${p.src === 'mr' && p.project_type !== 'resourcepack' && p.project_type !== 'shader' ? `<div class="kv" style="margin-top:6px"><span>Client</span><b>${env(p.client_side)}</b></div><div class="kv"><span>Server</span><b>${env(p.server_side)}</b></div>` : ''}</div>
     ${links.length ? `<div class="pbox"><h4>Links</h4>${links.map(([u, n, ic]) => `<button class="ln" onclick="openUrl('${jsq(u)}')">${ico(ic)}${esc(n)}</button>`).join('')}</div>` : ''}
     ${P.members ? `<div class="pbox"><h4>Ersteller</h4>${P.members.slice(0, 8).map(m => `<div class="mem">${picHtml(m.user.avatar_url, 'pic', 'user')}<div><b>${esc(m.user.username)}</b><small>${esc(m.role)}</small></div></div>`).join('')}</div>` : ''}
-    <div class="pbox"><h4>Details</h4><div class="kv"><span>Quelle</span><b>${SRC[p.src][0]}</b></div>${p.src === 'mr' ? `<div class="kv"><span>Lizenz</span><b>${esc(p.license?.id === 'LicenseRef-All-Rights-Reserved' ? 'Alle Rechte vorbehalten' : p.license?.id || '—')}</b></div>` : ''}<div class="kv"><span>Veröffentlicht</span><b>${esc(dateDe(p.published))}</b></div><div class="kv"><span>Aktualisiert</span><b>${esc(dateDe(p.updated))}</b></div>${P.versions ? `<div class="kv"><span>Versionen</span><b>${P.versions.length}</b></div>` : ''}</div>`;
+    <div class="pbox"><h4>Details</h4><div class="kv"><span>Katalog</span><b>${SRC[p.src][0]}</b></div>${p.src === 'mr' ? `<div class="kv"><span>Lizenz</span><b>${esc(p.license?.id === 'LicenseRef-All-Rights-Reserved' ? 'Alle Rechte vorbehalten' : p.license?.id || '—')}</b></div>` : ''}<div class="kv"><span>Veröffentlicht</span><b>${esc(dateDe(p.published))}</b></div><div class="kv"><span>Aktualisiert</span><b>${esc(dateDe(p.updated))}</b></div>${P.versions ? `<div class="kv"><span>Versionen</span><b>${P.versions.length}</b></div>` : ''}</div>`;
 }
 
-/* ---------- markdown + HTML (Modrinth bodies mix both) → sanitized ---------- */
+/* ---------- markdown + HTML (project bodies mix both) → sanitized ---------- */
 function mdInline(s) {
   return s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
     .replace(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g, '<img alt="$1" src="$2">')
@@ -1544,7 +1544,7 @@ function demoSkin(n) {
 
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['sources', 'Quellen', 'globe', 'Modrinth und CurseForge'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['sources', 'Quellen', 'globe', 'Mod-Kataloge'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
@@ -1565,7 +1565,7 @@ async function setBody() {
   if (S.stab === 'design') {
     b.innerHTML = card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
       + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-        <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start Updates von Modrinth holen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
+        <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
         <div class="srow"><div><b>Spielen über</b><p>Offizieller Launcher: Anmeldung dort, OrbitLauncher bereitet alles vor.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'OrbitLauncher'], ['official', 'Minecraft Launcher']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div>`);
@@ -1577,10 +1577,10 @@ async function setBody() {
   if (S.stab === 'sources') {
     let cfs = { ready: false }; try { cfs = await api('cf.status'); } catch { }
     if (S.stab !== 'sources') return;
-    b.innerHTML = card('', `<div class="srcrow"><span class="srclogo mr"></span><div class="tx"><b>Modrinth</b><p>Offene Plattform, über 60.000 Projekte. Immer aktiv, kein Schlüssel nötig.</p></div><span class="chip g">Verbunden</span></div>`)
-      + '<div class="mt"></div>' + card('', `<div class="srcrow"><span class="srclogo cf"></span><div class="tx"><b>CurseForge</b><p>Die größte Mod-Plattform. Braucht einen kostenlosen API-Schlüssel von console.curseforge.com (Anmeldung mit Google oder Discord, keine Bankdaten).</p></div><span class="chip ${cfs.ready ? 'g' : 'w'}">${cfs.ready ? 'Verbunden' : 'Nicht verbunden'}</span></div>
+    b.innerHTML = card('', `<div class="srcrow"><span class="srclogo mr"></span><div class="tx"><b>Standard-Katalog</b><p>Zehntausende Mods, Modpacks, Shader und Ressourcenpakete. Immer aktiv, kein Schlüssel nötig.</p></div><span class="chip g">Verbunden</span></div>`)
+      + '<div class="mt"></div>' + card('', `<div class="srcrow"><span class="srclogo cf"></span><div class="tx"><b>Erweiterter Katalog</b><p>Noch mehr Mods und Modpacks. Braucht einen kostenlosen API-Schlüssel (Anmeldung mit Google oder Discord, keine Bankdaten).</p></div><span class="chip ${cfs.ready ? 'g' : 'w'}">${cfs.ready ? 'Verbunden' : 'Nicht verbunden'}</span></div>
         <div class="inline" style="margin-top:14px"><input class="in" id="cfKeyIn" type="password" placeholder="${cfs.own ? 'Eigener Schlüssel gespeichert' : cfs.ready ? 'Eingebauter Schlüssel aktiv' : 'API-Schlüssel einfügen'}" style="font-family:var(--mono);font-size:12px"><button class="btn p" onclick="saveCfKey().then(()=>setBody())">${ico('check')}Speichern</button><button class="btn" onclick="openUrl('https://console.curseforge.com/')">${ico('ext')}Schlüssel holen</button></div>
-        <p class="fine">Mods, deren Autoren Downloads außerhalb von CurseForge verbieten, lädt OrbitLauncher nicht selbst. Du bekommst dann den Link zur Download-Seite.</p>`);
+        <p class="fine">Mods, deren Autoren Downloads nur über ihre eigene Website erlauben, lädt OrbitLauncher nicht selbst. Du bekommst dann den Link zur Download-Seite.</p>`);
   }
   if (S.stab === 'java') {
     b.innerHTML = card('Java-Laufzeiten', '<div class="spinner"></div>');
@@ -1615,8 +1615,8 @@ async function setBody() {
         ${S.upd?.available ? `<button class="btn p" onclick="updatePrompt(S.upd)">${ico('download')}Update ${esc(S.upd.latest)}</button>` : `<button class="btn" id="updCheck">${ico('refresh')}Nach Updates suchen</button>`}</div>
       <div class="srow" style="margin-top:10px"><div><b>Automatisch nach Updates suchen</b><p>Beim Start wird geprüft, ob es eine neue Version gibt.</p></div>${tg('autoUpdate', st.autoUpdate !== false)}</div>
       <div class="srow"><div><b>Updates automatisch installieren</b><p>Ohne Nachfrage laden und neu starten, aber nie während Minecraft läuft.</p></div>${tg('autoInstall', !!st.autoInstall)}</div>`)
-      + '<div class="mt"></div>' + card('Quellen &amp; Lizenzen', `<div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang, Microsoft oder Modrinth verbunden.</p></div></div>
-        <div class="srow"><div><b>Modrinth</b><p>Mods, Modpacks, Shader und Ressourcenpakete über die öffentliche Modrinth-API, jeweils unter der Lizenz ihrer Autoren.</p></div></div>
+      + '<div class="mt"></div>' + card('Quellen &amp; Lizenzen', `<div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang oder Microsoft verbunden.</p></div></div>
+        <div class="srow"><div><b>Mods &amp; Modpacks</b><p>Kommen direkt von den Plattformen ihrer Autoren, jeweils unter deren Lizenz.</p></div></div>
         <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
         <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium).</p></div></div>
         <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist und Inter (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
@@ -1820,7 +1820,7 @@ function cloudEvent(d) {
 }
 function orbitLogin(register = false) {
   modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="upd-hero"><span class="iic">${blockSvg('orbit')}</span><div><div class="kicker">Orbit-Konto</div><h1>${register ? 'Konto erstellen' : 'Bei Orbit anmelden'}</h1></div></div>
-    <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">Deine Instanzen, Mod-Listen, Einstellungen und Skins liegen dann auf deinem Konto. Auf jedem PC anmelden, und alles ist wieder da. Mods werden dabei frisch von Modrinth und CurseForge geladen.</p>
+    <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">Deine Instanzen, Mod-Listen, Einstellungen und Skins liegen dann auf deinem Konto. Auf jedem PC anmelden, und alles ist wieder da. Mods werden dabei frisch aus dem Katalog geladen.</p>
     <label class="fl">Name</label><input class="in" id="olName" maxlength="20" placeholder="3–20 Zeichen, Buchstaben, Zahlen, _" autocomplete="username">
     <label class="fl">Passwort</label><input class="in" id="olPw" type="password" placeholder="${register ? 'Mindestens 8 Zeichen' : ''}" autocomplete="${register ? 'new-password' : 'current-password'}">
     ${register ? '<label class="fl">Passwort wiederholen</label><input class="in" id="olPw2" type="password" autocomplete="new-password"><p class="fine">Es gibt keine E-Mail-Wiederherstellung. Merk dir dein Passwort gut. Es verlässt deinen PC nur verschlüsselt.</p>' : ''}
@@ -1860,7 +1860,7 @@ async function cloudSettings(b, card) {
     b.innerHTML = card('', `<div class="cloudhero"><span class="ch-ic">${ico('cloud')}</span><h2>Deine Instanzen überall</h2><p>Mit einem Orbit-Konto liegen Instanzen, Mod-Listen, Optionen, Configs, Einstellungen und Skins auf deinem Konto. Auf einem anderen PC anmelden, und alles wird automatisch wiederhergestellt.</p>
       <div class="row" style="justify-content:center;gap:10px"><button class="btn p" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
       + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste, Configs</p></div>${ico('check')}</div>
-      <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen kommen sie direkt von Modrinth bzw. CurseForge.</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen werden sie frisch aus dem Katalog geladen.</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Einstellungen, Orbit Client, Skins</b><p>Akzentfarbe, Standard-RAM, HUD-Layout, deine Skin-Bibliothek</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Welten</b><p>Nicht automatisch (zu groß). Nutze Welt-Backups.</p></div>${ico('x')}</div>`);
     return;
@@ -1993,7 +1993,7 @@ const Mock = {
   ],
   mods: { 'orbit-client-26-3': ['fabric-api', 'modmenu', 'sodium', 'lithium', 'iris', 'ferrite-core', 'entityculling', 'immediatelyfast', 'dynamic-fps', 'appleskin', 'mouse-tweaks', 'no-chat-reports'], 'fabulously-optimized': ['sodium', 'lithium', 'iris', 'continuity', 'entityculling', 'ferrite-core', 'zoomify', 'modmenu', 'fabric-api', 'yacl', 'cloth-config', 'lambdynamiclights'], 'technik-abenteuer': ['create', 'jei', 'jade', 'sophisticated-backpacks', 'waystones', 'appleskin'] },
   versions: null,
-  /* CurseForge preview: Modrinth data reshaped into the CurseForge API format (real CF needs an API key) */
+  /* extended catalog preview: standard data reshaped into its API format (the real one needs an API key) */
   cfIds: {},
   cfId(pid) { let h = 0; for (const c of pid) h = (h * 31 + c.charCodeAt(0)) >>> 0; const id = 200000 + h % 800000; this.cfIds[id] = pid; return id; },
   cfMod(h) {
@@ -2016,7 +2016,7 @@ const Mock = {
       return { data: r.hits.map(h => this.cfMod({ ...h, gallery: h.featured_gallery ? [h.featured_gallery] : h.gallery })), pagination: { totalCount: Math.round(r.total_hits * 1.4) } };
     }
     const m = /^\/mods\/(\d+)(\/description|\/files(?:\/(\w+)\/changelog)?)?$/.exec(u.pathname); if (!m) return { data: [] };
-    const pid = this.cfIds[m[1]]; if (!pid) throw new Error('CurseForge 404');
+    const pid = this.cfIds[m[1]]; if (!pid) throw new Error('404');
     if (!m[2]) return { data: this.cfMod(await mrj('/project/' + pid)) };
     if (m[2] === '/description') return { data: (await mrj('/project/' + pid)).body };
     const vs = await mrj(`/project/${pid}/version`);
@@ -2105,7 +2105,7 @@ const Mock = {
       case 'backup.create': await sleep(700); return { file: a.folder + '_x.zip', world: a.folder, date: iso(0), size: 51e6 };
       case 'backup.delete': case 'backup.restore': return { world: 'Neue Welt (Backup)' };
       case 'instance.export': await sleep(900); return { path: 'C:\\Users\\Ky3ls\\Desktop\\' + inst().name + '.mrpack' };
-      case 'import.scan': await sleep(500); return [{ i: 0, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric' }, { i: 1, launcher: 'CurseForge', name: 'All the Mods 10', mc: '1.21.1', loader: 'neoforge' }];
+      case 'import.scan': await sleep(500); return [{ i: 0, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric' }, { i: 1, launcher: 'Mod-Launcher', name: 'All the Mods 10', mc: '1.21.1', loader: 'neoforge' }];
       case 'import.run': await sleep(900); return M.instances[0];
       case 'screenshots.list': return ['survival-1-21-11', 'orbit-client-26-3', 'survival-1-21-11', 'technik-abenteuer', 'orbit-client-26-3', 'survival-1-21-11'].map((id, i) => ({ id, version: '', file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0, 675)), date: iso(i * DAY / 2) }));
       case 'mr.get': { const r = await fetch('https://api.modrinth.com/v2' + a.path); if (!r.ok) throw new Error('Modrinth ' + r.status); return r.json(); }

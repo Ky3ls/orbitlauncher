@@ -143,7 +143,7 @@ public static class Transfer
             .Where(x => !x.Item2.EndsWith(".disabled")).ToList();
         if (all.Count > 0)
         {
-            p?.Report(new Progress("Dateien werden bei Modrinth gesucht", 0, 1, all.Count + " Dateien"));
+            p?.Report(new Progress("Dateien werden im Katalog gesucht", 0, 1, all.Count + " Dateien"));
             var hashes = all.ToDictionary(x => x.Item2, x => Net.Sha1(x.Item2));
             var body = new JsonObject { ["hashes"] = new JsonArray(hashes.Values.Distinct().Select(h => (JsonNode)h).ToArray()), ["algorithm"] = "sha1" };
             JsonNode found;
@@ -234,7 +234,7 @@ public static class Transfer
                     var lid = (string?)j["baseModLoader"]?["name"] ?? "";
                     string loader = "vanilla"; string? lv = null;
                     if (lid.Contains('-')) { loader = lid[..lid.IndexOf('-')]; lv = lid[(lid.IndexOf('-') + 1)..]; if (loader == "forge") lv = mc + "-" + lv; }
-                    if (mc.Length > 0) r.Add(new Found("CurseForge", (string?)j["name"] ?? Path.GetFileName(d), d, mc, loader, lv));
+                    if (mc.Length > 0) r.Add(new Found("Mod-Launcher", (string?)j["name"] ?? Path.GetFileName(d), d, mc, loader, lv));
                 }
                 catch { }
             }

@@ -1,6 +1,6 @@
 # OrbitLauncher
 
-Minecraft-Launcher für Windows im Aufbau der Modrinth-App, im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`. Dazu der eigene Orbit-Client-Mod für PvP-Features.
+Minecraft-Launcher für Windows im Design von OrbitTweak: C# .NET 8 WPF-Host + WebView2-Oberfläche (HTML/CSS/JS) als eine selbstständige `.exe`. Dazu der eigene Orbit-Client-Mod für PvP-Features.
 
 ![Start](docs/screenshots/60_start.png)
 
@@ -12,20 +12,20 @@ Minecraft-Launcher für Windows im Aufbau der Modrinth-App, im Design von OrbitT
 
 | Bereich | Umsetzung |
 |---|---|
-| **Start** | Weiterspielen (letzte Instanz), direkt zurück in die letzten Welten, zuletzt gespielte Instanzen, beliebte Modpacks und Mods von Modrinth, Minecraft-News. |
+| **Start** | Weiterspielen (letzte Instanz), direkt zurück in die letzten Welten, zuletzt gespielte Instanzen, beliebte Modpacks, Mods und Shader, Minecraft-News. |
 | **Bibliothek** | Alle Instanzen als Karten: Filter (Modpacks, Eigene, Orbit Client), Suche, Sortieren (zuletzt gespielt, Name, neu, Spielzeit, Version), Gruppieren (Gruppe, Loader, Version). Rechtsklick-Menü: Spielen, Inhalte hinzufügen, Einstellungen, Ordner, Duplizieren, Löschen. |
 | **Instanzseite** | Kopf mit Spielen/Beenden, Spielzeit, Loader. Tabs: **Inhalte** (Mods, Ressourcenpakete, Shader mit Icons, Suche, Filter, an/aus, Mehrfachauswahl, Updates prüfen und alle aktualisieren, aus Datei hinzufügen), **Welten** (Spielmodus, Symbol, direkt in die Welt starten ab 1.20, Server aus der Serverliste direkt beitreten, Welt in den Papierkorb), **Logs** (Live-Konsole und alte Logs/Crash-Reports mit Suche), **Orbit Client** (nur bei Orbit-Instanzen: Module, HUD-Editor, Tasten). |
 | **Instanz-Einstellungen** | Name, Symbol, Gruppe; Version und Mod-Loader nachträglich wechseln, Dateien prüfen und reparieren; Java-Pfad, RAM, JVM-Argumente; Fenstergröße. |
-| **Entdecken** | **Modrinth und CurseForge** umschaltbar. Modpacks, Mods, Ressourcenpakete, Shader, Listen- oder Kachelansicht. Filterleiste: Spielversion, Loader, alle Modrinth-Kategorien, Umgebung (Client/Server), Open Source. Sortieren, Seiten, aktive Filter als Chips. Aus einer Instanz heraus: nur passende Inhalte, „Installiert“-Markierung. |
+| **Entdecken** | Zwei Mod-Kataloge (Standard und Erweitert) umschaltbar. Modpacks, Mods, Ressourcenpakete, Shader, Listen- oder Kachelansicht. Filterleiste: Spielversion, Loader, alle Kategorien, Umgebung (Client/Server), Open Source. Sortieren, Seiten, aktive Filter als Chips. Aus einer Instanz heraus: nur passende Inhalte, „Installiert“-Markierung. |
 | **Projektseite** | Beschreibung (Markdown und HTML, bereinigt), Versionen mit Filtern und Changelog, Galerie mit Großansicht, Kompatibilität, Links, Ersteller, Lizenz. Installieren mit Instanzauswahl (passende oben) oder „Neue Instanz dafür“. Abhängigkeiten kommen automatisch mit. |
 | **Welten & Server** | Live-Status der gespeicherten Server (Spieler, Ping, MOTD, Icon), direkt beitreten, Welt-Backups als Zip mit Wiederherstellen. |
-| **Teilen & Umziehen** | Instanz als .mrpack exportieren (Modrinth-Mods verlinkt, Rest in overrides). Import von .mrpack und CurseForge-.zip, Instanzen aus Prism Launcher, MultiMC, PolyMC und der CurseForge-App übernehmen. |
+| **Teilen & Umziehen** | Instanz als .mrpack exportieren (Katalog-Mods verlinkt, Rest in overrides). Import von .mrpack und .zip-Modpacks, Instanzen aus Prism Launcher, MultiMC, PolyMC und weiteren Launchern übernehmen. |
 | **Screenshots** | Galerie aller Screenshots aus allen Instanzen mit Filter. |
 | **Discord** | Zeigt „Spielt …“ mit Instanz und Version (abschaltbar). |
 | **Skins** | Skin-Bibliothek mit 3D-Ansicht (drehen, laufen), Klassisch/Schlank, mit einem Klick fürs Konto übernehmen, Umhang wählen. Über die offizielle Minecraft-Services-API. |
 | **Alle Versionen & Loader** | Mojang Version Manifest (Releases, Snapshots, Beta, Alpha), Fabric, Quilt, Forge, NeoForge. Startargumente wie beim offiziellen Launcher. |
 | **Orbit Client (eigener Mod)** | `client-mod/`: Fabric-Mod für 26.3 mit 21 Modulen (Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint …), Mod-Menü auf Rechts-Shift, HUD-Editor. Einstellungen live zwischen Launcher und Spiel synchron. Anlegen über „Neue Instanz → Orbit Client“. |
-| **Orbit-Konto & Cloud-Sync** | Eigenes Orbit-Konto: Instanzen (Version, Loader, Gruppe, RAM, Spielzeit, options.txt, Server, Configs), Mod-Listen mit exakter Version, Einstellungen, Orbit-Client-HUD und Skins liegen auf dem Konto. Auf einem anderen PC anmelden, alles kommt zurück, Mods werden frisch von Modrinth/CurseForge geladen. Server: `server/` (Cloudflare Worker + D1). |
+| **Orbit-Konto & Cloud-Sync** | Eigenes Orbit-Konto: Instanzen (Version, Loader, Gruppe, RAM, Spielzeit, options.txt, Server, Configs), Mod-Listen mit exakter Version, Einstellungen, Orbit-Client-HUD und Skins liegen auf dem Konto. Auf einem anderen PC anmelden, alles kommt zurück, Mods werden frisch aus dem Katalog geladen. Server: `server/` (Cloudflare Worker + D1). |
 | **Über den offiziellen Launcher spielen** | Ohne eigene Microsoft-App-ID: OrbitLauncher bereitet alles vor, legt ein Profil im offiziellen Minecraft Launcher an (Spielordner = Instanz) und öffnet ihn. Anmeldung und Start dort. |
 | **Microsoft-Login** | Offizielles Microsoft-Fenster in der App (Auth-Code + PKCE) → Xbox Live → XSTS → Minecraft. Nur das Refresh-Token wird gespeichert, verschlüsselt per DPAPI. Mehrere Konten. Kein Offline-/Cracked-Modus. |
 | **Java** | Pro Version automatisch: Mojangs Java-Runtime, sonst Eclipse Temurin. |
@@ -44,9 +44,9 @@ Wie bei jedem Client (Lunar, Feather …) braucht die App dafür **eine eigene, 
 
 Die App-ID des offiziellen Minecraft-Launchers wird bewusst nicht benutzt.
 
-## CurseForge
+## Erweiterter Katalog
 
-CurseForge erlaubt Launchern nur den Zugriff mit einem eigenen API-Schlüssel (kostenlos, console.curseforge.com). Entweder in der App unter Einstellungen → Quellen eintragen oder fest einbauen: `dotnet publish -c Release -o publish -p:CurseForgeKey=<schlüssel>`. Mods, deren Autoren Downloads außerhalb von CurseForge verbieten, werden nicht geladen, sondern verlinkt.
+Der erweiterte Mod-Katalog braucht einen eigenen, kostenlosen API-Schlüssel. Entweder in der App unter Einstellungen → Quellen eintragen oder fest einbauen: `dotnet publish -c Release -o publish -p:CatalogKey=<schlüssel>`. Mods, deren Autoren Downloads nur über ihre eigene Website erlauben, werden nicht geladen, sondern verlinkt.
 
 ## Bauen
 
@@ -63,7 +63,7 @@ Ergebnis: `publish/OrbitLauncher.exe` (win-x64, self-contained, single file). Da
 
 ## Testen ohne Windows
 
-- **Oberfläche:** `Web/` mit einem beliebigen Webserver ausliefern (`python3 -m http.server`). Ohne WebView2 springt ein Mock-Backend in `app.js` ein, das Versionen, Modrinth und Patch Notes live abfragt.
+- **Oberfläche:** `Web/` mit einem beliebigen Webserver ausliefern (`python3 -m http.server`). Ohne WebView2 springt ein Mock-Backend in `app.js` ein, das Versionen, Mods und Patch Notes live abfragt.
 - **Core:** `tests/CoreCheck` ist eine plattformübergreifende Konsolen-App, die den echten Core nutzt:
   ```bash
   cd tests/CoreCheck && dotnet run -c Release -- <datenordner> vanilla 1.8.9
@@ -79,7 +79,7 @@ Ergebnis: `publish/OrbitLauncher.exe` (win-x64, self-contained, single file). Da
 
 ```
 client-mod/    Orbit-Client-Fabric-Mod (Java 25, Mojang-Namen, Fabric API)
-Core/          Plattformunabhängige Logik (Downloads, Versionen, Start, Java, Loader, Modrinth, Auth, Orbit Client)
+Core/          Plattformunabhängige Logik (Downloads, Versionen, Start, Java, Loader, Mod-Kataloge, Auth, Cloud, Orbit Client)
 Web/           Oberfläche (index.html, style.css, app.js, Schriften)
 MainWindow.*   WPF-Fenster + WebView2-Brücke ({id,cmd,args} ↔ {id,ok,data}, Events per Emit)
 tests/CoreCheck Smoke-Test für den Core
@@ -87,4 +87,4 @@ tests/CoreCheck Smoke-Test für den Core
 
 ## Rechtliches
 
-Nicht offiziell, nicht verbunden mit Mojang, Microsoft oder Modrinth. Der Orbit-Client-Mod ist komplett eigener Code (MIT). Minecraft ist eine Marke von Mojang AB. Spieldateien kommen direkt von Mojang, Mods von Modrinth unter den Lizenzen ihrer Autoren. Schriften: Geist und Inter (SIL OFL). Icons im Stil von Lucide (ISC).
+Nicht offiziell, nicht verbunden mit Mojang oder Microsoft. Der Orbit-Client-Mod ist komplett eigener Code (MIT). Minecraft ist eine Marke von Mojang AB. Spieldateien kommen direkt von Mojang, Mods direkt von den Plattformen ihrer Autoren, jeweils unter deren Lizenz. Schriften: Geist und Inter (SIL OFL). Icons im Stil von Lucide (ISC).

@@ -19,7 +19,7 @@ public static class CurseForge
     public static string Key { get; set; } = "";
     public static string BuiltInKey =>
         System.Reflection.Assembly.GetEntryAssembly()?.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "CurseForgeKey")?.Value ?? "";
+            .OfType<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "CatalogKey")?.Value ?? "";
     public static bool Ready => !string.IsNullOrWhiteSpace(Key);
 
     public static int ClassOf(string type) => type switch { "modpack" => ClassModpacks, "resourcepack" => ClassResourcepacks, "shader" => ClassShaders, _ => ClassMods };
@@ -36,8 +36,8 @@ public static class CurseForge
         if (body != null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var r = await Net.Http.SendAsync(req, ct);
         var txt = await r.Content.ReadAsStringAsync(ct);
-        if ((int)r.StatusCode == 403) throw new InvalidOperationException("CurseForge hat den API-Schlüssel abgelehnt.");
-        if (!r.IsSuccessStatusCode) throw new HttpRequestException($"CurseForge {(int)r.StatusCode}");
+        if ((int)r.StatusCode == 403) throw new InvalidOperationException("Der erweiterte Katalog hat den API-Schlüssel abgelehnt.");
+        if (!r.IsSuccessStatusCode) throw new HttpRequestException($"Katalog-Fehler {(int)r.StatusCode}");
         return JsonNode.Parse(txt)!;
     }
     public static Task<JsonNode> Get(string path, CancellationToken ct = default) => Send(HttpMethod.Get, path, null, ct);
@@ -83,13 +83,13 @@ public static class CurseForge
         if (file == null)
         {
             if (dep) { res.Skipped.Add(title); return; }
-            throw new InvalidOperationException($"„{title}“ gibt es auf CurseForge nicht für {inst.McVersion} / {Loaders.Name(inst.Loader)}.");
+            throw new InvalidOperationException($"„{title}“ gibt es im Katalog nicht für {inst.McVersion} / {Loaders.Name(inst.Loader)}.");
         }
         var url = (string?)file["downloadUrl"];
         if (string.IsNullOrEmpty(url))
         {
             // author does not allow downloads outside CurseForge – respect that
-            res.Skipped.Add(title + " (nur auf curseforge.com)");
+            res.Skipped.Add(title + " (nur über die Website des Autors)");
             return;
         }
         p?.Report(new Progress("Installiere " + title, 0, 1, (string?)file["displayName"]));
@@ -138,7 +138,7 @@ public static class CurseForge
     {
         using var z = ZipFile.OpenRead(zip);
         JsonNode man;
-        using (var s = new StreamReader((z.GetEntry("manifest.json") ?? throw new InvalidOperationException("Kein CurseForge-Modpack")).Open())) man = JsonNode.Parse(s.ReadToEnd())!;
+        using (var s = new StreamReader((z.GetEntry("manifest.json") ?? throw new InvalidOperationException("Kein gültiges Modpack")).Open())) man = JsonNode.Parse(s.ReadToEnd())!;
         var mc = (string?)man["minecraft"]?["version"] ?? throw new InvalidOperationException("Modpack ohne Minecraft-Version");
         var primary = man["minecraft"]?["modLoaders"]?.AsArray().FirstOrDefault(l => (bool?)l!["primary"] == true) ?? man["minecraft"]?["modLoaders"]?.AsArray().FirstOrDefault();
         string loader = "vanilla"; string? lv = null;
@@ -200,7 +200,7 @@ public static class CurseForge
         var mod = await Mod(modId, ct);
         var file = fileId != null ? (await Get($"/mods/{modId}/files/{fileId}", ct))["data"]! : await BestFile(modId, null, null, ct) ?? throw new InvalidOperationException("Keine Modpack-Datei gefunden");
         var url = (string?)file["downloadUrl"];
-        if (string.IsNullOrEmpty(url)) throw new InvalidOperationException("Der Autor erlaubt den Download nur über curseforge.com.");
+        if (string.IsNullOrEmpty(url)) throw new InvalidOperationException("Der Autor erlaubt den Download nur über seine eigene Website.");
         var tmp = Path.Combine(Paths.Cache, "cf-" + Path.GetFileName((string)file["fileName"]!));
         p?.Report(new Progress("Modpack wird geladen", 0, 1, (string?)mod["name"]));
         await Net.Download(new DlItem(url, tmp, Sha1(file), (long?)file["fileLength"] ?? 0), ct);

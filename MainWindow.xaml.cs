@@ -626,7 +626,7 @@ public partial class MainWindow : Window
             case "instance.export":
             {
                 var inst = Inst(a);
-                var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Modrinth-Modpack (*.mrpack)|*.mrpack", FileName = $"{inst.Name} {StrN(a, "version") ?? "1.0.0"}.mrpack", Title = "Als Modpack exportieren" };
+                var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Modpack (*.mrpack)|*.mrpack", FileName = $"{inst.Name} {StrN(a, "version") ?? "1.0.0"}.mrpack", Title = "Als Modpack exportieren" };
                 if (dlg.ShowDialog(this) != true) return null;
                 var target = dlg.FileName;
                 await WithTask(async p => { await Transfer.Export(inst, target, StrN(a, "version") ?? "1.0.0", Bool(a, "worlds"), p); return 0; });
