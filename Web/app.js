@@ -244,9 +244,11 @@ function onEvent(ev, d) {
       toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report unter Logs' : ''}`, false);
     }
     refreshInstances();
+    if (!d.running && !S.running.size && S.upd?.available && S.settings.autoInstall) installUpdate(true);
   }
   if (ev === 'instances') { S.instances = d; instancesChanged(); }
   if (ev === 'orbitcfg') orbitCfgEvent(d);
+  if (ev === 'update') updProgress(d);
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -1600,12 +1602,16 @@ async function setBody() {
     if ($('#sClr')) $('#sClr').onclick = async () => { await api('cache.clear'); toast('Cache geleert'); setBody(); };
   }
   if (S.stab === 'about') {
-    b.innerHTML = card('', `<div class="row" style="gap:16px"><span class="iic" style="width:64px;height:64px;border-radius:18px">${blockSvg('orbit')}</span><div><h2 style="font-size:22px">Orbit<span class="grad">Launcher</span></h2><p class="sub">Version ${esc(S.version)} · Minecraft-Launcher im OrbitTweak-Design</p></div></div>`)
+    b.innerHTML = card('', `<div class="row" style="gap:16px"><span class="iic" style="width:64px;height:64px;border-radius:18px">${blockSvg('orbit')}</span><div style="flex:1"><h2 style="font-size:22px">Orbit<span class="grad">Launcher</span></h2><p class="sub">Version ${esc(S.version)} · <span id="updTxt">${S.upd?.available ? 'Version ' + esc(S.upd.latest) + ' verfügbar' : S.upd ? 'Du hast die neueste Version' : 'Updates kommen von GitHub'}</span></p></div>
+        ${S.upd?.available ? `<button class="btn p" onclick="updatePrompt(S.upd)">${ico('download')}Update ${esc(S.upd.latest)}</button>` : `<button class="btn" id="updCheck">${ico('refresh')}Nach Updates suchen</button>`}</div>
+      <div class="srow" style="margin-top:10px"><div><b>Automatisch nach Updates suchen</b><p>Beim Start wird geprüft, ob es eine neue Version gibt.</p></div>${tg('autoUpdate', st.autoUpdate !== false)}</div>
+      <div class="srow"><div><b>Updates automatisch installieren</b><p>Ohne Nachfrage laden und neu starten, aber nie während Minecraft läuft.</p></div>${tg('autoInstall', !!st.autoInstall)}</div>`)
       + '<div class="mt"></div>' + card('Quellen &amp; Lizenzen', `<div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang, Microsoft oder Modrinth verbunden.</p></div></div>
         <div class="srow"><div><b>Modrinth</b><p>Mods, Modpacks, Shader und Ressourcenpakete über die öffentliche Modrinth-API, jeweils unter der Lizenz ihrer Autoren.</p></div></div>
         <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
         <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium).</p></div></div>
         <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist und Inter (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
+    if ($('#updCheck')) $('#updCheck').onclick = async () => { $('#updCheck').disabled = true; $('#updCheck').innerHTML = ico('refresh', 'i spin') + 'Prüfe…'; await checkUpdate(true); setBody(); };
   }
   b.querySelectorAll('[data-set]').forEach(t => t.onclick = () => { const on = !t.classList.contains('on'); t.classList.toggle('on', on); setS(t.dataset.set, on); });
 }
@@ -1783,6 +1789,49 @@ function bindStage() {
 window.hudAuto = () => { Object.values(S.orbit.cfg.modules || {}).forEach(c => { delete c.x; delete c.y; }); oSave(); renderStage(); };
 window.addEventListener('resize', () => { if (S.page === 'inst' && S.itab === 'orbit') renderStage(); moveInd(); });
 
+
+/* ======================= LAUNCHER UPDATES ======================= */
+async function checkUpdate(manual) {
+  let u;
+  try { u = await api('update.check'); } catch (e) { if (manual) fail('Update-Prüfung fehlgeschlagen', e); return null; }
+  S.upd = u;
+  if (S.page === 'settings' && S.stab === 'about' && !manual) setBody();
+  if (u.error) { if (manual) fail('Update-Prüfung fehlgeschlagen', u.error); return u; }
+  if (!u.available) { $('#updPill').classList.add('hidden'); if (manual) toast('Alles aktuell', 'OrbitLauncher ' + u.current); return u; }
+  $('#updPill').classList.remove('hidden'); $('#updPillTxt').textContent = 'Update ' + u.latest;
+  if (manual) updatePrompt(u);
+  else if (S.settings.autoInstall && !S.running.size) installUpdate(true);
+  else { let seen = ''; try { seen = localStorage.getItem('orbit.updSeen') || ''; } catch { } if (seen !== u.latest) updatePrompt(u); }
+  return u;
+}
+window.checkUpdate = checkUpdate;
+function updatePrompt(u) {
+  if (!u?.available) return;
+  try { localStorage.setItem('orbit.updSeen', u.latest); } catch { }
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="upd-hero"><span class="iic">${blockSvg('orbit')}</span><div><div class="kicker">Neue Version</div><h1>OrbitLauncher ${esc(u.latest)}</h1><p class="sub" style="margin:4px 0 0">Du hast ${esc(u.current)}${u.date ? ' · erschienen am ' + esc(u.date) : ''}${u.size ? ' · ' + bytes(u.size) : ''}</p></div></div>
+    ${u.notes?.length ? `<ul class="upd-notes">${u.notes.map(n => `<li>${ico('check')}<span>${esc(n)}</span></li>`).join('')}</ul>` : ''}
+    <div class="upd-meter hidden" id="updMeter"><div class="bar"><i id="updBar" style="width:0"></i></div><small id="updProg"></small></div>
+    ${S.running.size ? '<div class="note w" style="margin-top:12px">Minecraft läuft gerade. Das Update wird nach dem Spielen installiert.</div>' : ''}
+    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Später</button><button class="btn p" id="updBtn" onclick="installUpdate()" ${S.running.size ? 'disabled' : ''}>${ico('download')}<span>Jetzt aktualisieren</span></button></div>`, 'form');
+}
+window.updatePrompt = updatePrompt;
+function updProgress(d) {
+  if (!$('#updMeter')) return;
+  $('#updMeter').classList.remove('hidden'); $('#updBar').style.width = d.pct + '%';
+  $('#updProg').textContent = d.total ? `${bytes(d.done)} / ${bytes(d.total)} · ${d.pct}%` : '';
+}
+async function installUpdate(silent) {
+  if (S.updating) return; S.updating = true;
+  const b = $('#updBtn'); if (b) { b.disabled = true; b.querySelector('span').textContent = 'Lädt…'; }
+  if (silent) toast('Update wird geladen', 'OrbitLauncher ' + S.upd.latest + ' startet gleich neu');
+  try {
+    await api('update.download');
+    if ($('#updProg')) $('#updProg').textContent = 'Installiere, OrbitLauncher startet gleich neu…';
+    await sleep(400); await api('update.install');
+  } catch (e) { S.updating = false; if (b) { b.disabled = false; b.querySelector('span').textContent = 'Erneut versuchen'; } fail('Update fehlgeschlagen', e); }
+}
+window.installUpdate = installUpdate;
+
 /* ======================= BOOT ======================= */
 async function boot() {
   const t0 = performance.now();
@@ -1799,6 +1848,7 @@ async function boot() {
   go(q.get('page') || 'home', args);
   if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
+  if (S.settings.autoUpdate !== false) setTimeout(() => checkUpdate(false), 2000);
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
   if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 700 - (performance.now() - t0)));
 }
@@ -1913,6 +1963,8 @@ const Mock = {
         const j = await (await fetch('https://launchercontent.mojang.com/v2/javaPatchNotes.json')).json();
         return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
       } catch { return [{ title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }]; }
+      case 'update.check': return /upd/.test(location.search) ? { configured: true, current: '0.3.0', latest: '0.3.1', available: true, date: '15.11.2026', size: 73e6, notes: ['Automatische Updates direkt im Launcher', 'Update-Hinweis mit Änderungen und Fortschritt', 'Updates warten, bis Minecraft beendet ist'] } : { configured: true, current: '0.3.0', latest: '0.3.0', available: false };
+      case 'update.download': for (let k = 0; k <= 100; k += 10) { onEvent('update', { pct: k, done: k * 73e4, total: 73e6 }); await sleep(80); } return { ok: true };
       case 'cf.status': return { ready: !/nocf/.test(location.search), own: false };
       case 'cf.get': return M.cfGet(a.path);
       case 'cf.install': await sleep(800); { const i = inst(); i.content = (i.content || []).concat([{ projectId: 'cf:' + a.project, type: 'mod', source: 'curseforge' }]); } return { installed: ['Projekt'], skipped: [] };

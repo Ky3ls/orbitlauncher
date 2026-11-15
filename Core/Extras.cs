@@ -24,6 +24,10 @@ public class Settings
     public string? CurseForgeKey { get; set; }
     /// <summary>Show "Spielt …" in Discord.</summary>
     public bool DiscordRpc { get; set; } = true;
+    /// <summary>Look for a new launcher version on start.</summary>
+    public bool AutoUpdate { get; set; } = true;
+    /// <summary>Install launcher updates without asking (never while Minecraft runs).</summary>
+    public bool AutoInstall { get; set; }
     /// <summary>Last Minecraft version played with Orbit Client.</summary>
     public string? OrbitVersion { get; set; }
     /// <summary>Performance packs for new Orbit instances, comma separated (perf,shaders,qol,visual).</summary>

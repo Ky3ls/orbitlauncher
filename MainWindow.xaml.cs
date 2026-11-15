@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     {
         Net.AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
         _auth = new Auth(ClientIdFor(S));
+        Updater.CleanupOld();
         CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
         OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
         InitializeComponent();
@@ -554,6 +555,16 @@ public partial class MainWindow : Window
                 return null;
             }
             case "screenshots.delete": { var f = ShotPath(a); File.Delete(f); return new { }; }
+
+            // ---------------- launcher updates (GitHub Releases of Ky3ls/orbitlauncher)
+            case "update.check": return await Updater.Check();
+            case "update.download":
+                await Updater.Download((pct, done, total) => Emit("update", new { pct, done, total }));
+                return new { ok = true };
+            case "update.install":
+                if (_runner.RunningIds.Any()) throw new InvalidOperationException("Erst Minecraft beenden, dann wird das Update installiert.");
+                Updater.Install();
+                return null;
 
             // ---------------- curseforge
             case "cf.status": return new { ready = CurseForge.Ready, own = !string.IsNullOrWhiteSpace(S.CurseForgeKey) };
