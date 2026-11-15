@@ -180,6 +180,9 @@ public partial class MainWindow : Window
             id = root.GetProperty("id").GetInt32();
             var cmd = root.GetProperty("cmd").GetString() ?? "";
             var args = root.TryGetProperty("args", out var a) ? JsonNode.Parse(a.GetRawText()) as JsonObject ?? new JsonObject() : new JsonObject();
+            // leave the WebView2 event first: dialogs (Microsoft sign-in window, file pickers) must not run a
+            // nested message loop inside WebMessageReceived, otherwise a second WebView never finishes loading
+            if (!cmd.StartsWith("win.")) await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Input);
             var data = await Handle(cmd, args);
             var payload = data is JsonNode jn ? $"{{\"id\":{id},\"ok\":true,\"data\":{jn.ToJsonString()}}}" : JsonSerializer.Serialize(new { id, ok = true, data }, J);
             Post(payload);
