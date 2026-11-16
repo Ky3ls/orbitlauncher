@@ -68,17 +68,22 @@ const KIND = { custom: 'Eigene', modpack: 'Modpack', orbit: 'Orbit Client' };
 
 /* ======================= THEMES ======================= */
 const THEMES = {
-  ember: ['Ember', '#FF7A3D', '#FFB067'], rose: ['Rosé', '#FF5C8A', '#FFA3BD'], violet: ['Violet', '#8B7BFF', '#C9B8FF'],
-  ocean: ['Ocean', '#3D9BFF', '#7FD4FF'], mint: ['Mint', '#2DD4A0', '#9AF2D4'], gold: ['Gold', '#F5B53D', '#FFE08A'],
-  mono: ['Mono', '#E8E8EC', '#A8A8B3'], crimson: ['Crimson', '#FF3B4E', '#FF8A7A'], sunset: ['Sunset', '#FF6B3D', '#FFC93D'],
-  magenta: ['Magenta', '#E040FB', '#F5A3FF'], sky: ['Sky', '#38BDF8', '#A5F3FC'], teal: ['Teal', '#14B8A6', '#5EEAD4'],
-  lime: ['Lime', '#84CC16', '#D9F99D'], copper: ['Copper', '#D97745', '#F2B07E'], ice: ['Ice', '#93C5FD', '#E0F2FE'],
+  ember: ['Ember', '#FF7A3D', '#FFB067'], gold: ['Gold', '#F5B53D', '#FFE08A'], lime: ['Lime', '#9BDB24', '#D9F99D'], forest: ['Wald', '#22C55E', '#86EFAC'],
+  mint: ['Mint', '#2DD4A0', '#9AF2D4'], teal: ['Teal', '#14B8A6', '#5EEAD4'], aqua: ['Aqua', '#22D3EE', '#A5F3FC'], sky: ['Himmel', '#38BDF8', '#BAE6FD'],
+  ocean: ['Ozean', '#3D7BFF', '#93B8FF'], indigo: ['Indigo', '#6366F1', '#A5B4FC'], violet: ['Violett', '#8B7BFF', '#C9B8FF'], grape: ['Traube', '#A855F7', '#D8B4FE'],
+  magenta: ['Magenta', '#E040FB', '#F5A3FF'], rose: ['Rosé', '#FF5C8A', '#FFA3BD'], crimson: ['Rot', '#FF3B4E', '#FF8A8A'], ice: ['Eis', '#93C5FD', '#E0F2FE'],
+  sand: ['Sand', '#D6BC8C', '#F1E3C6'], slate: ['Schiefer', '#94A3B8', '#CBD5E1'], mono: ['Weiß', '#E8E8EC', '#A8A8B3'], cherry: ['Kirsche', '#E11D74', '#F9A8D4'],
 };
+const MODES = [['dark', 'Dunkel', 'Standard'], ['oled', 'OLED', 'Echtes Schwarz'], ['light', 'Hell', 'Weißer Hintergrund']];
+function applyMode(m) { document.documentElement.dataset.mode = MODES.some(x => x[0] === m) ? m : 'dark'; }
 const hexRgb = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16)).join(',');
 function applyTheme(k) {
   const t = THEMES[k] || THEMES.ember, r = document.documentElement.style;
   r.setProperty('--a', t[1]); r.setProperty('--b', t[2]);
   r.setProperty('--a-rgb', hexRgb(t[1])); r.setProperty('--b-rgb', hexRgb(t[2]));
+  // dark text on light accents (gold, lime, ice, mono …), white on the strong ones
+  const [R, G, B] = t[1].match(/\w\w/g).map(h => parseInt(h, 16)); r.setProperty('--on', (R * 299 + G * 587 + B * 114) / 1000 > 150 ? '#141416' : '#FFFFFF');
+  if (typeof FX !== 'undefined') { FX.acc = hexRgb(t[1]); FX.spr = {}; }
 }
 
 /* ======================= BLOCK ICONS (original, generic) ======================= */
@@ -343,7 +348,7 @@ function onEvent(ev, d) {
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
   if (ev === 'cloud') cloudEvent(d);
-  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); fxSet(d.fx); }
+  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); applyMode(d.mode); fxSet(d.fx); }
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -2780,13 +2785,15 @@ async function setBody() {
   }
   if (S.stab === 'design') {
     b.innerHTML = card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['aurora', 'Polarlicht', 'Wehende Nordlichter in deiner Farbe'], ['rain', 'Regen', 'Ruhiger, schräger Regen'], ['fireflies', 'Glühwürmchen', 'Leuchtende Punkte, die umherschwirren'], ['sakura', 'Kirschblüten', 'Fallende Blütenblätter'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`)
-      + '<div class="mt"></div>' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
+      + '<div class="mt"></div>' + card('Darstellung', `<div class="modes" id="sMode">${MODES.map(([k, n, d]) => `<button class="${(st.mode || 'dark') === k ? 'on' : ''}" data-v="${k}"><span class="mprev ${k}"><i></i><i></i><i></i></span><b>${n}</b><small>${d}</small></button>`).join('')}</div>`)
+      + '<div class="mt"></div>' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div>`)
       + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
         <div class="srow"><div><b>Spielen über</b><p>Offizieller Launcher: Anmeldung dort, OrbitLauncher bereitet alles vor.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'OrbitLauncher'], ['official', 'Minecraft Launcher']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div>`);
     $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
+    $('#sMode').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; applyMode(x.dataset.v); setS('mode', x.dataset.v); $$('#sMode button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sFx').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('fx', x.dataset.v); fxSet(x.dataset.v); $$('#sFx button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sPlay').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('playMode', x.dataset.v); $$('#sPlay button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
@@ -3510,94 +3517,112 @@ window.installUpdate = installUpdate;
 $('#rz').addEventListener('mousedown', e => { const i = e.target.closest('[data-e]'); if (i && e.button === 0) { e.preventDefault(); api('win.resize', { edge: i.dataset.e }); } });
 
 /* ======================= BACKGROUND EFFECTS (snow / embers / stars), cheap canvas, paused while playing ======================= */
-const FX = { mode: 'snow', parts: [], raf: 0, last: 0, w: 0, h: 0, dpr: 1 };
+/* Background effects, tuned to cost almost nothing:
+   - glow particles are pre-rendered sprites (no gradients per frame)
+   - ~24 fps, device pixel ratio 1, fewer particles
+   - paused while the launcher is not focused, minimized or Minecraft runs */
+const FX = { mode: 'snow', parts: [], raf: 0, last: 0, w: 0, h: 0, dpr: 1, acc: '255,122,61', spr: {}, on: true };
+function fxSprite(key, size, draw) {
+  const k = key + size + FX.acc; if (FX.spr[k]) return FX.spr[k];
+  const c = document.createElement('canvas'); c.width = c.height = size; draw(c.getContext('2d'), size);
+  return FX.spr[k] = c;
+}
+const fxGlow = (rgb, a, size) => fxSprite('g' + rgb + a, size, (x, s) => { const g = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`); x.fillStyle = g; x.fillRect(0, 0, s, s); });
 function fxSet(mode) {
   FX.mode = mode || 'snow';
+  FX.acc = getComputedStyle(document.documentElement).getPropertyValue('--a-rgb').trim() || '255,122,61'; FX.spr = {};
   $('#fx').classList.toggle('hidden', FX.mode === 'off');
   fxInit(); fxLoop();
 }
 function fxInit() {
-  const c = $('#fx'); FX.dpr = Math.min(1.5, devicePixelRatio || 1);
-  FX.w = innerWidth; FX.h = innerHeight; c.width = FX.w * FX.dpr; c.height = FX.h * FX.dpr;
+  const c = $('#fx'); FX.dpr = 1;
+  FX.w = innerWidth; FX.h = innerHeight; c.width = FX.w; c.height = FX.h;
   const A = FX.w * FX.h;
-  const n = { snow: A / 9500, embers: A / 22000, stars: A / 5200, rain: A / 6000, fireflies: A / 26000, sakura: A / 26000, aurora: A / 9000 }[FX.mode] | 0;
-  FX.parts = Array.from({ length: n }, () => fxNew(true));
+  const n = { snow: A / 16000, embers: A / 30000, stars: A / 9000, rain: A / 11000, fireflies: A / 40000, sakura: A / 38000, aurora: A / 14000 }[FX.mode] | 0;
+  FX.parts = Array.from({ length: Math.min(n, 220) }, () => fxNew(true));
+  FX.au = null;
 }
 function fxNew(any) {
   const W = FX.w, H = FX.h, r = Math.random;
-  if (FX.mode === 'snow') { const z = r(); return { x: r() * W, y: any ? r() * H : -10, z, s: 0.8 + z * 2.6, vy: 0.25 + z * 0.9, sw: r() * Math.PI * 2, sp: 0.004 + r() * 0.012, a: 0.25 + z * 0.6 }; }
-  if (FX.mode === 'embers') { const z = r(); return { x: r() * W, y: any ? r() * H : H + 10, z, s: 0.8 + z * 2.2, vy: -(0.25 + z * 0.8), vx: (r() - 0.5) * 0.3, life: any ? r() * 400 : 0, max: 500 + r() * 700, sw: r() * 6 }; }
-  if (FX.mode === 'rain') { const z = r(); return { x: r() * (W + 200), y: any ? r() * H : -30 - r() * 200, z, l: 8 + z * 16, vy: 9 + z * 9, a: 0.12 + z * 0.3 }; }
-  if (FX.mode === 'fireflies') return { x: r() * W, y: r() * H, s: 1 + r() * 1.8, a: r() * 6.28, sp: 0.15 + r() * 0.35, t: r() * 6.28, tw: 0.02 + r() * 0.03 };
-  if (FX.mode === 'sakura') { const z = r(); return { x: r() * W * 1.2, y: any ? r() * H : -20, z, s: 3 + z * 5, vy: 0.35 + z * 0.8, vx: 0.25 + r() * 0.5, rot: r() * 6.28, vr: (r() - 0.5) * 0.06, sw: r() * 6.28 }; }
+  if (FX.mode === 'snow') { const z = r(); return { x: r() * W, y: any ? r() * H : -10, z, s: 0.8 + z * 2.4, vy: 0.22 + z * 0.75, sw: r() * Math.PI * 2, sp: 0.004 + r() * 0.012, a: 0.25 + z * 0.6 }; }
+  if (FX.mode === 'embers') { const z = r(); return { x: r() * W, y: any ? r() * H : H + 10, z, s: 0.8 + z * 2.2, vy: -(0.25 + z * 0.7), vx: (r() - 0.5) * 0.3, life: any ? r() * 400 : 0, max: 500 + r() * 700, sw: r() * 6 }; }
+  if (FX.mode === 'rain') { const z = r(); return { x: r() * (W + 200), y: any ? r() * H : -30 - r() * 200, z, l: 7 + z * 12, vy: 3.2 + z * 3.4, a: 0.1 + z * 0.25 }; }
+  if (FX.mode === 'fireflies') return { x: r() * W, y: r() * H, s: 1 + r() * 1.8, a: r() * 6.28, sp: 0.15 + r() * 0.3, t: r() * 6.28, tw: 0.02 + r() * 0.03 };
+  if (FX.mode === 'sakura') { const z = r(); return { x: r() * W * 1.2 - W * 0.2, y: any ? r() * H : -20, z, s: 3 + z * 5, vy: 0.3 + z * 0.7, vx: 0.2 + r() * 0.45, rot: r() * 6.28, vr: (r() - 0.5) * 0.05, sw: r() * 6.28 }; }
   return { x: r() * W, y: r() * H, s: 0.4 + r() * 1.3, t: r() * 6.28, sp: 0.01 + r() * 0.03 };
 }
-let fxT = 0;
-let fxShoot = null;
+let fxShoot = null, fxT = 0;
 function fxDraw(dt) {
-  const c = $('#fx'), x = c.getContext('2d'), d = FX.dpr;
-  x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, FX.w, FX.h);
-  const acc = getComputedStyle(document.documentElement).getPropertyValue('--a-rgb').trim() || '255,122,61';
+  const c = $('#fx'), x = c.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, FX.w, FX.h);
+  const acc = FX.acc;
   if (FX.mode === 'snow') {
+    const big = fxGlow('255,255,255', .9, 16);
     x.fillStyle = '#fff';
     for (const p of FX.parts) {
       p.sw += p.sp * dt; p.y += p.vy * dt; p.x += Math.sin(p.sw) * (0.25 + p.z * 0.4) * dt;
       if (p.y > FX.h + 10) Object.assign(p, fxNew(false));
-      if (p.z > 0.8) { const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 1.8); g.addColorStop(0, `rgba(255,255,255,${p.a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, p.s * 1.8, 0, 6.283); x.fill(); x.fillStyle = '#fff'; }
-      else { x.globalAlpha = p.a; x.beginPath(); x.arc(p.x, p.y, p.s, 0, 6.283); x.fill(); }
+      x.globalAlpha = p.a;
+      if (p.z > 0.8) { const s = p.s * 3.6; x.drawImage(big, p.x - s / 2, p.y - s / 2, s, s); }
+      else x.fillRect(p.x, p.y, p.s, p.s);
     }
   } else if (FX.mode === 'embers') {
+    const spr = fxGlow(acc, .9, 24);
     for (const p of FX.parts) {
       p.life += dt; p.sw += 0.02 * dt; p.y += p.vy * dt; p.x += (p.vx + Math.sin(p.sw) * 0.25) * dt;
       if (p.y < -10 || p.life > p.max) Object.assign(p, fxNew(false));
-      const k = Math.min(1, p.life / 60) * Math.max(0, 1 - p.life / p.max);
-      const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.s * 4);
-      g.addColorStop(0, `rgba(${acc},${0.9 * k})`); g.addColorStop(1, `rgba(${acc},0)`);
-      x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, p.s * 4, 0, 6.283); x.fill();
+      x.globalAlpha = Math.min(1, p.life / 60) * Math.max(0, 1 - p.life / p.max);
+      const s = p.s * 8; x.drawImage(spr, p.x - s / 2, p.y - s / 2, s, s);
     }
   } else if (FX.mode === 'rain') {
-    x.lineWidth = 1; x.strokeStyle = '#bcd4ff';
+    x.lineWidth = 1; x.strokeStyle = '#bcd4ff'; x.beginPath();
+    x.globalAlpha = 0.28;
     for (const p of FX.parts) {
-      p.y += p.vy * dt; p.x -= p.vy * 0.18 * dt;
+      p.y += p.vy * dt; p.x -= p.vy * 0.16 * dt;
       if (p.y > FX.h + 20) Object.assign(p, fxNew(false));
-      x.globalAlpha = p.a; x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(p.x + p.l * 0.18, p.y - p.l); x.stroke();
+      x.moveTo(p.x, p.y); x.lineTo(p.x + p.l * 0.16, p.y - p.l);
     }
+    x.stroke();
   } else if (FX.mode === 'fireflies') {
+    const spr = fxSprite('ff' + acc, 32, (g, s) => { const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); r.addColorStop(0, 'rgba(255,240,150,.95)'); r.addColorStop(.25, `rgba(${acc},.4)`); r.addColorStop(1, `rgba(${acc},0)`); g.fillStyle = r; g.fillRect(0, 0, s, s); });
     for (const p of FX.parts) {
       p.a += (Math.random() - 0.5) * 0.12 * dt; p.x += Math.cos(p.a) * p.sp * dt; p.y += Math.sin(p.a) * p.sp * dt; p.t += p.tw * dt;
       if (p.x < -20) p.x = FX.w + 20; if (p.x > FX.w + 20) p.x = -20; if (p.y < -20) p.y = FX.h + 20; if (p.y > FX.h + 20) p.y = -20;
-      const k = 0.25 + Math.max(0, Math.sin(p.t)) * 0.75, rr = p.s * 6;
-      const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr); g.addColorStop(0, `rgba(255,240,150,${0.85 * k})`); g.addColorStop(0.25, `rgba(${acc},${0.35 * k})`); g.addColorStop(1, `rgba(${acc},0)`);
-      x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, rr, 0, 6.283); x.fill();
+      x.globalAlpha = 0.25 + Math.max(0, Math.sin(p.t)) * 0.75;
+      const s = p.s * 12; x.drawImage(spr, p.x - s / 2, p.y - s / 2, s, s);
     }
   } else if (FX.mode === 'sakura') {
+    const pet = c2 => fxSprite('pt' + c2, 20, (g, s) => { g.fillStyle = c2; g.beginPath(); g.moveTo(s / 2, 1); g.bezierCurveTo(s - 1, 1, s - 1, s * .8, s / 2, s - 1); g.bezierCurveTo(1, s * .8, 1, 1, s / 2, 1); g.fill(); });
+    const A = pet('#ffc4d8'), B = pet('#ff9fbf');
     for (const p of FX.parts) {
-      p.sw += 0.02 * dt; p.y += p.vy * dt; p.x += (p.vx + Math.sin(p.sw) * 0.6) * dt; p.rot += p.vr * dt;
-      if (p.y > FX.h + 20 || p.x > FX.w + 40) Object.assign(p, fxNew(false), { x: Math.random() * FX.w * 1.1 - FX.w * 0.1 });
-      x.save(); x.translate(p.x, p.y); x.rotate(p.rot); x.scale(1, 0.55 + Math.abs(Math.sin(p.sw)) * 0.45);
-      x.globalAlpha = 0.55 + p.z * 0.35; x.fillStyle = p.z > 0.5 ? '#ffc4d8' : '#ff9fbf';
-      x.beginPath(); x.moveTo(0, -p.s); x.bezierCurveTo(p.s, -p.s, p.s, p.s * 0.6, 0, p.s); x.bezierCurveTo(-p.s, p.s * 0.6, -p.s, -p.s, 0, -p.s); x.fill(); x.restore();
+      p.sw += 0.02 * dt; p.y += p.vy * dt; p.x += (p.vx + Math.sin(p.sw) * 0.5) * dt; p.rot += p.vr * dt;
+      if (p.y > FX.h + 20 || p.x > FX.w + 40) Object.assign(p, fxNew(false));
+      x.globalAlpha = 0.55 + p.z * 0.35;
+      x.setTransform(Math.cos(p.rot), Math.sin(p.rot), -Math.sin(p.rot) * (0.55 + Math.abs(Math.sin(p.sw)) * 0.45), Math.cos(p.rot) * (0.55 + Math.abs(Math.sin(p.sw)) * 0.45), p.x, p.y);
+      const s = p.s * 2; x.drawImage(p.z > .5 ? A : B, -s / 2, -s / 2, s, s);
     }
+    x.setTransform(1, 0, 0, 1, 0, 0);
   } else if (FX.mode === 'aurora') {
-    fxT += 0.004 * dt;
+    fxT += 0.003 * dt;
     x.fillStyle = '#fff';
     for (const p of FX.parts) { p.t += p.sp * dt; x.globalAlpha = 0.15 + Math.abs(Math.sin(p.t)) * 0.45; x.fillRect(p.x, p.y, p.s, p.s); }
-    x.globalCompositeOperation = 'lighter';
-    const bands = [[acc, 0.16, 0], ['80,255,190', 0.12, 2.1], ['140,120,255', 0.1, 4.2]];
-    for (const [c, a, ph] of bands) {
-      const base = FX.h * 0.22;
-      for (let i = 0; i < FX.w; i += 6) {
-        const yy = base + Math.sin(i * 0.004 + fxT * 2 + ph) * 60 + Math.sin(i * 0.011 - fxT * 3 + ph) * 25;
-        const h = 140 + Math.sin(i * 0.007 + fxT * 4 + ph) * 70;
-        const g = x.createLinearGradient(0, yy - h, 0, yy + 30); g.addColorStop(0, `rgba(${c},0)`); g.addColorStop(0.75, `rgba(${c},${a})`); g.addColorStop(1, `rgba(${c},0)`);
-        x.globalAlpha = 1; x.fillStyle = g; x.fillRect(i, yy - h, 6, h + 30);
+    // the lights are drawn small and scaled up (soft by nature, a fraction of the work)
+    const q = 8, aw = Math.ceil(FX.w / q), ah = Math.ceil(FX.h / q);
+    if (!FX.au) { FX.au = document.createElement('canvas'); FX.au.width = aw; FX.au.height = ah; }
+    const a = FX.au.getContext('2d'); a.clearRect(0, 0, aw, ah); a.globalCompositeOperation = 'lighter';
+    for (const [col, al, ph] of [[acc, 0.18, 0], ['80,255,190', 0.13, 2.1], ['140,120,255', 0.11, 4.2]]) {
+      for (let i = 0; i < aw; i++) {
+        const X = i * q, yy = (FX.h * 0.22 + Math.sin(X * 0.004 + fxT * 2 + ph) * 60 + Math.sin(X * 0.011 - fxT * 3 + ph) * 25) / q;
+        const h = (140 + Math.sin(X * 0.007 + fxT * 4 + ph) * 70) / q;
+        const g = a.createLinearGradient(0, yy - h, 0, yy + 4); g.addColorStop(0, `rgba(${col},0)`); g.addColorStop(0.75, `rgba(${col},${al})`); g.addColorStop(1, `rgba(${col},0)`);
+        a.fillStyle = g; a.fillRect(i, yy - h, 1, h + 4);
       }
     }
-    x.globalCompositeOperation = 'source-over';
+    x.globalAlpha = 1; x.imageSmoothingEnabled = true; x.drawImage(FX.au, 0, 0, FX.w, FX.h);
   } else if (FX.mode === 'stars') {
     x.fillStyle = '#fff';
     for (const p of FX.parts) { p.t += p.sp * dt; x.globalAlpha = 0.25 + Math.abs(Math.sin(p.t)) * 0.6; x.fillRect(p.x, p.y, p.s, p.s); }
-    if (!fxShoot && Math.random() < 0.004 * dt) fxShoot = { x: Math.random() * FX.w * 0.7 + FX.w * 0.2, y: Math.random() * FX.h * 0.4, l: 0 };
+    if (!fxShoot && Math.random() < 0.003 * dt) fxShoot = { x: Math.random() * FX.w * 0.7 + FX.w * 0.2, y: Math.random() * FX.h * 0.4, l: 0 };
     if (fxShoot) {
       const s = fxShoot; s.l += 1.4 * dt; const len = 120, px = s.x - s.l * 9, py = s.y + s.l * 4;
       const g = x.createLinearGradient(px, py, px + len, py - len * 0.45); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
@@ -3608,18 +3633,23 @@ function fxDraw(dt) {
   x.globalAlpha = 1;
 }
 function fxLoop() {
-  cancelAnimationFrame(FX.raf);
+  cancelAnimationFrame(FX.raf); FX.raf = 0;
   const c = $('#fx');
   if (FX.mode === 'off') { c.getContext('2d').clearRect(0, 0, c.width, c.height); return; }
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { fxDraw(0); return; }   // still image
+  if (!FX.on) return;
   const step = t => {
     FX.raf = requestAnimationFrame(step);
-    if (document.hidden || S.running.size || t - FX.last < 33) return;   // ~30 fps, nothing while Minecraft runs
+    if (document.hidden || S.running.size || t - FX.last < 41) return;   // ~24 fps, nothing while Minecraft runs
     const dt = Math.min(3, (t - FX.last) / 16.7); FX.last = t;
     fxDraw(dt);
   };
   FX.raf = requestAnimationFrame(step);
 }
+// no animation at all while the launcher is in the background
+window.addEventListener('blur', () => { FX.on = false; cancelAnimationFrame(FX.raf); FX.raf = 0; });
+window.addEventListener('focus', () => { if (FX.on) return; FX.on = true; FX.last = performance.now(); fxLoop(); });
+
 let fxRT = 0; window.addEventListener('resize', () => { clearTimeout(fxRT); fxRT = setTimeout(() => { fxInit(); if (matchMedia('(prefers-reduced-motion: reduce)').matches) fxDraw(0); }, 200); });
 
 
@@ -3685,7 +3715,7 @@ async function boot() {
   S.needAppId = !!init.needAppId;
   S.user = init.user || '';
   cloudStatus();
-  applyTheme(S.settings.accent || 'ember');
+  applyTheme(S.settings.accent || 'ember'); applyMode(S.settings.mode);
   fxSet(S.settings.fx || 'snow');
   accountUI(); runUI();
   api('orbit.info').then(r => { S.orbitInfo = r; S.orbitSupported = r.supported; }).catch(() => { });

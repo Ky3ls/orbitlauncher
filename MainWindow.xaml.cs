@@ -30,7 +30,7 @@ public partial class MainWindow : Window
     private readonly DiscordRpc _rpc = new("1571553631818219580");
     private List<Transfer.Found> _found = new();
     private int _syncing; private CancellationTokenSource? _syncDue;
-    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx" };
+    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx", "Mode" };
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -989,9 +989,10 @@ public partial class MainWindow : Window
     /// <summary>Launcher accent theme → hex, so the in-game menu uses the same color.</summary>
     private static string AccentHex(string theme) => theme switch
     {
-        "rose" => "#FF5C8A", "violet" => "#8B7BFF", "ocean" => "#3D9BFF", "mint" => "#2DD4A0", "gold" => "#F5B53D", "mono" => "#E8E8EC",
-        "crimson" => "#FF3B4E", "sunset" => "#FF6B3D", "magenta" => "#E040FB", "sky" => "#38BDF8", "teal" => "#14B8A6", "lime" => "#84CC16",
-        "copper" => "#D97745", "ice" => "#93C5FD", _ => "#FF7A3D",
+        "gold" => "#F5B53D", "lime" => "#9BDB24", "forest" => "#22C55E", "mint" => "#2DD4A0", "teal" => "#14B8A6", "aqua" => "#22D3EE",
+        "sky" => "#38BDF8", "ocean" => "#3D7BFF", "indigo" => "#6366F1", "violet" => "#8B7BFF", "grape" => "#A855F7", "magenta" => "#E040FB",
+        "rose" => "#FF5C8A", "crimson" => "#FF3B4E", "ice" => "#93C5FD", "sand" => "#D6BC8C", "slate" => "#94A3B8", "mono" => "#E8E8EC",
+        "cherry" => "#E11D74", _ => "#FF7A3D",
     };
 
     // ---- Orbit cloud sync: debounced after changes, plus on start and on demand

@@ -40,6 +40,8 @@ public class Settings
     public bool WinMax { get; set; }
     /// <summary>Background effect: snow | embers | stars | off</summary>
     public string Fx { get; set; } = "snow";
+    /// <summary>dark | oled | light</summary>
+    public string Mode { get; set; } = "dark";
     /// <summary>Override for the Orbit cloud API (testing).</summary>
     public string? CloudApi { get; set; }
     /// <summary>Last Minecraft version played with Orbit Client.</summary>
