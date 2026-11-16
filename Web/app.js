@@ -2096,6 +2096,12 @@ function orbitFactor(ticket, name) {
 }
 async function orbitPasskey(name) {
   const err = $('#olErr');
+  if (HOST) {
+    if (!name) { if (err) err.textContent = 'Gib zuerst deinen Orbit-Namen ein.'; return; }
+    try { const r = await api('cloud.passkey.login.native', { name }); orbitDone(r.name, false); }
+    catch (e) { if (err) err.textContent = e.message; else fail('Passkey', e); }
+    return;
+  }
   if (!window.isSecureContext || !navigator.credentials?.get) { if (err) err.textContent = pkFail(); return; }
   try {
     const o = await api('cloud.passkey.begin', { name: name || null });
@@ -2106,6 +2112,14 @@ async function orbitPasskey(name) {
   } catch (e) { if (err) err.textContent = pkFail(e); else fail('Passkey', e); }
 }
 async function cloudPasskeyAdd() {
+  if (HOST) {
+    let st = { available: false, hello: false }; try { st = await api('cloud.passkey.native'); } catch { }
+    if (!st.available) return fail('Passkey', { message: 'Diese Windows-Version unterstützt keine Passkeys.' });
+    if (!st.hello && !await confirmBox('Windows Hello fehlt', 'Auf diesem PC ist keine Windows-Hello-PIN oder Gesichtserkennung eingerichtet. Du kannst stattdessen einen Sicherheitsschlüssel (USB) oder dein Handy nehmen.', 'Fortfahren')) return;
+    try { await api('cloud.passkey.add.native', {}); toast('Passkey gespeichert', 'Beim nächsten Mal reicht Windows Hello.'); if (S.page === 'settings') setBody(); }
+    catch (e) { if (!/abgebrochen/.test(e.message)) fail('Passkey', e); else toast('Passkey nicht gespeichert', e.message, false); }
+    return;
+  }
   if (!window.isSecureContext || !navigator.credentials?.create) return fail('Passkey', { message: pkFail() });
   let hello = false;
   try { hello = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { }

@@ -686,6 +686,27 @@ public partial class MainWindow : Window
             }
             case "cloud.passkey.add.begin": return await Cloud.PasskeyAddBegin();
             case "cloud.passkey.add.finish": return await Cloud.PasskeyAddFinish(Str(a, "clientDataJSON"), Str(a, "attestationObject"), StrN(a, "name"));
+            // passkeys through native Windows Hello (the embedded browser can't start it reliably)
+            case "cloud.passkey.native": return new { available = WinHello.Supported, hello = WinHello.HelloReady };
+            case "cloud.passkey.add.native":
+            {
+                var o = await Cloud.PasskeyAddBegin();
+                var hwnd = new WindowInteropHelper(this).Handle;
+                var exclude = (o["excludeCredentials"]?.AsArray() ?? new JsonArray()).Select(c => WinHello.FromB64u((string)c!["id"]!)).ToList();
+                var made = await Task.Run(() => WinHello.Create(hwnd, (string)o["challenge"]!, WinHello.FromB64u((string)o["user"]!["id"]!), (string?)o["user"]!["name"] ?? "Orbit", exclude));
+                return await Cloud.PasskeyAddFinish(made.ClientDataJSON, made.AttestationObject, StrN(a, "name") ?? Environment.MachineName);
+            }
+            case "cloud.passkey.login.native":
+            {
+                var o = await Cloud.PasskeyBegin(StrN(a, "name"));
+                var hwnd = new WindowInteropHelper(this).Handle;
+                var allow = (o["allowCredentials"]?.AsArray() ?? new JsonArray()).Select(c => WinHello.FromB64u((string)c!["id"]!)).ToList();
+                if (allow.Count == 0) throw new InvalidOperationException("Für diesen Namen gibt es keinen Passkey. Melde dich mit Passwort an und leg in den Einstellungen einen an.");
+                var sig = await Task.Run(() => WinHello.Get(hwnd, (string)o["challenge"]!, allow));
+                var name = await Cloud.PasskeyFinish(sig.Id, sig.ClientDataJSON, sig.AuthenticatorData, sig.Signature);
+                _ = RunSync(true);
+                return new { name };
+            }
             case "cloud.passkey.remove": await Cloud.PasskeyRemove(Str(a, "id")); return new { };
             case "cloud.logout": await Cloud.Logout(); return new { };
             case "cloud.sync": return await RunSync(true);
