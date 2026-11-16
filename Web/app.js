@@ -420,11 +420,12 @@ PAGES.home = async (el, a, soft) => {
   crumbs([['Start']]);
   const acc = activeAcc(), last = S.instances[0];
   const total = S.instances.reduce((s, i) => s + (i.playSeconds || 0), 0), mods = S.instances.reduce((s, i) => s + (i.mods || 0), 0);
+  const who = acc?.name || (S.cloud?.loggedIn ? S.cloud.name : '') || S.user || '';
   const greet = (() => { const h = new Date().getHours(); return h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend'; })();
   const hcard = last ? `<div class="hcard glass">${instIcon(last)}<div class="tx"><small>Weiterspielen</small><b class="ell">${esc(last.name)}</b><small>${esc(instSub(last))} · ${esc(ago(last.lastPlayed))}</small></div>
       <button class="btn lg ${S.running.has(last.id) ? 'stop' : 'play glow'}" onclick="play('${jsq(last.id)}')">${ico(S.running.has(last.id) ? 'stop' : 'play')}${S.running.has(last.id) ? 'Beenden' : 'Spielen'}</button></div>`
     : `<div class="hcard glass"><span class="iic">${blockSvg('grass')}</span><div class="tx"><small>Los geht's</small><b>Erste Instanz</b><small>Version wählen, fertig</small></div><button class="btn lg play glow" onclick="newInstance()">${ico('plus')}Erstellen</button></div>`;
-  const top = `<div class="hwel"><div><div class="kicker">${acc ? 'Angemeldet als ' + esc(acc.name) : 'OrbitLauncher'}</div><h1>${greet}${acc ? ', <span class="grad">' + esc(acc.name) + '</span>' : ''}</h1></div>
+  const top = `<div class="hwel"><div><div class="kicker">${acc ? 'Angemeldet als ' + esc(acc.name) : 'OrbitLauncher'}</div><h1>${greet}${who ? ', <span class="grad">' + esc(who) + '</span>' : ''}</h1></div>
     <div class="hstats">${[[S.instances.length, 'Instanzen', 'library'], [Math.round(total / 3600), 'Stunden gespielt', 'clock'], [mods, 'Mods installiert', 'puzzle']].map(([n, l, ic]) => `<div class="hs">${ico(ic)}<b data-count="${n}">0</b><span>${l}</span></div>`).join('')}${acc ? '' : `<button class="btn p" onclick="login()">${ico('user')}Anmelden</button>`}</div></div>`;
   if (soft && el.querySelector('.hgrid')) { el.querySelector('.hwel').outerHTML = top; el.querySelector('.hcard').outerHTML = hcard; countUp(el); homeRecent(); return; }
   el.innerHTML = `${top}
@@ -469,7 +470,7 @@ let spotT = 0;
 function spotlight(list) {
   const sl = $('#spSlides'); if (!sl || !list.length) return;
   S.spot = { list, i: 0 };
-  sl.innerHTML = list.map((h, i) => `<div class="sp-slide ${i === 0 ? 'on' : ''}"><div class="sp-bg" style="background-image:url('${esc((h.featured_gallery || h.gallery[0]).replace(/_350\.webp$/, '.webp'))}')"></div></div>`).join('');
+  sl.innerHTML = list.map((h, i) => `<div class="sp-slide ${i === 0 ? 'on' : ''}"><div class="sp-bg" data-pid="${esc(h.project_id)}" style="background-image:url('${esc(h.featured_gallery || h.gallery[0])}')"></div></div>`).join('');
   $('#spDots').innerHTML = list.map((_, i) => `<button class="${i === 0 ? 'on' : ''}" data-i="${i}"><i></i></button>`).join('');
   $('#spDots').onclick = e => { const b = e.target.closest('[data-i]'); if (b) spotGo(+b.dataset.i); };
   $('#spot').onmouseenter = () => clearInterval(spotT);
@@ -477,8 +478,16 @@ function spotlight(list) {
   spotGo(0); spotRun();
 }
 function spotRun() { clearInterval(spotT); spotT = setInterval(() => { if (S.page !== 'home' || !$('#spot')) return clearInterval(spotT); spotGo((S.spot.i + 1) % S.spot.list.length); }, 7000); }
+function spotSharp(el) {
+  if (!el || el.dataset.sharp) return; el.dataset.sharp = '1';
+  mr('/project/' + el.dataset.pid).then(p => {
+    const g = (p.gallery || []).find(x => x.featured) || (p.gallery || [])[0]; const url = g?.raw_url || g?.url;
+    if (!url) return; const im = new Image(); im.onload = () => { el.style.backgroundImage = `url('${url}')`; }; im.src = url;
+  }).catch(() => { });
+}
 function spotGo(i) {
   const h = S.spot.list[i]; S.spot.i = i;
+  spotSharp($$('#spSlides .sp-bg')[i]);
   $$('#spSlides .sp-slide').forEach((s, k) => s.classList.toggle('on', k === i));
   $$('#spDots button').forEach((s, k) => s.classList.toggle('on', k === i));
   $('#spTxt').innerHTML = `<div class="sp-in"><div class="kicker">Modpack-Spotlight</div><div class="row" style="gap:14px;margin-top:8px">${picHtml(h.icon_url, 'pic sp-ic')}<div><h2>${esc(h.title)}</h2><span class="sp-by">von ${esc(h.author)}</span></div></div><p>${esc(h.description)}</p>
@@ -2531,6 +2540,7 @@ async function boot() {
   S.settings = init.settings || {}; S.instances = init.instances || []; S.accounts = init.accounts || []; S.active = init.active; S.version = init.version || S.version; S.root = init.root || '';
   (init.running || []).forEach(id => S.running.add(id));
   S.needAppId = !!init.needAppId;
+  S.user = init.user || '';
   cloudStatus();
   applyTheme(S.settings.accent || 'ember');
   fxSet(S.settings.fx || 'snow');
@@ -2604,7 +2614,7 @@ const Mock = {
         if (/gate|noid/.test(location.search)) M.accounts = [];
         if (!M.fo) { M.fo = 1; try { const p = await (await fetch('https://api.modrinth.com/v2/project/fabulously-optimized')).json(); const g = (p.gallery || []).find(x => x.featured) || p.gallery?.[0]; M.instances[1].iconUrl = p.icon_url; M.instances[1].bannerUrl = g?.url || g?.raw_url; M.instances[1].modpackProject = p.id; } catch { } }
         if (/running/.test(location.search)) setTimeout(() => onEvent('state', { id: 'orbit-client-26-3', running: true }), 400);
-        return { needAppId: /noid/.test(location.search), version: '0.3.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
+        return { user: 'Ky3ls', needAppId: /noid/.test(location.search), version: '0.3.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
       }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};

@@ -276,7 +276,7 @@ public partial class MainWindow : Window
                 return new
                 {
                     needAppId = string.IsNullOrWhiteSpace(ClientIdFor(S)), cfReady = CurseForge.Ready,
-                    version = Net.AppVersion, root = Paths.Root, settings = S,
+                    version = Net.AppVersion, root = Paths.Root, settings = S, user = Environment.UserName,
                     instances = Instances.All().Select(Dto).ToList(),
                     accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }),
                     active = _auth.Active?.Uuid, running = _runner.RunningIds.ToList(),
