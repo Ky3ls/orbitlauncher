@@ -473,11 +473,26 @@ function spotlight(list) {
   sl.innerHTML = list.map((h, i) => `<div class="sp-slide ${i === 0 ? 'on' : ''}"><div class="sp-bg" data-pid="${esc(h.project_id)}" style="background-image:url('${esc(h.featured_gallery || h.gallery[0])}')"></div></div>`).join('');
   $('#spDots').innerHTML = list.map((_, i) => `<button class="${i === 0 ? 'on' : ''}" data-i="${i}"><i></i></button>`).join('');
   $('#spDots').onclick = e => { const b = e.target.closest('[data-i]'); if (b) spotGo(+b.dataset.i); };
-  $('#spot').onmouseenter = () => clearInterval(spotT);
-  $('#spot').onmouseleave = () => spotRun();
+  $('#spot').onmouseenter = () => { S.spot.paused = true; };
+  $('#spot').onmouseleave = () => { S.spot.paused = false; };
   spotGo(0); spotRun();
 }
-function spotRun() { clearInterval(spotT); spotT = setInterval(() => { if (S.page !== 'home' || !$('#spot')) return clearInterval(spotT); spotGo((S.spot.i + 1) % S.spot.list.length); }, 7000); }
+/* one clock drives both the progress bar and the slide change, so they never drift apart */
+const SPOT_MS = 7000;
+function spotRun() {
+  cancelAnimationFrame(spotT);
+  let last = performance.now();
+  const tick = t => {
+    if (S.page !== 'home' || !$('#spot') || !S.spot) return;
+    const dt = Math.min(1000, t - last); last = t;
+    if (!S.spot.paused && !document.hidden) S.spot.el += dt;
+    const bar = $$('#spDots button')[S.spot.i]?.querySelector('i');
+    if (bar) bar.style.width = Math.min(100, S.spot.el / SPOT_MS * 100) + '%';
+    if (S.spot.el >= SPOT_MS) spotGo((S.spot.i + 1) % S.spot.list.length);
+    spotT = requestAnimationFrame(tick);
+  };
+  spotT = requestAnimationFrame(tick);
+}
 function spotSharp(el) {
   if (!el || el.dataset.sharp) return; el.dataset.sharp = '1';
   mr('/project/' + el.dataset.pid).then(p => {
@@ -488,6 +503,8 @@ function spotSharp(el) {
 function spotGo(i) {
   const h = S.spot.list[i]; S.spot.i = i;
   spotSharp($$('#spSlides .sp-bg')[i]);
+  S.spot.el = 0;
+  $$('#spDots button i').forEach(b => b.style.width = '0%');
   $$('#spSlides .sp-slide').forEach((s, k) => s.classList.toggle('on', k === i));
   $$('#spDots button').forEach((s, k) => s.classList.toggle('on', k === i));
   $('#spTxt').innerHTML = `<div class="sp-in"><div class="kicker">Modpack-Spotlight</div><div class="row" style="gap:14px;margin-top:8px">${picHtml(h.icon_url, 'pic sp-ic')}<div><h2>${esc(h.title)}</h2><span class="sp-by">von ${esc(h.author)}</span></div></div><p>${esc(h.description)}</p>

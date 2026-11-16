@@ -1117,9 +1117,10 @@ h1{font-size:32px}
 .sp-dots{display:flex;gap:6px}
 .sp-dots button{width:26px;height:6px;border-radius:6px;background:rgba(255,255,255,.18);overflow:hidden;transition:width .4s var(--spring)}
 .sp-dots button.on{width:52px}
-.sp-dots button.on i{display:block;height:100%;background:var(--grad);animation:spbar 7s linear forwards}
+.sp-dots button i{display:block;height:100%;width:0;background:var(--grad);border-radius:6px}
+.sp-dots button:not(.on) i{width:0 !important}
 @keyframes spbar{from{width:0}to{width:100%}}
-.spot:hover .sp-dots button.on i{animation-play-state:paused}
+
 .spot .hcard{position:absolute;right:22px;bottom:22px;display:flex;align-items:center;gap:14px;padding:14px 14px 14px 14px;border-radius:20px;min-width:340px;max-width:420px}
 .spot .hcard .iic{width:54px;height:54px;border-radius:15px}
 .spot .hcard .tx{flex:1;min-width:0}
