@@ -814,7 +814,7 @@ public partial class MainWindow : Window
             {
                 // Microsoft sign-in window inside the app → auth code (PKCE) → Xbox → Minecraft
                 _auth.ClientId = ClientIdFor(S);
-                var req = _auth.StartLogin(_auth.Accounts.Count > 0);
+                var req = _auth.StartLogin(true);   // shows the account picker when Microsoft remembers you
                 var env = Web.CoreWebView2.Environment;
                 var win = new LoginWindow(this, env, req.Url);
                 var ok = win.ShowDialog() == true;
