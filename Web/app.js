@@ -1240,7 +1240,15 @@ PAGES.discover = async (el, a) => {
         <select class="sel" id="dSort">${SORTS.map(([k, n]) => `<option value="${k}" ${k === D.sort ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <div class="seg vsw" id="dView"><button data-v="list" class="${D.view === 'list' ? 'on' : ''}" title="Liste">${ico('list')}</button><button data-v="grid" class="${D.view === 'grid' ? 'on' : ''}" title="Kacheln">${ico('grid')}</button></div></div>
       <div class="rinfo" id="dInfo"></div><div class="rlist ${D.view}" id="dList"></div><div class="pager" id="dPager"></div></div></div>`;
-  $('#dTypes').onclick = e => { const b = e.target.closest('[data-k]'); if (b) go('discover', { type: b.dataset.k, target: D.target || undefined }); };
+  // switching the type only reloads filters and results, the page stays
+  $('#dTypes').onclick = e => {
+    const b = e.target.closest('[data-k]'); if (!b || b.dataset.k === D.type) return;
+    D.type = b.dataset.k; D.cats.clear(); D.loaders.clear(); D.page = 0;
+    $$('#dTypes button').forEach(x => x.classList.toggle('on', x === b));
+    $('#dQ').placeholder = PTYPES.find(t => t[0] === D.type)[1] + ' durchsuchen…';
+    const h = S.hist[S.hi]; if (h && h.p === 'discover') h.a = { ...h.a, type: D.type }; S.args = { ...S.args, type: D.type };
+    discFilters(); discSearch();
+  };
   $('#dView').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; D.view = b.dataset.v; discSave(); $$('#dView button').forEach(x => x.classList.toggle('on', x === b)); $('#dList').className = 'rlist ' + D.view; };
   let t = 0;
   $('#dQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { D.q = e.target.value; D.page = 0; discSearch(); }, 300); };
