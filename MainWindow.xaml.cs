@@ -231,6 +231,7 @@ public partial class MainWindow : Window
         finally { Emit("progress", new { task, done = true }); }
     }
 
+    private bool _argsUsed;
     private object Dto(Instance i)
     {
         int mods = 0;
@@ -239,6 +240,7 @@ public partial class MainWindow : Window
         {
             i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.BannerUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
             i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, i.ManualDownloads, mods, running = _runner.IsRunning(i.Id),
+            i.Fullscreen, i.AutoJoin, i.EnvVars, i.PreLaunch, i.Wrapper, i.PostExit, i.OnLaunch, i.Notes,
             content = i.Content.Select(c => new { c.ProjectId, c.Type, c.Source }),
         };
     }
@@ -360,6 +362,15 @@ public partial class MainWindow : Window
                     if (pt.ContainsKey("width")) inst.Width = Int(pt, "width");
                     if (pt.ContainsKey("height")) inst.Height = Int(pt, "height");
                     if (pt.ContainsKey("group")) inst.Group = StrN(pt, "group");
+                    if (pt.ContainsKey("fullscreen")) inst.Fullscreen = Bool(pt, "fullscreen");
+                    if (pt.ContainsKey("autoJoin")) inst.AutoJoin = StrN(pt, "autoJoin");
+                    if (pt.ContainsKey("envVars")) inst.EnvVars = StrN(pt, "envVars");
+                    if (pt.ContainsKey("preLaunch")) inst.PreLaunch = StrN(pt, "preLaunch");
+                    if (pt.ContainsKey("wrapper")) inst.Wrapper = StrN(pt, "wrapper");
+                    if (pt.ContainsKey("postExit")) inst.PostExit = StrN(pt, "postExit");
+                    if (pt.ContainsKey("onLaunch")) inst.OnLaunch = StrN(pt, "onLaunch");
+                    if (pt.ContainsKey("notes")) inst.Notes = StrN(pt, "notes");
+                    if (pt.ContainsKey("modpackProject")) inst.ModpackProject = StrN(pt, "modpackProject");
                     var mc = StrN(pt, "mc"); var ld = StrN(pt, "loader"); var lv = pt.ContainsKey("loaderVersion") ? StrN(pt, "loaderVersion") : inst.LoaderVersion;
                     if ((mc != null && mc != inst.McVersion) || (ld != null && ld != inst.Loader) || lv != inst.LoaderVersion)
                     {
@@ -370,6 +381,41 @@ public partial class MainWindow : Window
                 }
                 Instances.Save(inst);
                 return Dto(inst);
+            }
+            case "instance.stats":
+            {
+                var inst = Inst(a);
+                return await Task.Run(() =>
+                {
+                    int Count(string sub, params string[] pat) { var d = Path.Combine(inst.Dir, sub); if (!Directory.Exists(d)) return 0; return pat.Sum(x => Directory.EnumerateFiles(d, x).Count()); }
+                    int Dirs(string sub) { var d = Path.Combine(inst.Dir, sub); return Directory.Exists(d) ? Directory.EnumerateDirectories(d).Count() : 0; }
+                    return new
+                    {
+                        size = DirSize(inst.Dir), mods = Count("mods", "*.jar", "*.jar.disabled"), resourcepacks = Count("resourcepacks", "*.zip") + Dirs("resourcepacks"),
+                        shaders = Count("shaderpacks", "*.zip") + Dirs("shaderpacks"), worlds = Dirs("saves"), screenshots = Count("screenshots", "*.png"),
+                        updates = inst.Content.Count, path = inst.Dir,
+                    };
+                });
+            }
+            case "instance.shortcut":
+            {
+                var inst = Inst(a);
+                var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Programmpfad unbekannt");
+                var desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                var safe = string.Concat(inst.Name.Split(Path.GetInvalidFileNameChars()));
+                var lnk = Path.Combine(desk, safe + ".lnk");
+                var shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("Verknüpfungen werden nicht unterstützt");
+                dynamic shell = Activator.CreateInstance(shellType)!;
+                dynamic sc = shell.CreateShortcut(lnk);
+                sc.TargetPath = exe; sc.Arguments = "--launch \"" + inst.Id + "\""; sc.WorkingDirectory = Path.GetDirectoryName(exe); sc.IconLocation = exe + ",0";
+                sc.Description = "Minecraft: " + inst.Name; sc.Save();
+                return new { path = lnk };
+            }
+            case "app.args":
+            {
+                var cl = Environment.GetCommandLineArgs(); var ix = Array.IndexOf(cl, "--launch");
+                var id = ix >= 0 && ix + 1 < cl.Length && !_argsUsed ? cl[ix + 1] : null; _argsUsed = true;
+                return new { launch = id };
             }
             case "instance.delete":
             {
@@ -521,10 +567,11 @@ public partial class MainWindow : Window
                     await _runner.Launch(inst, session, S, p, default, StrN(a, "server"), StrN(a, "world"));
                     return 0;
                 });
-                if (S.OnLaunch is "minimize" or "close")
+                var onl = inst.OnLaunch ?? S.OnLaunch;
+                if (onl is "minimize" or "close")
                 {
                     _hiddenForGame = true;
-                    if (S.OnLaunch == "close") Hide(); else WindowState = WindowState.Minimized;
+                    if (onl == "close") Hide(); else WindowState = WindowState.Minimized;
                 }
                 return new { };
             }

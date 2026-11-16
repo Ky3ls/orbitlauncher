@@ -275,9 +275,11 @@ public static class LaunchBuilder
     public static string Pretty(string java, IEnumerable<string> args, Session s) =>
         java + " " + string.Join(' ', args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a)).Replace(s.AccessToken, "••••••");
 
-    public static Process Start(string java, List<string> args, string gameDir)
+    public static Process Start(string java, List<string> args, string gameDir, string? wrapper = null, IDictionary<string, string>? env = null)
     {
         Directory.CreateDirectory(gameDir);
+        var wrap = string.IsNullOrWhiteSpace(wrapper) ? new List<string>() : SplitArgs(wrapper!);
+        if (wrap.Count > 0) { args = wrap.Skip(1).Append(java).Concat(args).ToList(); java = wrap[0]; }
         var psi = new ProcessStartInfo(java)
         {
             WorkingDirectory = gameDir,
@@ -289,6 +291,7 @@ public static class LaunchBuilder
             StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         return Process.Start(psi) ?? throw new InvalidOperationException("Java konnte nicht gestartet werden.");
     }
 }

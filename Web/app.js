@@ -560,13 +560,32 @@ PAGES.library = el => {
     <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ['orbit', 'Orbit Client']].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="srch">${ico('search')}<input class="in" id="libQ" placeholder="Instanzen durchsuchen…" value="${esc(L.q)}"></div><span class="sp"></span>
       <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select></div>
-    <div id="libGrid"></div>`;
+    ${libStats()}<div id="libGrid"></div>`;
+  countUp(el);
   const save = () => { try { localStorage.setItem('orbit.lib', JSON.stringify(L)); } catch { } renderLibGrid(); };
   $('#libTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; L.tab = b.dataset.k; $$('#libTabs button').forEach(x => x.classList.toggle('on', x === b)); save(); };
   $('#libQ').oninput = e => { L.q = e.target.value; renderLibGrid(); };
   $('#libSort').onchange = e => { L.sort = e.target.value; save(); };
   renderLibGrid();
 };
+function libStats() {
+  const I = S.instances; if (!I.length) return '';
+  const secs = I.reduce((t, i) => t + (i.playSeconds || 0), 0), mods = I.reduce((t, i) => t + (i.mods || 0), 0);
+  const fav = [...I].sort((a, b) => (b.playSeconds || 0) - (a.playSeconds || 0))[0];
+  const last = [...I].filter(i => i.lastPlayed).sort((a, b) => new Date(b.lastPlayed) - new Date(a.lastPlayed))[0];
+  const packs = I.filter(i => i.kind === 'modpack').length, modded = I.filter(i => i.loader !== 'vanilla').length;
+  const ld = {}; I.forEach(i => ld[i.loader] = (ld[i.loader] || 0) + 1);
+  const mix = Object.entries(ld).sort((a, b) => b[1] - a[1]);
+  const card = (ic, n, l, sub, click) => `<div class="lst ${click ? 'ck' : ''} ${typeof n === 'number' ? '' : 'txt'}" ${click ? `onclick="${click}"` : ''}>${ico(ic)}<div><b ${typeof n === 'number' ? `data-count="${n}"` : ''}>${typeof n === 'number' ? 0 : esc(n)}</b><span>${l}</span><small class="ell">${sub}</small></div></div>`;
+  return `<div class="lstats">
+    ${card('library', I.length, 'Instanzen', `${packs} Modpack${packs === 1 ? '' : 's'} · ${modded} mit Mods`)}
+    ${card('clock', Math.round(secs / 3600), 'Stunden gespielt', fav?.playSeconds ? 'Am meisten: ' + esc(fav.name) : 'Noch nichts gespielt', fav?.playSeconds ? `go('inst',{id:'${jsq(fav.id)}'})` : '')}
+    ${card('puzzle', mods, 'Mods installiert', `Ø ${modded ? Math.round(mods / modded) : 0} pro Modded-Instanz`)}
+    ${last ? card('play', last.name, 'Zuletzt gespielt', esc(ago(last.lastPlayed)) + ' · ' + esc(instSub(last)), `go('inst',{id:'${jsq(last.id)}'})`) : card('play', '—', 'Zuletzt gespielt', 'Starte eine Instanz')}
+    <div class="lmix"><div class="lmb">${mix.map(([k, n]) => `<i style="flex:${n};background:${LCOL[k] || '#888'}" title="${esc(LOADERS[k]?.[0] || k)}: ${n}"></i>`).join('')}</div>
+      <div class="lml">${mix.map(([k, n]) => `<span><i style="background:${LCOL[k] || '#888'}"></i>${esc(LOADERS[k]?.[0] || k)}<b>${n}</b></span>`).join('')}</div></div>
+  </div>`;
+}
 const vkey = v => (v || '').split(/[.\-]/).map(x => /^\d+$/.test(x) ? x.padStart(4, '0') : x).join('.');
 function renderLibGrid() {
   const el = $('#libGrid'); if (!el) return;
@@ -583,7 +602,8 @@ function renderLibGrid() {
   const keyOf = { group: i => i.group || (i.kind === 'orbit' ? 'Orbit Client' : i.kind === 'modpack' ? 'Modpacks' : 'Ohne Gruppe'), loader: i => LOADERS[i.loader]?.[0] || i.loader, version: i => 'Minecraft ' + i.mcVersion.split('.').slice(0, 2).join('.'), none: () => '' }[L.group];
   const groups = new Map();
   list.forEach(i => { const k = keyOf(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
-  el.innerHTML = [...groups].map(([k, l]) => `<div class="ggrp">${k ? `<h3>${esc(k)}<i>${l.length}</i></h3>` : ''}<div class="igrid">${l.map(i => instCard(i)).join('')}</div></div>`).join('');
+  const ghost = !q ? `<button class="icard ghost" onclick="newInstance()"><span class="gi">${ico('plus')}</span><b>Neue Instanz</b><small>Version wählen oder Modpack installieren</small></button>` : '';
+  el.innerHTML = [...groups].map(([k, l], gi) => `<div class="ggrp">${k ? `<h3>${esc(k)}<i>${l.length}</i></h3>` : ''}<div class="igrid">${l.map(i => instCard(i)).join('')}${gi === groups.size - 1 ? ghost : ''}</div></div>`).join('');
 }
 async function importPack() {
   try { const inst = await api('pack.import'); if (!inst) return; toast('Modpack importiert', inst.name); await refreshInstances(); go('inst', { id: inst.id }); }
@@ -1138,30 +1158,60 @@ async function niCreate() {
 }
 
 /* ======================= INSTANCE SETTINGS ======================= */
+const ISTABS = [['general', 'Allgemein', 'info'], ['install', 'Installation', 'cube'], ['java', 'Java & Speicher', 'coffee'], ['window', 'Fenster & Start', 'monitor'], ['hooks', 'Befehle', 'terminal']];
 async function instSettings(id, tab = 'general') {
   const i = instById(id); if (!i) return;
   const E = S.iset = { id, tab, games: {} };
-  modal(msShell(i.name, instIcon(i), [['general', 'Allgemein', 'info'], ['install', 'Installation', 'cube'], ['java', 'Java & Speicher', 'coffee'], ['window', 'Fenster', 'monitor']], tab), 'ms');
+  modal(msShell(i.name, instIcon(i), ISTABS, tab), 'ms');
+  $('.mside').insertAdjacentHTML('beforeend', `<div class="ms-foot"><button class="lnk" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}Ordner öffnen</button></div>`);
   $('.mside').onclick = e => { const b = e.target.closest('[data-mt]'); if (!b) return; E.tab = b.dataset.mt; $$('.mside [data-mt]').forEach(x => x.classList.toggle('on', x === b)); isRender(); };
   S.modalClose = () => refreshInstances();
   isRender();
 }
 window.instSettings = instSettings;
 const isPatch = async patch => { try { await api('instance.update', { id: S.iset.id, patch }); Object.assign(instById(S.iset.id), patch); } catch (e) { fail('Speichern fehlgeschlagen', e); } };
+const isDeb = (() => { let t = 0; return f => { clearTimeout(t); t = setTimeout(f, 400); }; })();
+const isTg = (id, on) => `<div class="tg sm ${on ? 'on' : ''}" id="${id}"></div>`;
+const isOpt = (k, title, desc, ctl) => `<div class="srow"><div><b>${title}</b><p>${desc}</p></div>${ctl}</div>`;
 async function isRender() {
   const E = S.iset, i = instById(E.id), m = $('#mMain'); if (!i || !m) return;
+  m.onclick = null;
   if (E.tab === 'general') {
     const groups = [...new Set(S.instances.map(x => x.group).filter(Boolean))];
-    m.innerHTML = `<h2>Allgemein</h2><label class="fl">Name</label><input class="in" id="isName" value="${esc(i.name)}">
+    m.innerHTML = `<h2>Allgemein</h2>
+      <div class="isov">${instIcon(i)}<div class="tx"><b class="ell">${esc(i.name)}</b><small>${esc(instSub(i))} · ${i.kind === 'custom' ? 'Eigene Instanz' : KIND[i.kind]} · erstellt ${esc(ago(i.created).replace(/^V/, 'v'))}</small></div></div>
+      <div class="isst" id="isSt">${[['hdd', 'Größe'], ['puzzle', 'Mods'], ['image', 'Ressourcen'], ['sun', 'Shader'], ['earth', 'Welten'], ['clock', 'Spielzeit']].map(([ic, l]) => `<div>${ico(ic)}<b>…</b><small>${l}</small></div>`).join('')}</div>
+      <div class="vrow2"><div><label class="fl">Name</label><input class="in" id="isName" value="${esc(i.name)}"></div>
+      <div><label class="fl">Gruppe</label><input class="in" id="isGroup" list="isGroups" placeholder="z. B. PvP, Survival" value="${esc(i.group || '')}"><datalist id="isGroups">${groups.map(g => `<option>${esc(g)}</option>`).join('')}</datalist></div></div>
       ${i.iconUrl ? '' : `<label class="fl">Symbol</label><div class="icons" id="isIcons">${ICONS.concat(i.kind === 'orbit' ? ['orbit'] : []).map(k => `<button class="${k === i.icon ? 'on' : ''}" data-ic="${k}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div>`}
-      <label class="fl">Gruppe</label><input class="in" id="isGroup" list="isGroups" placeholder="z. B. PvP, Survival, Modpacks" value="${esc(i.group || '')}"><datalist id="isGroups">${groups.map(g => `<option>${esc(g)}</option>`).join('')}</datalist>
+      <label class="fl">Notizen</label><textarea class="in ta" id="isNotes" rows="3" placeholder="Server-IPs, Seeds, To-dos …">${esc(i.notes || '')}</textarea>
       <div class="sec"><h2>Aktionen</h2></div>
-      <div class="srow"><div><b>Duplizieren</b><p>Kopie mit allen Mods, Welten und Einstellungen.</p></div><button class="btn sm" onclick="closeModal();duplicateInst('${jsq(i.id)}')">${ico('dup')}Duplizieren</button></div>
-      <div class="srow"><div><b>Löschen</b><p>Entfernt die Instanz mit allen Welten. Nicht rückgängig zu machen.</p></div><button class="btn sm d" onclick="closeModal();deleteInst('${jsq(i.id)}')">${ico('trash')}Löschen</button></div>`;
-    let t = 0; const deb = f => { clearTimeout(t); t = setTimeout(f, 400); };
-    $('#isName').oninput = e => deb(() => { const v = e.target.value.trim(); if (v) { isPatch({ name: v }); $('.mside h3 span.ell').textContent = v; } });
-    $('#isGroup').oninput = e => deb(() => isPatch({ group: e.target.value.trim() || null }));
+      <div class="isact">
+        <button data-a="folder">${ico('folder')}<b>Ordner öffnen</b><small>Dateien der Instanz</small></button>
+        <button data-a="shortcut">${ico('ext')}<b>Desktop-Verknüpfung</b><small>Startet direkt ins Spiel</small></button>
+        <button data-a="export">${ico('upload')}<b>Als Modpack exportieren</b><small>.mrpack zum Teilen</small></button>
+        <button data-a="dup">${ico('dup')}<b>Duplizieren</b><small>Kopie mit Mods und Welten</small></button>
+        <button data-a="logs">${ico('list')}<b>Logs &amp; Abstürze</b><small>Letzte Spielprotokolle</small></button>
+        <button data-a="del" class="d">${ico('trash')}<b>Löschen</b><small>Mit allen Welten, endgültig</small></button>
+      </div>`;
+    api('instance.stats', { id: i.id }).then(st => {
+      const v = [bytes(st.size), st.mods, st.resourcepacks, st.shaders, st.worlds, ptime(i.playSeconds)];
+      $$('#isSt b').forEach((b, k) => b.textContent = v[k] ?? '—');
+    }).catch(() => $$('#isSt b').forEach(b => b.textContent = '—'));
+    $('#isName').oninput = e => isDeb(() => { const v = e.target.value.trim(); if (v) { isPatch({ name: v }); $('.mside h3 span.ell').textContent = v; $('.isov b').textContent = v; } });
+    $('#isGroup').oninput = e => isDeb(() => isPatch({ group: e.target.value.trim() || null }));
+    $('#isNotes').oninput = e => isDeb(() => isPatch({ notes: e.target.value.trim() || null }));
     $('#isIcons') && ($('#isIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; $$('#isIcons button').forEach(x => x.classList.toggle('on', x === b)); isPatch({ icon: b.dataset.ic }); $('.mside h3 .iic').innerHTML = blockSvg(b.dataset.ic); });
+    $('.isact').onclick = async e => {
+      const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a;
+      if (a === 'folder') return api('folder.open', { id: i.id, what: '' });
+      if (a === 'shortcut') { try { await api('instance.shortcut', { id: i.id }); toast('Verknüpfung erstellt', 'Liegt auf deinem Desktop'); } catch (e) { fail('Verknüpfung', e); } return; }
+      closeModal();
+      if (a === 'export') exportInst(i.id);
+      if (a === 'dup') duplicateInst(i.id);
+      if (a === 'logs') go('inst', { id: i.id, tab: 'logs' });
+      if (a === 'del') deleteInst(i.id);
+    };
     return;
   }
   if (E.tab === 'install') {
@@ -1172,11 +1222,18 @@ async function isRender() {
     if (!games.includes(E.mc)) games.unshift(E.mc);
     const locked = i.kind === 'modpack' || i.kind === 'orbit';
     m.innerHTML = `<h2>Installation</h2><p class="sub">Version oder Mod-Loader wechseln. Mods, die nicht zur neuen Version passen, musst du danach eventuell aktualisieren.</p>
+      <div class="isov sm"><span class="iic">${ico('cube')}</span><div class="tx"><small>Aktuell installiert</small><b>Minecraft ${esc(i.mcVersion)} · ${esc(LOADERS[i.loader]?.[0] || i.loader)}${i.loaderVersion ? ' ' + esc(i.loaderVersion) : ''}</b></div></div>
       ${locked ? `<div class="note w">Diese Instanz ist ${i.kind === 'modpack' ? 'ein Modpack' : 'der Orbit Client'}. Version und Loader zu ändern kann sie kaputt machen.</div>` : ''}
       <label class="fl">Mod-Loader</label><div class="ldsel" id="isLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === E.loader ? 'on' : ''}" data-ld="${k}"><i style="background:${LCOL[k]}"></i>${n}</button>`).join('')}</div>
       <div class="vrow2"><div><label class="fl">Spielversion</label><select class="sel wide" id="isMc" style="height:42px">${games.map(v => `<option ${v === E.mc ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
       <div><label class="fl">Loader-Version</label><select class="sel wide" id="isLv" style="height:42px" ${E.loader === 'vanilla' ? 'disabled' : ''}><option value="">${E.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div></div>
-      <div class="mfoot" style="justify-content:space-between"><button class="btn" id="isRepair">${ico('refresh')}Dateien prüfen &amp; reparieren</button><button class="btn p" id="isApply">${ico('check')}Übernehmen</button></div>`;
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn p" id="isApply">${ico('check')}Übernehmen</button></div>
+      <div class="sec"><h2>Modpack</h2></div>
+      ${i.modpackProject ? isOpt('', 'Verknüpft mit einem Modpack', 'Updates und die Modpack-Seite kommen von diesem Projekt.', `<span class="row" style="gap:6px"><button class="btn sm" onclick="closeModal();go('project',{id:'${jsq(i.modpackProject)}'})">${ico('compass')}Seite öffnen</button><button class="btn sm" id="isUnlink">${ico('link')}Lösen</button></span>`)
+        : isOpt('', 'Nicht verknüpft', 'Eigene Instanz. Wir suchen beim Öffnen automatisch nach einem Modpack mit genau diesem Namen.', '')}
+      <div class="sec"><h2>Wartung</h2></div>
+      ${isOpt('', 'Dateien prüfen &amp; reparieren', 'Lädt fehlende oder kaputte Spieldateien, Bibliotheken und Java neu.', `<button class="btn sm" id="isRepair">${ico('refresh')}Reparieren</button>`)}
+      ${isOpt('', 'Mods auf Updates prüfen', 'Zeigt verfügbare Updates in der Mod-Liste der Instanz.', `<button class="btn sm" id="isUpd">${ico('download')}Prüfen</button>`)}`;
     $('#isLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; E.loader = b.dataset.ld; isRender(); };
     $('#isMc').onchange = e => { E.mc = e.target.value; fillLv(); };
     const fillLv = async () => {
@@ -1189,30 +1246,66 @@ async function isRender() {
       if (patch.mc === i.mcVersion && patch.loader === i.loader && (patch.loaderVersion || null) === (i.loaderVersion || null)) return toast('Keine Änderung');
       try { await api('instance.update', { id: i.id, patch }); toast('Übernommen', 'Wird beim nächsten Start installiert'); closeModal(); } catch (e) { fail('Fehler', e); }
     };
+    $('#isUnlink') && ($('#isUnlink').onclick = async () => { await isPatch({ modpackProject: null }); toast('Verknüpfung gelöst'); isRender(); });
     $('#isRepair').onclick = async () => { closeModal(); toast('Prüfe Dateien', i.name); try { await api('instance.repair', { id: i.id }); toast('Alles in Ordnung', i.name); } catch (e) { fail('Reparieren fehlgeschlagen', e); } };
+    $('#isUpd').onclick = () => { closeModal(); go('inst', { id: i.id, tab: 'content' }); };
     return;
   }
   if (E.tab === 'java') {
     const ram = i.ramMb || 0, def = S.settings.ramMb || 4096;
+    const PRESETS = [['', 'Standard'], ['-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1', 'Große Modpacks (G1 optimiert)'], ['-XX:+UseZGC -XX:+ZGenerational', 'ZGC (Java 21+, viel RAM)'], ['-XX:+UseShenandoahGC', 'Shenandoah']];
     m.innerHTML = `<h2>Java &amp; Speicher</h2><p class="sub">Leer lassen = Standard aus den globalen Einstellungen. Java wird pro Version automatisch passend geladen.</p>
-      <label class="fl">Arbeitsspeicher</label><div class="fsw" style="padding:0 0 8px"><span>Eigenen Wert nutzen</span><div class="tg sm ${ram ? 'on' : ''}" id="isRamOn"></div></div>
+      <label class="fl">Arbeitsspeicher</label><div class="fsw" style="padding:0 0 8px"><span>Eigenen Wert nutzen</span>${isTg('isRamOn', ram)}</div>
       <div class="ramrow ${ram ? '' : 'dim'}" id="isRamRow"><input type="range" min="1024" max="${Math.max(16384, def)}" step="256" value="${ram || def}" id="isRam"><input class="in" id="isRamN" value="${ram || def} MB" readonly></div>
+      <div class="row" style="gap:6px;margin-top:8px">${[2048, 4096, 6144, 8192, 12288].map(v => `<button class="fchip" data-ram="${v}">${v / 1024} GB</button>`).join('')}</div>
       <label class="fl">Java-Pfad</label><div class="inline"><input class="in" id="isJava" placeholder="Automatisch (empfohlen)" value="${esc(i.javaPath || '')}"><button class="btn" onclick="pickJava('isJava')">${ico('folder')}Durchsuchen</button></div>
-      <label class="fl">JVM-Argumente</label><input class="in" id="isJvm" placeholder="${esc(S.settings.jvmArgs || 'Mojangs Standard (G1GC)')}" value="${esc(i.jvmArgs || '')}" style="font-family:var(--mono);font-size:12px">`;
+      <label class="fl">JVM-Argumente</label><input class="in mono" id="isJvm" placeholder="${esc(S.settings.jvmArgs || 'Mojangs Standard (G1GC)')}" value="${esc(i.jvmArgs || '')}">
+      <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${PRESETS.map(([v, n]) => `<button class="fchip" data-jvm="${esc(v)}">${n}</button>`).join('')}</div>
+      <label class="fl">Umgebungsvariablen</label><textarea class="in ta mono" id="isEnv" rows="3" placeholder="NAME=wert (eine pro Zeile)">${esc(i.envVars || '')}</textarea>`;
     const r = $('#isRam'); setRange(r);
-    let t = 0; const deb = f => { clearTimeout(t); t = setTimeout(f, 400); };
-    r.oninput = () => { setRange(r); $('#isRamN').value = r.value + ' MB'; if ($('#isRamOn').classList.contains('on')) deb(() => isPatch({ ramMb: +r.value })); };
+    const setRam = v => { r.value = v; setRange(r); $('#isRamN').value = r.value + ' MB'; };
+    r.oninput = () => { setRam(r.value); if ($('#isRamOn').classList.contains('on')) isDeb(() => isPatch({ ramMb: +r.value })); };
     $('#isRamOn').onclick = e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); $('#isRamRow').classList.toggle('dim', !on); isPatch({ ramMb: on ? +r.value : 0 }); };
+    m.onclick = e => {
+      const rb = e.target.closest('[data-ram]'); if (rb) { setRam(rb.dataset.ram); $('#isRamOn').classList.add('on'); $('#isRamRow').classList.remove('dim'); isPatch({ ramMb: +rb.dataset.ram }); }
+      const jb = e.target.closest('[data-jvm]'); if (jb) { $('#isJvm').value = jb.dataset.jvm; isPatch({ jvmArgs: jb.dataset.jvm || null }); toast('JVM-Argumente gesetzt', jb.textContent); }
+    };
     $('#isJava').onchange = e => isPatch({ javaPath: e.target.value.trim() || null });
-    $('#isJvm').oninput = e => deb(() => isPatch({ jvmArgs: e.target.value.trim() || null }));
+    $('#isJvm').oninput = e => isDeb(() => isPatch({ jvmArgs: e.target.value.trim() || null }));
+    $('#isEnv').oninput = e => isDeb(() => isPatch({ envVars: e.target.value.trim() || null }));
     return;
   }
-  m.innerHTML = `<h2>Fenster</h2><p class="sub">Startgröße des Spielfensters. 0 = Standard aus den Einstellungen.</p>
-    <div class="vrow2"><div><label class="fl">Breite</label><input class="in" id="isW" type="number" min="0" value="${i.width || 0}"></div><div><label class="fl">Höhe</label><input class="in" id="isH" type="number" min="0" value="${i.height || 0}"></div></div>
-    <div class="row" style="margin-top:12px;gap:6px">${[[0, 0, 'Standard'], [1280, 720, '1280×720'], [1600, 900, '1600×900'], [1920, 1080, '1920×1080']].map(([w, h, n]) => `<button class="fchip" data-wh="${w},${h}">${n}</button>`).join('')}</div>`;
+  if (E.tab === 'hooks') {
+    m.innerHTML = `<h2>Befehle</h2><p class="sub">Eigene Befehle rund um den Spielstart. Sie laufen im Ordner der Instanz. Verfügbar sind <code>%INST_DIR%</code>, <code>%INST_NAME%</code>, <code>%INST_MC_VERSION%</code> und <code>%INST_LOADER%</code>.</p>
+      <label class="fl">Vor dem Start</label><input class="in mono" id="isPre" placeholder="z. B. backup.bat (der Start wartet darauf)" value="${esc(i.preLaunch || '')}">
+      <label class="fl">Wrapper</label><input class="in mono" id="isWrap" placeholder="Programm, über das Java gestartet wird" value="${esc(i.wrapper || '')}">
+      <label class="fl">Nach dem Beenden</label><input class="in mono" id="isPost" placeholder="z. B. Ordner aufräumen oder Musik weiter abspielen" value="${esc(i.postExit || '')}">
+      <div class="note" style="margin-top:16px">${ico('alert')}Befehle laufen mit deinen Rechten. Trag hier nur ein, was du selbst verstehst.</div>`;
+    $('#isPre').oninput = e => isDeb(() => isPatch({ preLaunch: e.target.value.trim() || null }));
+    $('#isWrap').oninput = e => isDeb(() => isPatch({ wrapper: e.target.value.trim() || null }));
+    $('#isPost').oninput = e => isDeb(() => isPatch({ postExit: e.target.value.trim() || null }));
+    return;
+  }
+  const onl = i.onLaunch || '';
+  m.innerHTML = `<h2>Fenster &amp; Start</h2><p class="sub">Wie das Spiel startet. 0 = Standard aus den Einstellungen.</p>
+    ${isOpt('', 'Vollbild', 'Startet Minecraft direkt im Vollbild.', isTg('isFs', i.fullscreen))}
+    <div class="${i.fullscreen ? 'dim' : ''}" id="isWin"><div class="vrow2"><div><label class="fl">Breite</label><input class="in" id="isW" type="number" min="0" value="${i.width || 0}"></div><div><label class="fl">Höhe</label><input class="in" id="isH" type="number" min="0" value="${i.height || 0}"></div></div>
+    <div class="row" style="margin-top:10px;gap:6px">${[[0, 0, 'Standard'], [1280, 720, '1280×720'], [1600, 900, '1600×900'], [1920, 1080, '1920×1080'], [2560, 1440, '2560×1440']].map(([w, h, n]) => `<button class="fchip" data-wh="${w},${h}">${n}</button>`).join('')}</div></div>
+    <label class="fl">Server automatisch betreten</label><div class="inline"><input class="in" id="isJoin" placeholder="z. B. play.hypixel.net" value="${esc(i.autoJoin || '')}"><button class="btn" id="isPing">${ico('activity')}Testen</button></div>
+    <small class="muted" id="isPingR" style="display:block;margin-top:6px;font-size:11.5px">Nach dem Start wirst du direkt verbunden.</small>
+    <label class="fl">Launcher beim Spielstart</label><div class="seg" id="isOnl">${[['', 'Wie global'], ['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Ausblenden']].map(([k, n]) => `<button data-o="${k}" class="${k === onl ? 'on' : ''}">${n}</button>`).join('')}</div>`;
   const save = () => isPatch({ width: +$('#isW').value || 0, height: +$('#isH').value || 0 });
   $('#isW').onchange = save; $('#isH').onchange = save;
   m.querySelectorAll('[data-wh]').forEach(b => b.onclick = () => { const [w, h] = b.dataset.wh.split(','); $('#isW').value = w; $('#isH').value = h; save(); });
+  $('#isFs').onclick = e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); $('#isWin').classList.toggle('dim', on); isPatch({ fullscreen: on }); };
+  $('#isJoin').oninput = e => isDeb(() => isPatch({ autoJoin: e.target.value.trim() || null }));
+  $('#isPing').onclick = async () => {
+    const a = $('#isJoin').value.trim(), o = $('#isPingR'); if (!a) return;
+    o.textContent = 'Prüfe…';
+    let r; try { r = await api('server.ping', { address: a }); } catch { r = { online: false }; }
+    o.innerHTML = r.online ? `<span style="color:#4ade80">● Online</span> · ${num(r.players)}/${num(r.max)} Spieler · ${r.ping} ms` : '<span style="color:#f87171">● Nicht erreichbar</span>';
+  };
+  $('#isOnl').onclick = e => { const b = e.target.closest('[data-o]'); if (!b) return; $$('#isOnl button').forEach(x => x.classList.toggle('on', x === b)); isPatch({ onLaunch: b.dataset.o || null }); };
 }
 window.pickJava = async target => { try { const r = await api('java.pick'); if (r?.path) { const el = $('#' + target); el.value = r.path; el.dispatchEvent(new Event('change')); } } catch (e) { fail('Java', e); } };
 function setRange(el) { const p = (el.value - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', p + '%'); }
@@ -2681,6 +2774,7 @@ async function boot() {
   if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
   if (S.settings.autoUpdate !== false) setTimeout(() => checkUpdate(false), 2000);
+  api('app.args').then(r => { if (r?.launch && instById(r.launch)) { go('inst', { id: r.launch }); play(r.launch); } }).catch(() => { });
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
   if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 700 - (performance.now() - t0)));
 }
@@ -2758,6 +2852,9 @@ const Mock = {
       case 'instance.update': Object.assign(inst(), a.patch); return inst();
       case 'instance.delete': M.instances = M.instances.filter(i => i.id !== a.id); return {};
       case 'instance.duplicate': { const c = { ...inst(), id: a.id + '-kopie', name: inst().name + ' (Kopie)', lastPlayed: null, playSeconds: 0 }; M.instances.unshift(c); return c; }
+      case 'instance.stats': await sleep(250); return { size: 1.6e9 + (inst().mods || 0) * 9e6, mods: inst().mods || 0, resourcepacks: 3, shaders: inst().loader === 'vanilla' ? 0 : 2, worlds: 4, screenshots: 12, updates: 0 };
+      case 'instance.shortcut': return { path: 'C:\\Users\\Ky3ls\\Desktop\\' + inst().name + '.lnk' };
+      case 'app.args': return { launch: null };
       case 'instance.repair': await sleep(800); return { ok: true };
       case 'content.resolve': return { changed: false };
       case 'instance.content': {

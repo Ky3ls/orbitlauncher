@@ -37,12 +37,22 @@ public class Runner
         var (plan, java) = await Prepare(inst, set, p, ct);
         var ram = inst.RamMb > 0 ? inst.RamMb : set.RamMb;
         var extra = inst.Kind == "orbit" ? new[] { "-Dorbit.config=" + OrbitClient.ConfigPath } : null;
+        if (server == null && world == null && !string.IsNullOrWhiteSpace(inst.AutoJoin)) server = inst.AutoJoin!.Trim();
         var args = LaunchBuilder.Build(plan, s, inst.Dir, ram, string.IsNullOrWhiteSpace(inst.JvmArgs) ? set.JvmArgs : inst.JvmArgs,
             inst.Width > 0 ? inst.Width : set.Width, inst.Height > 0 ? inst.Height : set.Height, server, extra, world);
+        if (inst.Fullscreen) args.Add("--fullscreen");
+        var env = Env(inst);
+        if (!string.IsNullOrWhiteSpace(inst.PreLaunch))
+        {
+            p?.Report(new Progress("Vor-Start-Befehl läuft", 0, 1, inst.Name));
+            Log?.Invoke(inst.Id, "[OrbitLauncher] Vor dem Start: " + inst.PreLaunch);
+            var code = await Hook(inst, inst.PreLaunch!, env, true, ct);
+            if (code != 0) throw new InvalidOperationException($"Der Vor-Start-Befehl ist mit Code {code} fehlgeschlagen.");
+        }
         p?.Report(new Progress("Minecraft startet", 1, 1, inst.Name));
-        Log?.Invoke(inst.Id, "[OrbitLauncher] " + LaunchBuilder.Pretty(java, args, s));
+        Log?.Invoke(inst.Id, "[OrbitLauncher] " + (string.IsNullOrWhiteSpace(inst.Wrapper) ? "" : inst.Wrapper + " ") + LaunchBuilder.Pretty(java, args, s));
 
-        var proc = LaunchBuilder.Start(java, args, inst.Dir);
+        var proc = LaunchBuilder.Start(java, args, inst.Dir, inst.Wrapper, env);
         var started = DateTime.UtcNow;
         _running[inst.Id] = proc;
         proc.EnableRaisingEvents = true;
@@ -61,6 +71,7 @@ public class Runner
                 Instances.Save(fresh);
             }
             State?.Invoke(inst.Id, false, code);
+            if (!string.IsNullOrWhiteSpace(inst.PostExit)) _ = Hook(inst, inst.PostExit!, env, false, default);
         };
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
@@ -68,6 +79,36 @@ public class Runner
         Instances.Save(inst);
         State?.Invoke(inst.Id, true, null);
         return proc;
+    }
+
+    /// <summary>KEY=VALUE lines of the instance plus INST_* helpers for hooks.</summary>
+    private static Dictionary<string, string> Env(Instance inst)
+    {
+        var d = new Dictionary<string, string> { ["INST_NAME"] = inst.Name, ["INST_ID"] = inst.Id, ["INST_DIR"] = inst.Dir, ["INST_MC_VERSION"] = inst.McVersion, ["INST_LOADER"] = inst.Loader };
+        foreach (var line in (inst.EnvVars ?? "").Split('\n'))
+        {
+            var t = line.Trim(); var eq = t.IndexOf('=');
+            if (eq > 0 && !t.StartsWith('#')) d[t[..eq].Trim()] = t[(eq + 1)..].Trim();
+        }
+        return d;
+    }
+
+    /// <summary>Runs a hook command through the shell in the instance folder.</summary>
+    private static async Task<int> Hook(Instance inst, string cmd, Dictionary<string, string> env, bool wait, CancellationToken ct)
+    {
+        var win = OperatingSystem.IsWindows();
+        var psi = new ProcessStartInfo(win ? "cmd.exe" : "/bin/sh") { WorkingDirectory = inst.Dir, UseShellExecute = false, CreateNoWindow = true };
+        psi.ArgumentList.Add(win ? "/c" : "-c"); psi.ArgumentList.Add(cmd);
+        foreach (var (k, v) in env) psi.Environment[k] = v;
+        try
+        {
+            using var pr = Process.Start(psi);
+            if (pr == null) return -1;
+            if (!wait) return 0;
+            await pr.WaitForExitAsync(ct);
+            return pr.ExitCode;
+        }
+        catch (Exception) when (!wait) { return 0; }
     }
 
     public void Kill(string id) { if (_running.TryGetValue(id, out var p)) try { p.Kill(true); } catch { } }

@@ -29,6 +29,22 @@ public class Instance
     public int Width { get; set; }
     public int Height { get; set; }
     public string? Group { get; set; }
+    /// <summary>Start the game in fullscreen.</summary>
+    public bool Fullscreen { get; set; }
+    /// <summary>Server joined right after the start (host[:port]).</summary>
+    public string? AutoJoin { get; set; }
+    /// <summary>Extra environment variables, one KEY=VALUE per line.</summary>
+    public string? EnvVars { get; set; }
+    /// <summary>Command run (and waited for) before the game starts.</summary>
+    public string? PreLaunch { get; set; }
+    /// <summary>Command the game is started through (e.g. prime-run, gamemoderun).</summary>
+    public string? Wrapper { get; set; }
+    /// <summary>Command run after the game closed.</summary>
+    public string? PostExit { get; set; }
+    /// <summary>keep | minimize | close; null = global setting.</summary>
+    public string? OnLaunch { get; set; }
+    /// <summary>Free notes of the player.</summary>
+    public string? Notes { get; set; }
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastPlayed { get; set; }
     public long PlaySeconds { get; set; }
