@@ -1535,7 +1535,7 @@ PAGES.discover = async (el, a) => {
   if (tgt && D.type === 'modpack') D.type = tgt.loader === 'vanilla' ? 'resourcepack' : 'mod';
   crumbs(tgt ? [['Bibliothek', "go('library')"], [tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Inhalte hinzufügen']] : [['Entdecken']]);
   const types = PTYPES.filter(t => !tgt || (t[0] !== 'modpack' && (tgt.loader !== 'vanilla' || t[0] !== 'mod')));
-  el.innerHTML = `<div class="dhero"><div class="dh-bg"></div><div class="dh-l"><div class="kicker">Mod-Katalog</div><h1>Entdecken</h1><p class="pd">Hunderttausende Mods, Modpacks, Shader und Ressourcenpakete in einer Suche. Ein Klick, Abhängigkeiten inklusive.</p></div></div>
+  el.innerHTML = `<div class="ph"><div><div class="kicker">Mod-Katalog</div><h1>Entdecken</h1></div></div>
     ${tgt ? `<div class="tgtbar">${instIcon(tgt)}<div class="tx"><b>Installieren in „${esc(tgt.name)}“</b><small>${esc(instSub(tgt))} · nur passende Inhalte werden angezeigt</small></div><button class="btn sm" onclick="go('inst',{id:'${jsq(tgt.id)}'})">${ico('left')}Zur Instanz</button><button class="ib sm ghost" title="Ohne Ziel" onclick="go('discover',{type:'${D.type}'})">${ico('x')}</button></div>` : ''}
     <div class="dtypes" id="dTypes">${types.map(([k, n, ic]) => `<button data-k="${k}" class="${k === D.type ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div>
     <div class="dgrid"><div class="filters" id="dFil"></div><div>
