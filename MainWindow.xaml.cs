@@ -888,6 +888,7 @@ public partial class MainWindow : Window
             case "skins.defaults": return await WithTask(async p => { p.Report(new Progress("Standard-Skins werden geladen", 0, 1, "")); return await SkinSources.Defaults(); });
             case "skins.player": return await SkinSources.Player(Str(a, "name"));
             case "skins.link": return new { data = await SkinSources.FromLink(Str(a, "url")) };
+            case "blocks.textures": return await BlockTextures.Get((a["names"] as JsonArray ?? new()).Select(n => (string?)n ?? ""), Bool(a, "download"));
             case "skins.save":
             {
                 // editor: overwrite an existing skin or add a new one

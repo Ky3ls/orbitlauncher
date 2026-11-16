@@ -19,21 +19,7 @@ public static class SkinSources
     {
         var cached = Net.LoadJson<List<Item>>(CacheFile);
         if (cached is { Count: > 0 }) return cached;
-        string? jar = null;
-        if (Directory.Exists(Paths.Versions))
-            jar = Directory.GetDirectories(Paths.Versions)
-                .Select(d => Path.Combine(d, Path.GetFileName(d) + ".jar"))
-                .Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault(HasSkins);
-        if (jar == null)
-        {
-            await Versions.All(false);
-            var id = Versions.LatestRelease ?? throw new InvalidOperationException("Keine Minecraft-Version gefunden.");
-            var v = await Versions.EnsureJson(id, ct);
-            var c = v["downloads"]?["client"] ?? throw new InvalidOperationException("Client-Download fehlt.");
-            await Net.Download(new DlItem((string)c["url"]!, Versions.JarPath(id), (string?)c["sha1"], (long?)c["size"] ?? 0), ct);
-            jar = Versions.JarPath(id);
-        }
+        var jar = await ClientJar(true, ct) ?? throw new InvalidOperationException("Keine Minecraft-Version gefunden.");
         var list = new List<Item>();
         using (var z = ZipFile.OpenRead(jar))
         {
@@ -49,6 +35,26 @@ public static class SkinSources
         list = list.OrderBy(x => x.Name).ThenBy(x => x.Variant).ToList();
         if (list.Count > 0) Net.SaveJson(CacheFile, list);
         return list;
+    }
+
+    /// <summary>Newest vanilla client jar on disk; downloads the latest release when asked and none is there.</summary>
+    public static async Task<string?> ClientJar(bool download, CancellationToken ct = default)
+    {
+        if (Directory.Exists(Paths.Versions))
+        {
+            var jar = Directory.GetDirectories(Paths.Versions)
+                .Select(d => Path.Combine(d, Path.GetFileName(d) + ".jar"))
+                .Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault(HasSkins);
+            if (jar != null) return jar;
+        }
+        if (!download) return null;
+        await Versions.All(false);
+        var id = Versions.LatestRelease ?? throw new InvalidOperationException("Keine Minecraft-Version gefunden.");
+        var v = await Versions.EnsureJson(id, ct);
+        var c = v["downloads"]?["client"] ?? throw new InvalidOperationException("Client-Download fehlt.");
+        await Net.Download(new DlItem((string)c["url"]!, Versions.JarPath(id), (string?)c["sha1"], (long?)c["size"] ?? 0), ct);
+        return Versions.JarPath(id);
     }
 
     private static bool HasSkins(string jar)

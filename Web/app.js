@@ -147,6 +147,7 @@ function blockFace(kind, face, x, key) {
   return s;
 }
 function blockSvg(key) {
+  if (typeof BTEX !== 'undefined' && BTEX.cube[key === 'box' ? 'wood' : key]) return `<svg viewBox="0 0 64 64"><image href="${BTEX.cube[key === 'box' ? 'wood' : key]}" width="64" height="64" style="image-rendering:pixelated"/></svg>`;
   if (key === 'orbit') return `<svg viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg>`;
   if (key === 'box') key = 'wood';
   if (!BLOCKS[key]) key = 'grass';
@@ -168,6 +169,59 @@ function ldIcon(k) {
   }[k] || '';
   return `<span class="ldi ${k}">${svg}</span>`;
 }
+/* ---------- real Minecraft block textures (read from the user's own client jar) ---------- */
+// icon key → [top, front, side] texture names; one name = all faces, two = top + sides
+const BLOCKTEX = {
+  grass: ['grass_block_top', 'grass_block_side'], dirt: ['dirt'], mycelium: ['mycelium_top', 'mycelium_side'], podzol: ['podzol_top', 'podzol_side'],
+  stone: ['stone'], cobble: ['cobblestone'], mossy: ['mossy_cobblestone'], deepslate: ['deepslate_top', 'deepslate'], sand: ['sand'], gravel: ['gravel'],
+  wood: ['oak_planks'], log: ['oak_log_top', 'oak_log'], birch: ['birch_log_top', 'birch_log'], cherry: ['cherry_log_top', 'cherry_log'], bricks: ['bricks'],
+  tnt: ['tnt_top', 'tnt_side'], bookshelf: ['oak_planks', 'bookshelf'], crafting: ['crafting_table_top', 'crafting_table_front', 'crafting_table_side'],
+  furnace: ['furnace_top', 'furnace_front', 'furnace_side'], pumpkin: ['pumpkin_top', 'carved_pumpkin', 'pumpkin_side'], melon: ['melon_top', 'melon_side'],
+  cactus: ['cactus_top', 'cactus_side'], hay: ['hay_block_top', 'hay_block_side'], beenest: ['bee_nest_top', 'bee_nest_front', 'bee_nest_side'],
+  jukebox: ['jukebox_top', 'jukebox_side'], target: ['target_top', 'target_side'],
+  coalore: ['coal_ore'], ironore: ['iron_ore'], goldore: ['gold_ore'], diamondore: ['diamond_ore'], emeraldore: ['emerald_ore'], redstoneore: ['redstone_ore'], lapisore: ['lapis_ore'],
+  diamond: ['diamond_block'], gold: ['gold_block'], emerald: ['emerald_block'], lapis: ['lapis_block'], iron: ['iron_block'], copper: ['copper_block'],
+  netherite: ['netherite_block'], ruby: ['redstone_block'], amethyst: ['amethyst_block'], quartz: ['quartz_block_top', 'quartz_block_side'],
+  obsidian: ['obsidian'], crying: ['crying_obsidian'], debris: ['ancient_debris_top', 'ancient_debris_side'], nether: ['netherrack'], glowstone: ['glowstone'],
+  sculk: ['sculk'], prismarine: ['prismarine'], purpur: ['purpur_block'], end: ['end_stone'], snow: ['snow'], ice: ['ice'],
+  slime: ['slime_block'], honey: ['honey_block_top', 'honey_block_side'], sponge: ['sponge'], wool: ['white_wool'],
+};
+Object.assign(BLOCK_NAMES, { cherry: 'Kirschholz', beenest: 'Bienennest', jukebox: 'Plattenspieler', target: 'Zielblock', crying: 'Weinender Obsidian', debris: 'Antiker Schrott', ruby: 'Redstone-Block' });
+const BTEX = { img: {}, cube: {}, ready: false };
+const TINT = { grass_block_top: '#91BD59' };   // grey in the jar, coloured by the biome in game
+function cubeRender(key) {
+  const t = BLOCKTEX[key]; if (!t) return null;
+  const [top, front, side] = t.length === 1 ? [t[0], t[0], t[0]] : t.length === 2 ? [t[0], t[1], t[1]] : t;
+  const imgs = [top, front, side].map(n => BTEX.img[n]); if (imgs.some(x => !x)) return null;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+  const M = { top: [1.5, -.8125, 1.5, .8125, 8, 21], left: [1.5, .8125, 0, 1.5, 8, 21], right: [1.5, -.8125, 0, 1.5, 32, 34] };
+  const face = (img, m, dark) => {
+    x.setTransform(m[0] * 2, m[1] * 2, m[2] * 2, m[3] * 2, m[4] * 2, m[5] * 2);
+    x.globalCompositeOperation = 'source-over'; x.drawImage(img, 0, 0, 16, 16);
+    if (dark) { x.globalCompositeOperation = 'source-atop'; x.fillStyle = `rgba(0,0,0,${dark})`; x.fillRect(0, 0, 16, 16); }
+  };
+  face(imgs[0], M.top, 0); face(imgs[1], M.left, .2); face(imgs[2], M.right, .38);
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over';
+  return c.toDataURL('image/png');
+}
+async function loadBlockTextures(download = false) {
+  const names = [...new Set(Object.values(BLOCKTEX).flat())];
+  let tex = {}; try { tex = await api('blocks.textures', { names, download }) || {}; } catch { }
+  if (!Object.keys(tex).length) return false;
+  await Promise.all(Object.entries(tex).map(([n, url]) => new Promise(res => {
+    const im = new Image(); im.onload = () => {
+      if (TINT[n]) { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0); x.globalCompositeOperation = 'multiply'; x.fillStyle = TINT[n]; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(im, 0, 0); BTEX.img[n] = c; }
+      else BTEX.img[n] = im;
+      res();
+    }; im.onerror = res; im.src = url;
+  })));
+  for (const k in BLOCKTEX) { const u = cubeRender(k); if (u) BTEX.cube[k] = u; }
+  BTEX.ready = Object.keys(BTEX.cube).length > 0;
+  if (BTEX.ready) ICONS.splice(0, ICONS.length, ...Object.keys(BTEX.cube));
+  if (BTEX.ready) { instancesChanged(); if (S.newInst && $('#niPrev')) { niPrev(); const ic = $('#niIcon'); if (ic) iconPickBind(ic, S.newInst, () => niPrev()); } }
+  return BTEX.ready;
+}
+
 const instIcon = (i, cls = 'iic') => i?.iconUrl ? `<span class="${cls} img"><img src="${esc(i.iconUrl)}" alt="" loading="lazy"></span>` : `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
 // projects without screenshots: blurred icon in the project colour instead of an empty area
 const coverFb = h => { const c = typeof h.color === 'number' ? '#' + h.color.toString(16).padStart(6, '0') : ''; return `<i class="cfb" style="${c ? `--c:${c};` : ''}${h.icon_url ? `background-image:url('${esc(h.icon_url)}')` : ''}"></i>`; };
@@ -3739,6 +3793,7 @@ async function boot() {
   if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
   if (S.settings.autoUpdate !== false) setTimeout(() => checkUpdate(false), 2000);
+  loadBlockTextures(false).then(ok => { if (!ok && HOST) setTimeout(() => loadBlockTextures(true), 4000); });
   api('app.args').then(r => { if (r?.launch && instById(r.launch)) { go('inst', { id: r.launch }); play(r.launch); } }).catch(() => { });
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
   if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 150 - (performance.now() - t0)));
@@ -3818,6 +3873,7 @@ const Mock = {
       case 'instance.delete': M.instances = M.instances.filter(i => i.id !== a.id); return {};
       case 'instance.duplicate': { const c = { ...inst(), id: a.id + '-kopie', name: inst().name + ' (Kopie)', lastPlayed: null, playSeconds: 0 }; M.instances.unshift(c); return c; }
       case 'library.stats': await sleep(300); return { size: 14.2e9, worlds: 17, screenshots: 42, shaders: 6, resourcepacks: 11 };
+      case 'blocks.textures': try { return await (await fetch('__tex.json')).json(); } catch { return {}; }
       case 'instance.stats': await sleep(250); return { size: 1.6e9 + (inst().mods || 0) * 9e6, mods: inst().mods || 0, resourcepacks: 3, shaders: inst().loader === 'vanilla' ? 0 : 2, worlds: 4, screenshots: 12, updates: 0 };
       case 'instance.shortcut': return { path: 'C:\\Users\\Ky3ls\\Desktop\\' + inst().name + '.lnk' };
       case 'app.args': return { launch: null };
