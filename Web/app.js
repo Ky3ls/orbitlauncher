@@ -3741,7 +3741,7 @@ async function boot() {
   if (S.settings.autoUpdate !== false) setTimeout(() => checkUpdate(false), 2000);
   api('app.args').then(r => { if (r?.launch && instById(r.launch)) { go('inst', { id: r.launch }); play(r.launch); } }).catch(() => { });
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
-  if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 700 - (performance.now() - t0)));
+  if (q.has('shot')) $('#splash').remove(); else setTimeout(() => $('#splash').classList.add('out'), Math.max(0, 150 - (performance.now() - t0)));
 }
 
 /* ======================= MOCK BACKEND (browser preview) ======================= */

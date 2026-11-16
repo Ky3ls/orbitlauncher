@@ -11,14 +11,16 @@
     <AssemblyName>OrbitLauncher</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.8.1</Version>
+    <Version>0.8.2</Version>
     <Product>OrbitLauncher</Product>
     <Description>OrbitLauncher – Minecraft Launcher</Description>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- small download, but unpacked only once per version (to %TEMP%\.net); every later start loads straight from disk -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <DebugType>none</DebugType>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>

@@ -121,6 +121,7 @@ public partial class MainWindow : Window
         try
         {
             var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrbitLauncher");
+            var webTask = Task.Run(() => ExtractWeb(Path.Combine(data, "web")));
             var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(data, "WebView2"));
             Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 10, 10, 11);
             await Web.EnsureCoreWebView2Async(env);
@@ -135,7 +136,7 @@ public partial class MainWindow : Window
 #endif
             c.NewWindowRequested += (_, e) => { e.Handled = true; OpenUrl(e.Uri); };
             c.NavigationStarting += (_, e) => { if (!e.Uri.StartsWith("https://orbit.local/")) { e.Cancel = true; OpenUrl(e.Uri); } };
-            var webDir = ExtractWeb(Path.Combine(data, "web"));
+            var webDir = await webTask;
             c.SetVirtualHostNameToFolderMapping("orbit.local", webDir, CoreWebView2HostResourceAccessKind.Allow);
             c.SetVirtualHostNameToFolderMapping("shots.orbit", Paths.Instances, CoreWebView2HostResourceAccessKind.Allow);
             c.WebMessageReceived += OnMessage;
@@ -157,6 +158,11 @@ public partial class MainWindow : Window
 
     private static string ExtractWeb(string dir)
     {
+        // only after an update: same version + same exe = files are already there
+        var stamp = Path.Combine(dir, ".stamp");
+        string id = Net.AppVersion;
+        try { id += "|" + File.GetLastWriteTimeUtc(Environment.ProcessPath ?? "").Ticks; } catch { }
+        try { if (File.Exists(stamp) && File.ReadAllText(stamp) == id) return dir; } catch { }
         if (Directory.Exists(dir)) try { Directory.Delete(dir, true); } catch { }
         var asm = Assembly.GetExecutingAssembly();
         foreach (var name in asm.GetManifestResourceNames())
@@ -169,6 +175,7 @@ public partial class MainWindow : Window
             using var dst = File.Create(target);
             src.CopyTo(dst);
         }
+        try { File.WriteAllText(stamp, id); } catch { }
         return dir;
     }
 
