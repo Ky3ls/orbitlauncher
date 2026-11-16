@@ -1786,3 +1786,11 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .side .nav{height:40px;padding:0 14px;gap:13px;font-size:14.5px;font-weight:550;margin-bottom:3px;border-radius:12px}
 .side .nav svg.i{width:19px;height:19px}
 .side .nav .n{font-size:11.5px}
+
+/* settings navigation: same dark box as the discover filters */
+.snav{background:var(--card);border:1px solid var(--line);backdrop-filter:none}
+.snav .tab{background:none}
+.snav .tab:hover{background:rgba(255,255,255,.04)}
+.snav .tab.on{background:rgba(var(--a-rgb),.1)}
+/* account button when signed out: just "Anmelden" */
+.sacc.out .an small{display:none}

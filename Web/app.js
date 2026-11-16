@@ -373,7 +373,8 @@ function accountUI() {
   const a = activeAcc();
   $('#saccHead').outerHTML = headHtml(a, 'head').replace('class="head', 'id="saccHead" class="head');
   $('#saccName').textContent = a ? a.name : 'Anmelden';
-  $('#saccSub').textContent = a ? 'Microsoft-Konto' : 'Microsoft';
+  $('#saccSub').textContent = a ? 'Microsoft-Konto' : '';
+  $('#sacc').classList.toggle('out', !a);
 }
 function accountPop(e) {
   e.stopPropagation();
