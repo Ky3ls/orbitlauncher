@@ -198,7 +198,7 @@ function bannerSvg(day = false, H0) {
 }
 
 /* ======================= MOTION ======================= */
-function moveInd() { const a = $('.nav.active'), ind = $('#navInd'); if (!a || !ind) { if (ind) ind.style.opacity = 0; return; } ind.style.transform = `translateY(${a.offsetTop}px)`; ind.style.opacity = 1; }
+function moveInd() { const a = $('.nav.active'), ind = $('#navInd'); if (!a || !ind) { if (ind) ind.style.opacity = 0; return; } ind.style.transform = `translateY(${a.offsetTop}px)`; ind.style.height = a.offsetHeight + 'px'; ind.style.opacity = 1; }
 function enterPage(el) {
   if (!el) return;
   el.classList.remove('enter'); void el.offsetWidth;
