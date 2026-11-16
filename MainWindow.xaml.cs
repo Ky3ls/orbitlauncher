@@ -237,7 +237,7 @@ public partial class MainWindow : Window
         try { var d = Path.Combine(i.Dir, "mods"); if (Directory.Exists(d)) mods = Directory.EnumerateFiles(d, "*.jar").Count(); } catch { }
         return new
         {
-            i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
+            i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.BannerUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
             i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, i.ManualDownloads, mods, running = _runner.IsRunning(i.Id),
             content = i.Content.Select(c => new { c.ProjectId, c.Type, c.Source }),
         };
@@ -353,6 +353,7 @@ public partial class MainWindow : Window
                 {
                     if (pt["name"] != null) inst.Name = (string?)pt["name"] ?? inst.Name;
                     if (pt["icon"] != null) inst.Icon = (string?)pt["icon"] ?? inst.Icon;
+                    if (pt["bannerUrl"] != null) inst.BannerUrl = StrN(pt, "bannerUrl");
                     if (pt.ContainsKey("ramMb")) inst.RamMb = Int(pt, "ramMb");
                     if (pt.ContainsKey("javaPath")) inst.JavaPath = StrN(pt, "javaPath");
                     if (pt.ContainsKey("jvmArgs")) inst.JvmArgs = StrN(pt, "jvmArgs");
@@ -383,11 +384,62 @@ public partial class MainWindow : Window
                 // re-check the version JSON and all files (sizes); missing ones are downloaded again
                 return await WithTask(async p => { await Runner.Prepare(inst, S, p); return new { ok = true }; });
             }
-            case "instance.content": { var inst = Inst(a); return await Task.Run(() => Instances.ListFiles(inst, Str(a, "type"))); }
+            case "instance.content":
+            {
+                var inst = Inst(a);
+                return Instances.ListFiles(inst, Str(a, "type"));
+            }
+            case "instance.brand":
+            {
+                var inst = Inst(a);
+                if (await Transfer.Enrich(inst)) Instances.Save(inst);
+                return new { inst.IconUrl, inst.BannerUrl, inst.ModpackProject, inst.Kind };
+            }
+            case "content.resolve":
+            {
+                var inst = Inst(a);
+                var changed = await Modrinth.AttachCatalog(inst);
+                return new { changed };
+            }
             case "content.toggle": Instances.Toggle(Inst(a), Str(a, "type"), Str(a, "file"), Bool(a, "on")); return new { };
             case "content.remove": Instances.RemoveFile(Inst(a), Str(a, "type"), Str(a, "file")); return new { };
-            case "content.updates": return await Modrinth.CheckUpdates(Inst(a));
+            case "content.updates":
+            {
+                var inst = Inst(a);
+                var ups = await Modrinth.CheckUpdates(inst);
+                ups.AddRange(await CurseForge.CheckUpdates(inst));
+                return ups;
+            }
             case "content.updateAll": { var inst = Inst(a); return await WithTask(async p => new { count = await Modrinth.UpdateAll(inst, p) }); }
+            case "content.versions":
+            {
+                var inst = Inst(a);
+                var pid = Str(a, "projectId");
+                var c = inst.Content.FirstOrDefault(x => x.ProjectId == pid) ?? throw new InvalidOperationException("Inhalt nicht gefunden.");
+                if (c.Source == "curseforge" || pid.StartsWith("cf:", StringComparison.Ordinal)) return await CurseForge.Versions(inst, c);
+                return await Modrinth.Versions(inst, c);
+            }
+            case "content.setVersion":
+            {
+                var inst = Inst(a);
+                if (_runner.IsRunning(inst.Id)) throw new InvalidOperationException("Beende das Spiel, bevor du Versionen wechselst.");
+                var pid = Str(a, "projectId");
+                var vid = StrN(a, "versionId") ?? throw new InvalidOperationException("Keine Version gewählt.");
+                return await WithTask(async p =>
+                {
+                    var c = inst.Content.FirstOrDefault(x => x.ProjectId == pid) ?? throw new InvalidOperationException("Inhalt nicht gefunden.");
+                    var dir = Instances.ContentDir(inst, c.Type);
+                    var wasOff = !File.Exists(Path.Combine(dir, c.File)) && File.Exists(Path.Combine(dir, c.File + ".disabled"));
+                    if (c.Source == "curseforge" || pid.StartsWith("cf:", StringComparison.Ordinal)) await CurseForge.Install(inst, int.Parse(pid[3..]), int.Parse(vid), p);
+                    else await Modrinth.Install(inst, pid, c.Type, vid, p);
+                    if (wasOff)
+                    {
+                        var now = inst.Content.FirstOrDefault(x => x.ProjectId == pid);
+                        if (now != null) Instances.Toggle(inst, now.Type, now.File, false);
+                    }
+                    return new { count = 1 };
+                });
+            }
 
             case "instance.duplicate":
             {
@@ -612,10 +664,29 @@ public partial class MainWindow : Window
             case "cloud.status": return new { loggedIn = Cloud.LoggedIn, name = Cloud.Name, lastSync = Cloud.LastSync, syncing = _syncing > 0 };
             case "cloud.login":
             {
-                var name = await Cloud.Login(Str(a, "name"), Str(a, "password"), Bool(a, "register"));
+                var r = await Cloud.Login(Str(a, "name"), Str(a, "password"), Bool(a, "register"));
+                if (r.Need == null) _ = RunSync(true);
+                return new { name = r.Name, need = r.Need, ticket = r.Ticket };
+            }
+            case "cloud.totp":
+            {
+                var name = await Cloud.LoginTotp(Str(a, "ticket"), Str(a, "code"));
                 _ = RunSync(true);
                 return new { name };
             }
+            case "cloud.totp.start": return await Cloud.TotpStart();
+            case "cloud.totp.confirm": return await Cloud.TotpConfirm(Str(a, "code"));
+            case "cloud.totp.disable": await Cloud.TotpDisable(Str(a, "password"), Str(a, "code")); return new { };
+            case "cloud.passkey.begin": return await Cloud.PasskeyBegin(StrN(a, "name"));
+            case "cloud.passkey.finish":
+            {
+                var name = await Cloud.PasskeyFinish(Str(a, "id"), Str(a, "clientDataJSON"), Str(a, "authenticatorData"), Str(a, "signature"));
+                _ = RunSync(true);
+                return new { name };
+            }
+            case "cloud.passkey.add.begin": return await Cloud.PasskeyAddBegin();
+            case "cloud.passkey.add.finish": return await Cloud.PasskeyAddFinish(Str(a, "clientDataJSON"), Str(a, "attestationObject"), StrN(a, "name"));
+            case "cloud.passkey.remove": await Cloud.PasskeyRemove(Str(a, "id")); return new { };
             case "cloud.logout": await Cloud.Logout(); return new { };
             case "cloud.sync": return await RunSync(true);
             case "cloud.me": return await Cloud.Me();

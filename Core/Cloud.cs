@@ -65,13 +65,46 @@ public static class Cloud
         return j ?? new JsonObject();
     }
 
-    public static async Task<string> Login(string name, string password, bool register, CancellationToken ct = default)
+    public sealed record SessionStart(string? Name, string? Need, string? Ticket);
+
+    private static void StoreSession(JsonNode r, string name)
+    {
+        lock (L) { var st = Load(); st.Name = (string?)r["name"] ?? name; st.Token = Protect((string)r["token"]!); st.SettingsAt = 0; Save(st); }
+    }
+
+    public static async Task<SessionStart> Login(string name, string password, bool register, CancellationToken ct = default)
     {
         name = name.Trim();
         var r = await Call(HttpMethod.Post, register ? "/v1/register" : "/v1/login", new { name, ph = ClientHash(name, password), device = Environment.MachineName }, ct, false);
-        lock (L) { var st = Load(); st.Name = (string?)r["name"] ?? name; st.Token = Protect((string)r["token"]!); st.SettingsAt = 0; Save(st); }
+        if ((string?)r["token"] != null) StoreSession(r, name);
+        return new SessionStart((string?)r["name"] ?? name, (string?)r["need"], (string?)r["ticket"]);
+    }
+
+    public static async Task<string> LoginTotp(string ticket, string code, CancellationToken ct = default)
+    {
+        var r = await Call(HttpMethod.Post, "/v1/login/totp", new { ticket, code, device = Environment.MachineName }, ct, false);
+        StoreSession(r, (string?)r["name"] ?? "");
         return Name!;
     }
+
+    public static Task<JsonNode> TotpStart(CancellationToken ct = default) => Call(HttpMethod.Post, "/v1/totp/start", new { }, ct);
+    public static Task<JsonNode> TotpConfirm(string code, CancellationToken ct = default) => Call(HttpMethod.Post, "/v1/totp/confirm", new { code }, ct);
+    public static Task<JsonNode> TotpDisable(string password, string code, CancellationToken ct = default)
+        => Call(HttpMethod.Delete, "/v1/totp", new { ph = ClientHash(Name ?? "", password), code }, ct);
+
+    public static Task<JsonNode> PasskeyBegin(string? name, CancellationToken ct = default)
+        => Call(HttpMethod.Post, "/v1/passkey/begin", new { name, device = Environment.MachineName }, ct, false);
+    public static async Task<string> PasskeyFinish(string id, string clientData, string authenticatorData, string signature, CancellationToken ct = default)
+    {
+        var r = await Call(HttpMethod.Post, "/v1/passkey/finish", new { id, clientDataJSON = clientData, authenticatorData, signature, device = Environment.MachineName }, ct, false);
+        StoreSession(r, (string?)r["name"] ?? "");
+        return Name!;
+    }
+    public static Task<JsonNode> PasskeyAddBegin(CancellationToken ct = default) => Call(HttpMethod.Post, "/v1/passkey/add/begin", new { }, ct);
+    public static Task<JsonNode> PasskeyAddFinish(string clientData, string attestationObject, string? name, CancellationToken ct = default)
+        => Call(HttpMethod.Post, "/v1/passkey/add/finish", new { clientDataJSON = clientData, attestationObject, name }, ct);
+    public static Task<JsonNode> PasskeyRemove(string id, CancellationToken ct = default)
+        => Call(HttpMethod.Delete, "/v1/passkey?id=" + Uri.EscapeDataString(id), null, ct);
 
     public static async Task Logout(CancellationToken ct = default)
     {
@@ -103,9 +136,9 @@ public static class Cloud
         string? Bin(string f, int max) { var p = Path.Combine(i.Dir, f); return File.Exists(p) && new FileInfo(p).Length <= max ? Convert.ToBase64String(File.ReadAllBytes(p)) : null; }
         var o = JsonSerializer.SerializeToNode(new
         {
-            i.Uid, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.Kind, i.Icon, i.IconUrl, i.Group, i.RamMb, i.JvmArgs, i.Width, i.Height,
+            i.Uid, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.Kind, i.Icon, i.IconUrl, i.BannerUrl, i.Group, i.RamMb, i.JvmArgs, i.Width, i.Height,
             i.PlaySeconds, i.LastPlayed, i.Created, i.ModpackProject, i.ModpackVersion,
-            Content = i.Content.Select(c => new { c.ProjectId, c.VersionId, c.Title, c.Type, c.File, c.IconUrl, c.VersionNumber, c.Dependency, c.Enabled, c.Source }),
+            Content = i.Content.Where(c => !string.IsNullOrEmpty(c.ProjectId)).Select(c => new { c.ProjectId, c.VersionId, c.Title, c.Type, c.File, c.IconUrl, c.VersionNumber, c.Dependency, c.Enabled, c.Source }),
         }, Net.J)!.AsObject();
         o["options"] = Read("options.txt", 128_000);
         o["servers"] = Bin("servers.dat", 96_000);
@@ -132,7 +165,7 @@ public static class Cloud
 
     private static void ApplyMeta(Instance i, JsonNode d)
     {
-        i.Name = (string?)d["name"] ?? i.Name; i.Icon = (string?)d["icon"] ?? i.Icon; i.IconUrl = (string?)d["iconUrl"]; i.Group = (string?)d["group"];
+        i.Name = (string?)d["name"] ?? i.Name; i.Icon = (string?)d["icon"] ?? i.Icon; i.IconUrl = (string?)d["iconUrl"]; if (d["bannerUrl"] != null) i.BannerUrl = (string?)d["bannerUrl"]; i.Group = (string?)d["group"];
         i.RamMb = (int?)d["ramMb"] ?? i.RamMb; i.JvmArgs = (string?)d["jvmArgs"]; i.Width = (int?)d["width"] ?? 0; i.Height = (int?)d["height"] ?? 0;
         i.PlaySeconds = Math.Max(i.PlaySeconds, (long?)d["playSeconds"] ?? 0);
         if (d["lastPlayed"] != null && DateTime.TryParse((string?)d["lastPlayed"], null, System.Globalization.DateTimeStyles.RoundtripKind, out var lp) && (i.LastPlayed == null || lp > i.LastPlayed)) i.LastPlayed = lp.ToUniversalTime();
@@ -211,7 +244,9 @@ public static class Cloud
                 if (byKey.TryGetValue("cfg:" + uid, out var cfg)) try { ApplyConfig(inst, (string)cfg["v"]!); } catch { }
                 foreach (var c in d["content"]?.AsArray() ?? new JsonArray())
                 {
-                    var pid = (string)c!["projectId"]!; var vid = (string?)c["versionId"] ?? ""; var have = inst.Content.FirstOrDefault(x => x.ProjectId == pid);
+                    if (c == null) continue;
+                    var pid = (string?)c["projectId"]; if (string.IsNullOrEmpty(pid)) continue;
+                    var vid = (string?)c["versionId"] ?? ""; var have = inst.Content.FirstOrDefault(x => x.ProjectId == pid);
                     if (have != null && have.VersionId == vid && File.Exists(Path.Combine(Instances.ContentDir(inst, have.Type), have.File + (have.Enabled ? "" : ".disabled")))) continue;
                     missing.Add(new Missing(uid, pid, vid, (string?)c["type"] ?? "mod", (string?)c["source"] ?? "modrinth", (bool?)c["enabled"] ?? true, (string?)c["title"] ?? pid));
                 }

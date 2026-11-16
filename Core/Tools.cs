@@ -188,7 +188,7 @@ public static class Transfer
         }, ct);
     }
 
-    public record Found(string Launcher, string Name, string Path, string Mc, string Loader, string? LoaderVersion);
+    public record Found(string Launcher, string Name, string Path, string Mc, string Loader, string? LoaderVersion, string? Project = null, string? IconUrl = null);
 
     /// <summary>Instances of Prism Launcher / MultiMC and the CurseForge app on this PC.</summary>
     public static List<Found> Scan()
@@ -215,9 +215,13 @@ public static class Transfer
                         else if (uid == "net.minecraftforge") { loader = "forge"; lv = v; }
                         else if (uid == "net.neoforged") { loader = "neoforge"; lv = v; }
                     }
-                    var title = File.ReadLines(Path.Combine(d, "instance.cfg")).FirstOrDefault(l => l.StartsWith("name="))?[5..] ?? Path.GetFileName(d);
+                    var cfg = File.Exists(Path.Combine(d, "instance.cfg")) ? File.ReadAllLines(Path.Combine(d, "instance.cfg")) : Array.Empty<string>();
+                    var title = cfg.FirstOrDefault(l => l.StartsWith("name="))?[5..] ?? Path.GetFileName(d);
+                    var packType = cfg.FirstOrDefault(l => l.StartsWith("ManagedPackType="))?[16..];
+                    var packId = cfg.FirstOrDefault(l => l.StartsWith("ManagedPackID="))?[14..];
+                    var project = string.IsNullOrWhiteSpace(packId) ? null : packType == "modrinth" ? packId : "cf:" + packId.Trim();
                     var mcDir = Directory.Exists(Path.Combine(d, ".minecraft")) ? Path.Combine(d, ".minecraft") : Path.Combine(d, "minecraft");
-                    if (mc.Length > 0) r.Add(new Found(name, title, mcDir, mc, loader, loader == "forge" && lv != null ? mc + "-" + lv : lv));
+                    if (mc.Length > 0) r.Add(new Found(name, title, mcDir, mc, loader, loader == "forge" && lv != null ? mc + "-" + lv : lv, project, null));
                 }
                 catch { }
             }
@@ -234,20 +238,126 @@ public static class Transfer
                     var lid = (string?)j["baseModLoader"]?["name"] ?? "";
                     string loader = "vanilla"; string? lv = null;
                     if (lid.Contains('-')) { loader = lid[..lid.IndexOf('-')]; lv = lid[(lid.IndexOf('-') + 1)..]; if (loader == "forge") lv = mc + "-" + lv; }
-                    if (mc.Length > 0) r.Add(new Found("Mod-Launcher", (string?)j["name"] ?? Path.GetFileName(d), d, mc, loader, lv));
+                    var pack = j["installedModpack"] ?? j["modpack"];
+                    var pid = Num(pack?["modId"]) ?? Num(pack?["projectID"]) ?? Num(j["projectID"]);
+                    var icon = Web(Text(pack?["thumbnailUrl"]) ?? Text(pack?["iconUrl"]) ?? Text(j["thumbnailUrl"]));
+                    if (mc.Length > 0) r.Add(new Found("Mod-Launcher", (string?)j["name"] ?? Path.GetFileName(d), d, mc, loader, lv, pid == null ? null : "cf:" + pid, icon));
                 }
                 catch { }
             }
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        foreach (var dir in new[] { Path.Combine(roaming, "com.modrinth.theseus", "profiles"), Path.Combine(roaming, "ModrinthApp", "profiles"), Path.Combine(roaming, "com.modrinth.app", "profiles") })
+        {
+            if (!Directory.Exists(dir)) continue;
+            foreach (var d in Directory.GetDirectories(dir))
+            {
+                try
+                {
+                    var pf = Path.Combine(d, "profile.json"); if (!File.Exists(pf)) continue;
+                    var j = JsonNode.Parse(File.ReadAllText(pf))!;
+                    var meta = j["metadata"] ?? j;
+                    var mc = Text(meta?["game_version"]) ?? "";
+                    var loader = (Text(meta?["loader"]) ?? Text(meta?["mod_loader"]) ?? "vanilla").ToLowerInvariant();
+                    if (loader is not ("fabric" or "quilt" or "forge" or "neoforge" or "vanilla")) loader = "vanilla";
+                    var lv = Text(meta?["loader_version"]) ?? Text(meta?["mod_loader_version"]);
+                    if (loader == "forge" && lv != null && !lv.StartsWith(mc + "-")) lv = mc + "-" + lv;
+                    var mcDir = Directory.Exists(Path.Combine(d, ".minecraft")) ? Path.Combine(d, ".minecraft")
+                        : Directory.Exists(Path.Combine(d, "minecraft")) ? Path.Combine(d, "minecraft") : d;
+                    var project = Text(meta?["linked_data"]?["project_id"]);
+                    var icon = Text(meta?["icon_url"]) ?? Text(meta?["icon"]);
+                    if (mc.Length > 0) r.Add(new Found("Profil", Text(meta?["name"]) ?? Path.GetFileName(d), mcDir, mc, loader, lv, project, icon));
+                }
+                catch { }
+            }
+        }
         return r;
+    }
+
+    private static string? Text(JsonNode? n)
+    {
+        if (n == null) return null;
+        if (n is JsonValue v && v.TryGetValue<string>(out var s) && s.Length > 0) return s;
+        return Text(n["id"]);
+    }
+
+    private static string? Num(JsonNode? n)
+    {
+        if (n is not JsonValue v) return null;
+        if (v.TryGetValue<int>(out var i) && i > 0) return i.ToString();
+        if (v.TryGetValue<long>(out var l) && l > 0) return l.ToString();
+        if (v.TryGetValue<string>(out var s) && long.TryParse(s, out var p) && p > 0) return p.ToString();
+        return null;
+    }
+
+    private static string? Web(string? u)
+    {
+        if (string.IsNullOrWhiteSpace(u)) return null;
+        if (u.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) u = "https://" + u[7..];
+        return u.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? u : null;
+    }
+
+    /// <summary>Same installed pack on this PC, so an already imported instance can pick up its icon.</summary>
+    public static Found? Match(string name)
+    {
+        var n = name.Trim();
+        var all = Scan();
+        return all.FirstOrDefault(f => string.Equals(f.Name.Trim(), n, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(f.Project))
+            ?? all.FirstOrDefault(f => string.Equals(f.Name.Trim(), n, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Fills the project, profile picture and banner from the original install or the catalog.</summary>
+    public static async Task<bool> Enrich(Instance inst, CancellationToken ct = default)
+    {
+        var changed = false;
+        if (string.IsNullOrEmpty(inst.IconUrl) || string.IsNullOrEmpty(inst.ModpackProject))
+        {
+            var hit = Match(inst.Name);
+            if (hit != null)
+            {
+                if (string.IsNullOrEmpty(inst.ModpackProject) && !string.IsNullOrEmpty(hit.Project)) { inst.ModpackProject = hit.Project; changed = true; }
+                if (string.IsNullOrEmpty(inst.IconUrl) && !string.IsNullOrEmpty(hit.IconUrl)) { inst.IconUrl = hit.IconUrl; changed = true; }
+            }
+        }
+        if (!string.IsNullOrEmpty(inst.ModpackProject) && inst.ModpackProject.StartsWith("cf:", StringComparison.Ordinal) && int.TryParse(inst.ModpackProject[3..], out var cfId)
+            && (string.IsNullOrEmpty(inst.BannerUrl) || string.IsNullOrEmpty(inst.IconUrl)) && CurseForge.Ready)
+        {
+            try
+            {
+                var mod = await CurseForge.Mod(cfId, ct);
+                var icon = Web((string?)mod["logo"]?["thumbnailUrl"] ?? (string?)mod["logo"]?["url"]);
+                var shot = mod["screenshots"]?.AsArray()?.FirstOrDefault();
+                var banner = Web((string?)shot?["thumbnailUrl"] ?? (string?)shot?["url"]);
+                if (icon != null && inst.IconUrl != icon) { inst.IconUrl = icon; changed = true; }
+                if (string.IsNullOrEmpty(inst.BannerUrl) && banner != null) { inst.BannerUrl = banner; changed = true; }
+            }
+            catch { }
+        }
+        else if (!string.IsNullOrEmpty(inst.ModpackProject) && !inst.ModpackProject.StartsWith("cf:", StringComparison.Ordinal) && string.IsNullOrEmpty(inst.BannerUrl))
+        {
+            try
+            {
+                var p = await Modrinth.Project(inst.ModpackProject, ct);
+                var banner = Modrinth.Cover(p);
+                var icon = Web((string?)p["icon_url"]);
+                if (banner != null) { inst.BannerUrl = banner; changed = true; }
+                if (string.IsNullOrEmpty(inst.IconUrl) && icon != null) { inst.IconUrl = icon; changed = true; }
+            }
+            catch { }
+        }
+        if (!string.IsNullOrEmpty(inst.ModpackProject) && inst.Kind == "custom") { inst.Kind = "modpack"; changed = true; }
+        return changed;
     }
 
     public static async Task<Instance> Import(Found f, IProgress<Progress>? p, CancellationToken ct = default)
     {
-        var inst = Instances.Create(f.Name, f.Mc, f.Loader, f.LoaderVersion);
-        inst.Group = f.Launcher; inst.Icon = "wood";
+        var kind = f.Loader != "vanilla" ? "modpack" : "custom";
+        var inst = Instances.Create(f.Name, f.Mc, f.Loader, f.LoaderVersion, kind);
+        inst.Group = f.Launcher; inst.Icon = kind == "modpack" ? "box" : "wood";
+        if (!string.IsNullOrEmpty(f.Project)) inst.ModpackProject = f.Project;
+        if (!string.IsNullOrEmpty(f.IconUrl) && f.IconUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { inst.IconUrl = f.IconUrl; inst.Icon = "box"; }
         Instances.Save(inst);
         var list = Directory.GetFiles(f.Path, "*", SearchOption.AllDirectories)
-            .Where(x => { var rel = Path.GetRelativePath(f.Path, x); return !rel.StartsWith("logs") && !rel.StartsWith("crash-reports") && !rel.StartsWith(".fabric") && Path.GetFileName(x) != "minecraftinstance.json"; }).ToList();
+            .Where(x => { var rel = Path.GetRelativePath(f.Path, x); var name = Path.GetFileName(x); return !rel.StartsWith("logs") && !rel.StartsWith("crash-reports") && !rel.StartsWith(".fabric") && name is not ("minecraftinstance.json" or "profile.json"); }).ToList();
         int i = 0;
         await Task.Run(() =>
         {
@@ -259,6 +369,13 @@ public static class Transfer
                 File.Copy(x, dst, true);
             }
         }, ct);
+        var mods = Path.Combine(inst.Dir, "mods");
+        if (inst.Kind != "modpack" && Directory.Exists(mods) && Directory.EnumerateFiles(mods, "*.jar").Any())
+        {
+            inst.Kind = "modpack";
+            if (inst.Icon == "wood") inst.Icon = "box";
+            Instances.Save(inst);
+        }
         return inst;
     }
 }

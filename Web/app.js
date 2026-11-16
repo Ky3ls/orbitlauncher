@@ -7,6 +7,14 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const jsq = s => esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 const ico = (id, cls = 'i') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
 const bytes = b => { if (b == null || b < 0) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return (i ? b.toFixed(1).replace('.', ',') : b) + ' ' + u[i]; };
+const plain = s => String(s ?? '').replace(/§./g, '').replace(/ {2,}/g, ' ').trim();
+const contentName = x => {
+  const file = plain(x.file);
+  const stem = file.replace(/\.disabled$/i, '').replace(/\.(zip|jar)$/i, '');
+  const t = plain(x.title);
+  if (!t || t.toLowerCase() === file.toLowerCase() || t.toLowerCase() === stem.toLowerCase()) return stem || file;
+  return t;
+};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const num = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' Mio.' : n >= 1e3 ? Math.round(n / 1e3) + ' Tsd.' : String(n ?? 0);
 const ago = d => {
@@ -566,73 +574,162 @@ PAGES.inst = (el, a) => {
   S.itab = a.tab || (S.itabFor === i.id ? S.itab : 'content'); S.itabFor = i.id;
   if (!['content', 'worlds', 'logs', 'orbit'].includes(S.itab) || (S.itab === 'orbit' && !hasOrbitMod(i))) S.itab = 'content';
   crumbs([['Bibliothek', "go('library')"], [i.name]]);
-  el.innerHTML = `<div id="iHead"></div><div class="itabs" id="iTabs"></div><div id="iBody"></div>`;
+  el.innerHTML = `<div id="iHead"></div><div class="dgrid istage"><aside class="filters" id="iSide"></aside><div id="iBody"></div></div>`;
   instHead(i);
-  $('#iTabs').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { S.itab = b.dataset.t; S.hist[S.hi].a = { id: i.id, tab: S.itab }; instTabs(i); } };
+  $('#iSide').onclick = e => {
+    const tab = e.target.closest('[data-tab]');
+    if (tab) {
+      if (tab.dataset.tab === S.itab) return;
+      S.itab = tab.dataset.tab; S.hist[S.hi].a = { id: i.id, tab: S.itab }; instTabs(i); return;
+    }
+    const k = e.target.closest('[data-k]');
+    if (!k || !S.content || k.dataset.k === S.content.type) return;
+    S.content.type = k.dataset.k; S.content.page = 1;
+    renderContent(i, i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES);
+  };
   instTabs(i);
 };
 const hasOrbitMod = i => i.kind === 'orbit' && i.loader === 'fabric' && (S.orbitSupported || ['26.3']).includes(i.mcVersion);
 function instHead(i) {
   const run = S.running.has(i.id), el = $('#iHead'); if (!el) return;
-  el.innerHTML = `<div class="ihero"><div class="ih-bg" style="${i.iconUrl ? `background-image:url('${esc(i.iconUrl)}')` : ''}">${i.iconUrl ? '' : `<span>${blockSvg(i.icon)}</span>`}</div><div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1>
-      <div class="meta">${loaderChip(i.loader)}<span class="stat">${ico('cube')}Minecraft <b>${esc(i.mcVersion)}</b></span>${i.loaderVersion ? `<span class="stat">${ico('tag')}${esc(i.loaderVersion)}</span>` : ''}<span class="stat">${ico('clock')}<b>${ptime(i.playSeconds)}</b> gespielt</span><span class="stat">${ico('cal')}${esc(ago(i.lastPlayed))}</span></div></div>
+  const loader = `${LOADERS[i.loader]?.[0] || i.loader}${i.loaderVersion ? ' ' + i.loaderVersion : ''}`;
+  const cover = i.bannerUrl || '';
+  el.innerHTML = `<div class="ihero"><div class="ih-bg ${cover ? 'cover' : ''}" id="iBanner" style="${cover ? `background-image:url('${esc(cover)}')` : (i.iconUrl ? `background-image:url('${esc(i.iconUrl)}')` : '')}">${cover || i.iconUrl ? '' : `<span>${blockSvg(i.icon)}</span>`}</div><div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1></div>
     <div class="acts"><button class="btn lg ${run ? 'stop' : 'play glow'}" onclick="play('${jsq(i.id)}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
       <button class="ib" title="Ordner öffnen" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}</button>
       <button class="ib" title="Einstellungen" onclick="instSettings('${jsq(i.id)}')">${ico('settings')}</button>
-      <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div></div>`;
+      <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div>
+    <div class="istats"><div><small>Minecraft</small><b>${esc(i.mcVersion)}</b></div><div><small>Loader</small><b>${esc(loader)}</b></div><div><small>Spielzeit</small><b>${ptime(i.playSeconds)}</b></div><div><small>Zuletzt</small><b>${esc(ago(i.lastPlayed))}</b></div></div></div>`;
+  instBanner(i);
+  instBrand(i);
+}
+function instBrand(i) {
+  if ((i.iconUrl && i.bannerUrl) || i._brand) return;
+  i._brand = 1;
+  api('instance.brand', { id: i.id }).then(r => {
+    if (!r || S.page !== 'inst' || S.args.id !== i.id) return;
+    if (r.iconUrl) i.iconUrl = r.iconUrl;
+    if (r.bannerUrl) i.bannerUrl = r.bannerUrl;
+    if (r.modpackProject) i.modpackProject = r.modpackProject;
+    if (r.kind) i.kind = r.kind;
+    if (r.iconUrl || r.bannerUrl || r.kind) { i._banner = 0; instHead(i); }
+  }).catch(() => { });
+}
+function instBanner(i) {
+  if (i.bannerUrl || i._banner || !i.modpackProject) return;
+  i._banner = 1;
+  loadProject(i.modpackProject).then(p => {
+    const g = (p.gallery || []).find(x => x.featured) || p.gallery?.[0];
+    const url = g?.url || g?.raw_url;
+    if (!url) return;
+    i.bannerUrl = url;
+    const bg = $('#iBanner');
+    if (bg && S.page === 'inst' && S.args.id === i.id) { bg.style.backgroundImage = `url("${String(url).replace(/["\\]/g, '')}")`; bg.classList.add('cover'); bg.replaceChildren(); }
+    api('instance.update', { id: i.id, patch: { bannerUrl: url } }).catch(() => { });
+  }).catch(() => { });
+}
+const sideRow = (on, attr, icon, label, count) => `<button class="fo ${on ? 'on' : ''}" ${attr}><span class="cb ${on ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>${ico(icon, 'i ci')}<span class="fx">${label}</span>${count !== '' && count != null ? `<em>${count}</em>` : ''}</button>`;
+function instSide(i) {
+  const el = $('#iSide'); if (!el) return;
+  const areas = [['content', 'Inhalte', 'layers', S.content?.id === i.id ? S.content.all.length : (i.mods || '')], ['worlds', 'Welten', 'earth', ''], ['logs', 'Logs', 'terminal', '']];
+  if (hasOrbitMod(i)) areas.push(['orbit', 'Orbit Client', 'orbit', '']);
+  const types = i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES;
+  const C = S.content?.id === i.id ? S.content : null;
+  if (C?.type === 'all') C.type = types[0][0];
+  const art = types.map(([t, n, ic]) => [t, n, ic, C ? C.all.filter(x => x.type === t).length : '']);
+  el.innerHTML = `<div class="fbox"><div class="fh">${ico('layers')}Bereich</div><div class="fbody">${areas.map(([k, n, ic, c]) => sideRow(S.itab === k, `data-tab="${k}"`, ic, n, c)).join('')}</div></div>
+    ${S.itab === 'content' ? `<div class="fbox"><div class="fh">${ico('puzzle')}Art</div><div class="fbody" id="cTypes">${art.map(([k, n, ic, c]) => sideRow((C?.type || types[0][0]) === k, `data-k="${k}"`, ic, n, c)).join('')}</div></div>` : ''}`;
 }
 function instTabs(i) {
-  const t = [['content', 'Inhalte', 'layers', S.content?.id === i.id ? S.content.all.length : (i.mods || '')], ['worlds', 'Welten', 'earth'], ['logs', 'Logs', 'terminal']];
-  if (hasOrbitMod(i)) t.push(['orbit', 'Orbit Client', 'orbit']);
-  $('#iTabs').innerHTML = t.map(([k, n, ic, c]) => `<button data-t="${k}" class="${S.itab === k ? 'on' : ''}">${ico(ic)}${n}${c ? `<span class="c">${c}</span>` : ''}</button>`).join('');
+  instSide(i);
   ({ content: instContent, worlds: instWorlds, logs: instLogs, orbit: instOrbit })[S.itab](i);
 }
 
 /* ---------- content ---------- */
+const PAGE = 24;
 async function instContent(i) {
   const body = $('#iBody');
-  const C = S.content?.id === i.id ? S.content : (S.content = { id: i.id, all: [], type: 'all', q: '', sel: new Set(), updates: null, loaded: false });
   const types = i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES;
-  body.innerHTML = `<div class="cbar"><div class="fchips" id="cTypes"></div><div class="srch">${ico('search')}<input class="in" id="cQ" placeholder="Inhalte durchsuchen…" value="${esc(C.q)}"></div><span class="sp"></span>
+  const C = S.content?.id === i.id ? S.content : (S.content = { id: i.id, all: [], type: types[0][0], q: '', page: 1, sel: new Set(), updates: null, loaded: false });
+  if (C.type === 'all') C.type = types[0][0];
+  if (!C.page) C.page = 1;
+  body.innerHTML = `<div class="rbar"><span class="cb" id="cAll" title="Sichtbare auswählen"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div class="srch">${ico('search')}<input class="in" id="cQ" placeholder="Inhalte durchsuchen…" value="${esc(C.q)}"></div>
     <button class="btn sm" id="cUpd" onclick="checkUpdates()">${ico('refresh')}Updates</button>
     <button class="btn sm" onclick="addFile()">${ico('file')}Aus Datei</button>
     <button class="btn sm p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('plus')}Inhalte hinzufügen</button></div>
     ${i.manualDownloads?.length ? `<div class="note w" style="margin:0 0 12px"><b>${i.manualDownloads.length} Datei(en) musst du selbst laden</b>, weil die Autoren nur Downloads über ihre eigene Website erlauben. Leg sie danach in den passenden Ordner.<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${i.manualDownloads.map(m => { const [n, u] = m.split('|'); return `<button class="fchip" onclick="openUrl('${jsq(u)}')">${ico('ext')}${esc(n)}</button>`; }).join('')}</div></div>` : ''}
     <div id="cSel"></div><div id="cList">${C.loaded ? '' : '<div class="spinner"></div>'}</div>`;
   const draw = () => renderContent(i, types);
-  $('#cQ').oninput = e => { C.q = e.target.value; draw(); };
+  const load = () => Promise.all(types.map(([t]) => api('instance.content', { id: i.id, type: t }).then(l => l.map(x => ({ ...x, type: t }))).catch(() => [])));
+  $('#cQ').oninput = e => { C.q = e.target.value; C.page = 1; draw(); };
   if (C.loaded) draw();
   try {
-    const res = await Promise.all(types.map(([t]) => api('instance.content', { id: i.id, type: t }).then(l => l.map(x => ({ ...x, type: t }))).catch(() => [])));
+    const res = await load();
     if (S.content !== C) return;
     C.all = res.flat(); C.loaded = true;
-    if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') { draw(); const tb = $('#iTabs [data-t=content] .c'); if (tb) tb.textContent = C.all.length; }
+    if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') { draw(); const tb = $('#iSide [data-tab=content] em'); if (tb) tb.textContent = C.all.length; }
+    const seen = () => { if (C.updates == null && C.all.some(x => x.projectId)) checkUpdates(true); };
+    const unresolved = C.all.some(x => !x.projectId && x.source !== 'local');
+    if (unresolved) api('content.resolve', { id: i.id }).then(async r => {
+      if (!r?.changed || S.content !== C || S.page !== 'inst' || S.args.id !== i.id) return seen();
+      const again = await load();
+      if (S.content !== C) return;
+      C.all = again.flat();
+      draw();
+      seen();
+    }).catch(seen);
+    else seen();
   } catch (e) { fail('Inhalte', e); }
 }
 function renderContent(i, types) {
   const C = S.content, el = $('#cList'); if (!el) return;
   const counts = Object.fromEntries(types.map(([t]) => [t, C.all.filter(x => x.type === t).length]));
-  $('#cTypes').innerHTML = [['all', 'Alle', null]].concat(types).map(([t, n]) => `<button class="fchip ${C.type === t ? 'on' : ''}" data-t="${t}">${n}<i>${t === 'all' ? C.all.length : counts[t]}</i></button>`).join('');
-  $('#cTypes').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; C.type = b.dataset.t; renderContent(i, types); };
+  const updIds = new Set((C.updates || []).map(u => u.projectId));
+  const typeBox = $('#cTypes');
+  if (C.type === 'all') C.type = types[0][0];
+  const typeRows = types.map(([t, n, ic]) => [t, n, ic, counts[t]]);
+  if (updIds.size) typeRows.push(['updates', 'Updates', 'arrowup', updIds.size]);
+  if (typeBox) typeBox.innerHTML = typeRows.map(([t, n, ic, c]) => sideRow(C.type === t, `data-k="${t}"`, ic, n, c)).join('');
   const q = C.q.trim().toLowerCase();
-  const list = C.all.filter(x => (C.type === 'all' || x.type === C.type) && (!q || (x.title + ' ' + x.file).toLowerCase().includes(q)))
-    .sort((a, b) => (a.dependency - b.dependency) || a.title.localeCompare(b.title, 'de'));
+  const list = C.all.filter(x => (C.type === 'updates' ? updIds.has(x.projectId) : x.type === C.type) && (!q || (contentName(x) + ' ' + plain(x.file)).toLowerCase().includes(q)))
+    .sort((a, b) => (a.dependency - b.dependency) || contentName(a).localeCompare(contentName(b), 'de'));
   const upd = new Map((C.updates || []).map(u => [u.projectId, u]));
   if (!C.all.length) {
     el.innerHTML = `<div class="lempty"><span class="iic">${ico('puzzle')}</span><h2>Noch keine Inhalte</h2><p>Füg Mods, Ressourcenpakete oder Shader aus dem Katalog hinzu. Abhängigkeiten werden automatisch mitinstalliert.</p>
       <button class="btn p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('compass')}Inhalte entdecken</button></div>`;
-    $('#cSel').innerHTML = ''; return;
+    $('#cSel').innerHTML = ''; const box = $('#cAll'); if (box) box.style.visibility = 'hidden'; return;
   }
   const key = x => x.type + '|' + x.file;
-  const allSel = list.length && list.every(x => C.sel.has(key(x)));
-  el.innerHTML = `<div class="ctable"><div class="ch"><span class="cb ${allSel ? 'on' : ''}" data-all><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>Name</span><span>Version</span><span style="text-align:right">Aktionen</span></div>
-    ${list.length ? list.map(x => {
-      const u = x.projectId && upd.get(x.projectId), k = key(x);
-      return `<div class="cr ${x.on ? '' : 'off'}" data-k="${esc(k)}"><span class="cb ${C.sel.has(k) ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
-        <div class="nm">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<div><b>${esc(x.title)}${x.dependency ? '<span class="chip m">Abhängigkeit</span>' : ''}</b><small>${esc(x.file)}</small></div></div>
-        <div class="vr ell">${esc(x.version || '—')}<small>${bytes(x.size)}${x.projectId ? '' : ' · manuell'}</small></div>
-        <div class="ac">${u ? `<button class="ib sm up" title="Update auf ${esc(u.to)}" data-u="${esc(u.projectId)}">${ico('arrowup')}</button>` : ''}${x.projectId ? `<button class="ib sm" title="Projekt ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<div class="tg sm ${x.on ? 'on' : ''}" data-tg></div><button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></div></div>`;
-    }).join('') : '<div class="cr"><span></span><span class="muted">Nichts gefunden.</span></div>'}</div>`;
+  const pages = Math.max(1, Math.ceil(list.length / PAGE));
+  if (C.page > pages) C.page = pages;
+  if (C.page < 1) C.page = 1;
+  const start = (C.page - 1) * PAGE;
+  const view = list.slice(start, start + PAGE);
+  const allSel = view.length && view.every(x => C.sel.has(key(x)));
+  const allBox = $('#cAll');
+  if (allBox) {
+    allBox.style.visibility = view.length ? '' : 'hidden';
+    allBox.classList.toggle('on', !!allSel);
+    allBox.onclick = () => { const on = view.every(x => C.sel.has(key(x))); if (on) view.forEach(x => C.sel.delete(key(x))); else view.forEach(x => C.sel.add(key(x))); renderContent(i, types); };
+  }
+  const tile = x => {
+    const u = x.projectId && upd.get(x.projectId), k = key(x), sel = C.sel.has(k);
+    const manual = !x.projectId && x.source !== 'local';
+    const bits = [];
+    if (x.dependency) bits.push('Abhängigkeit');
+    if (x.version) bits.push(x.version);
+    if (x.size >= 0) bits.push(bytes(x.size));
+    else bits.push('Ordner');
+    if (C.type === 'all') bits.push({ mod: 'Mod', resourcepack: 'Paket', shader: 'Shader' }[x.type] || '');
+    if (manual) bits.push('Selbst hinzugefügt');
+    const meta = `<span class="ell">${esc(bits.filter(Boolean).join(' · '))}</span>${x.projectId ? `<button class="vlink" data-ver>Version</button>` : ''}`;
+    return `<article class="ctile ${x.on ? '' : 'off'} ${sel ? 'sel' : ''} ${u ? 'hasup' : ''}" data-k="${esc(k)}" title="${esc(plain(x.file))}"><div class="pv">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<span class="cb ${sel ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+      <div class="tx"><b>${esc(contentName(x))}</b><small>${meta}</small></div>
+      <div class="ac">${u ? `<button class="ib sm up" data-u title="Aktualisieren">${ico('arrowup')}</button>` : ''}<span class="tools">${x.projectId ? `<button class="ib sm" title="Projekt ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></span><div class="tg sm ${x.on ? 'on' : ''}" data-tg></div></div></article>`;
+  };
+  const sections = (C.type === 'all' || C.type === 'updates' ? types : types.filter(t => t[0] === C.type)).map(([t, n]) => ({ t, n, total: list.filter(x => x.type === t).length, items: view.filter(x => x.type === t) })).filter(g => g.items.length);
+  const pager = pages > 1 ? `<nav class="cpager"><button class="ib sm" data-pg="prev" ${C.page <= 1 ? 'disabled' : ''}>${ico('left')}</button><span>Seite ${C.page} von ${pages}</span><button class="ib sm" data-pg="next" ${C.page >= pages ? 'disabled' : ''}>${ico('right')}</button></nav>` : '';
+  el.innerHTML = sections.length ? `<div class="cgroups">${sections.map(g => `<section class="cgrp">${C.type === 'all' ? `<h3>${esc(g.n)}<i>${g.total}</i></h3>` : ''}<div class="cgrid">${g.items.map(tile).join('')}</div></section>`).join('')}</div>${pager}` : '<div class="empty">Nichts gefunden.</div>';
   const selBar = () => {
     const n = C.sel.size;
     $('#cSel').innerHTML = n ? `<div class="selbar"><b>${n} ausgewählt</b><span class="sp"></span><button class="btn sm" data-b="on">${ico('check')}Aktivieren</button><button class="btn sm" data-b="off">${ico('x')}Deaktivieren</button><button class="btn sm d" data-b="rm">${ico('trash')}Entfernen</button><button class="ib sm ghost" data-b="clr">${ico('x')}</button></div>` : '';
@@ -647,10 +744,17 @@ function renderContent(i, types) {
     C.sel.clear(); renderContent(i, types);
   };
   el.onclick = async e => {
-    if (e.target.closest('[data-all]')) { if (allSel) list.forEach(x => C.sel.delete(key(x))); else list.forEach(x => C.sel.add(key(x))); return renderContent(i, types); }
-    const row = e.target.closest('.cr[data-k]'); if (!row) return;
+    const pg = e.target.closest('[data-pg]');
+    if (pg && !pg.disabled) { C.page += pg.dataset.pg === 'next' ? 1 : -1; return renderContent(i, types); }
+    const row = e.target.closest('.ctile[data-k]'); if (!row) return;
     const x = C.all.find(y => key(y) === row.dataset.k); if (!x) return;
-    if (e.target.closest('[data-s]')) { C.sel.has(row.dataset.k) ? C.sel.delete(row.dataset.k) : C.sel.add(row.dataset.k); e.target.closest('[data-s]').classList.toggle('on'); return selBar(); }
+    if (e.target.closest('[data-s]')) {
+      C.sel.has(row.dataset.k) ? C.sel.delete(row.dataset.k) : C.sel.add(row.dataset.k);
+      e.target.closest('[data-s]').classList.toggle('on');
+      row.classList.toggle('sel', C.sel.has(row.dataset.k));
+      if (allBox) allBox.classList.toggle('on', view.length && view.every(x => C.sel.has(key(x))));
+      return selBar();
+    }
     if (e.target.closest('[data-p]')) return go('project', { id: x.projectId });
     if (e.target.closest('[data-tg]')) {
       const on = !x.on; x.on = on; row.classList.toggle('off', !on); e.target.closest('[data-tg]').classList.toggle('on', on);
@@ -658,30 +762,69 @@ function renderContent(i, types) {
       return;
     }
     if (e.target.closest('[data-rm]')) {
-      if (!await confirmBox('Entfernen?', `„${x.title}“ wird aus der Instanz gelöscht.`, 'Entfernen', true)) return;
+      if (!await confirmBox('Entfernen?', `„${contentName(x)}“ wird aus der Instanz gelöscht.`, 'Entfernen', true)) return;
       try { await api('content.remove', { id: i.id, type: x.type, file: x.file }); C.all = C.all.filter(y => y !== x); renderContent(i, types); } catch (er) { fail('Fehler', er); }
       return;
     }
-    if (e.target.closest('[data-u]')) return updateAll();
+    if (e.target.closest('[data-u]')) {
+      const hit = upd.get(x.projectId); if (!hit) return;
+      if (!await confirmBox(`„${contentName(x)}“ wirklich aktualisieren?`, `Neue Version: ${hit.to}`, 'Aktualisieren')) return;
+      return setContentVersion(i, x, hit.versionId);
+    }
+    if (e.target.closest('[data-ver]')) return pickVersion(i, x);
   };
 }
-async function checkUpdates() {
-  const i = instById(S.args.id), C = S.content; if (!i || !C) return;
-  const b = $('#cUpd'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…';
+const CH_DE = { release: 'Release', beta: 'Beta', alpha: 'Alpha' };
+async function checkUpdates(silent) {
+  const i = instById(S.args.id), C = S.content; if (!i || !C || C.checking) return;
+  C.checking = true;
+  const b = $('#cUpd');
+  if (b) { b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…'; }
   try {
-    C.updates = await api('content.updates', { id: i.id });
+    C.updates = await api('content.updates', { id: i.id }) || [];
     const n = C.updates.length;
-    b.disabled = false;
-    if (n) { b.className = 'btn sm p'; b.innerHTML = ico('download') + `Alle aktualisieren (${n})`; b.onclick = updateAll; }
-    else { b.innerHTML = ico('check') + 'Alles aktuell'; }
-    renderContent(i, i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES);
-  } catch (e) { b.disabled = false; b.innerHTML = ico('refresh') + 'Updates prüfen'; fail('Updates', e); }
+    if (b) {
+      b.disabled = false;
+      if (n) { b.className = 'btn sm p'; b.innerHTML = ico('download') + `Alle aktualisieren (${n})`; b.onclick = updateAll; }
+      else { b.className = 'btn sm'; b.innerHTML = ico('check') + 'Alles aktuell'; b.onclick = () => checkUpdates(false); }
+    }
+    if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') renderContent(i, i.loader === 'vanilla' ? CTYPES.slice(1) : CTYPES);
+  } catch (e) {
+    if (b) { b.disabled = false; b.className = 'btn sm'; b.innerHTML = ico('refresh') + 'Updates'; b.onclick = () => checkUpdates(false); }
+    if (!silent) fail('Updates', e);
+  } finally { C.checking = false; }
 }
 window.checkUpdates = checkUpdates;
 async function updateAll() {
-  const i = instById(S.args.id); if (!i) return;
+  const i = instById(S.args.id), C = S.content; if (!i || !C?.updates?.length) return;
+  if (!await confirmBox(`Alle ${C.updates.length} wirklich aktualisieren?`, 'Jede Datei wird auf die neueste passende Version gesetzt.', 'Aktualisieren')) return;
   try { const r = await api('content.updateAll', { id: i.id }); toast('Aktualisiert', `${r.count} Datei${r.count === 1 ? '' : 'en'} in ${i.name}`); S.content.updates = []; S.content.loaded = false; instContent(i); }
   catch (e) { fail('Update fehlgeschlagen', e); }
+}
+async function setContentVersion(i, x, versionId) {
+  try {
+    await api('content.setVersion', { id: i.id, projectId: x.projectId, versionId });
+    toast('Version gewechselt', contentName(x));
+    const C = S.content;
+    if (C) { C.updates = (C.updates || []).filter(u => u.projectId !== x.projectId); C.loaded = false; }
+    instContent(i);
+  } catch (e) { fail('Version', e); }
+}
+async function pickVersion(i, x) {
+  const u = (S.content?.updates || []).find(v => v.projectId === x.projectId);
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Versionen</div><h1>${esc(contentName(x))}</h1><p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Installiert ist ${esc(x.version || 'diese Datei')}. Neuere und ältere Versionen für ${esc(i.mcVersion)}.</p><div id="vPick"><div class="spinner"></div></div>`, 'form');
+  try {
+    const list = await api('content.versions', { id: i.id, projectId: x.projectId });
+    const box = $('#vPick'); if (!box) return;
+    if (!list?.length) { box.innerHTML = '<div class="empty">Keine passende Version für diese Instanz.</div>'; return; }
+    box.innerHTML = `<div class="vlist">${list.map(v => `<div class="vrow ${v.current ? 'on' : ''}"><div class="tx"><b>${esc(v.number || v.name)}</b><small>${esc(CH_DE[v.channel] || 'Release')} · ${esc(dateDe(v.date))}</small></div>${v.current ? '<span class="chip">Installiert</span>' : `<button class="btn sm ${u && u.versionId === v.id ? 'p' : ''}" data-vid="${esc(v.id)}" data-num="${esc(v.number || v.name)}">${u && u.versionId === v.id ? 'Aktualisieren' : 'Installieren'}</button>`}</div>`).join('')}</div>`;
+    box.onclick = async e => {
+      const b = e.target.closest('[data-vid]'); if (!b || b.disabled) return;
+      const num = b.dataset.num || 'diese Version';
+      if (!await confirmBox(`„${contentName(x)}“ wirklich auf ${num} setzen?`, 'Die aktuelle Datei wird ersetzt.', b.textContent.trim() === 'Aktualisieren' ? 'Aktualisieren' : 'Installieren')) return;
+      b.disabled = true; closeModal(); setContentVersion(i, x, b.dataset.vid);
+    };
+  } catch (e) { fail('Versionen', e); closeModal(); }
 }
 async function addFile() {
   const i = instById(S.args.id), C = S.content; if (!i) return;
@@ -1838,28 +1981,170 @@ function cloudEvent(d) {
   cloudUI(d.state);
   if (S.page === 'settings' && S.stab === 'cloud' && d.state !== 'sync') setBody();
 }
-function orbitLogin(register = false) {
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="upd-hero"><span class="iic">${blockSvg('orbit')}</span><div><div class="kicker">Orbit-Konto</div><h1>${register ? 'Konto erstellen' : 'Bei Orbit anmelden'}</h1></div></div>
-    <p class="sub" style="margin:12px 0 0;max-width:none;text-align:left">Deine Instanzen, Mod-Listen, Einstellungen und Skins liegen dann auf deinem Konto. Auf jedem PC anmelden, und alles ist wieder da. Mods werden dabei frisch aus dem Katalog geladen.</p>
-    <label class="fl">Name</label><input class="in" id="olName" maxlength="20" placeholder="3–20 Zeichen, Buchstaben, Zahlen, _" autocomplete="username">
-    <label class="fl">Passwort</label><input class="in" id="olPw" type="password" placeholder="${register ? 'Mindestens 8 Zeichen' : ''}" autocomplete="${register ? 'new-password' : 'current-password'}">
-    ${register ? '<label class="fl">Passwort wiederholen</label><input class="in" id="olPw2" type="password" autocomplete="new-password"><p class="fine">Es gibt keine E-Mail-Wiederherstellung. Merk dir dein Passwort gut. Es verlässt deinen PC nur verschlüsselt.</p>' : ''}
-    <div class="g-err" id="olErr" style="text-align:left"></div>
-    <div class="act" style="justify-content:space-between"><button class="btn" onclick="orbitLogin(${!register})">${register ? 'Ich habe schon ein Konto' : 'Neues Konto erstellen'}</button><button class="btn p" id="olGo">${ico(register ? 'plus' : 'user')}${register ? 'Erstellen' : 'Anmelden'}</button></div>`, 'form');
+function orbitLogin(register = false, keep) {
+  const name0 = keep?.name || '', pw0 = keep?.pw || '';
+  const perks = [['library', 'Instanzen', 'Version, RAM, Configs und Spielzeit'], ['puzzle', 'Mod-Listen', 'Exakte Versionen, frisch aus dem Katalog'], ['sparkle', 'Skins und Design', 'Bibliothek, Akzentfarbe und HUD']];
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>
+    <aside class="auth-side">
+      <span class="auth-mark">${blockSvg('orbit')}</span>
+      <h2>Dein Spiel, auf jedem PC.</h2>
+      <p>Ein Orbit-Konto hält Instanzen, Mods, Einstellungen und Skins zusammen. Anmelden, und auf dem nächsten PC ist alles wieder da.</p>
+      <div class="auth-perks">${perks.map(([ic, t, s]) => `<div class="auth-perk"><span>${ico(ic)}</span><div><b>${t}</b><small>${s}</small></div></div>`).join('')}</div>
+    </aside>
+    <div class="auth-main">
+      <div class="auth-sw"><button type="button" id="olIn" class="${register ? '' : 'on'}">Anmelden</button><button type="button" id="olUp" class="${register ? 'on' : ''}">Konto erstellen</button></div>
+      <h1>${register ? 'Neues Konto' : 'Willkommen zurück'}</h1>
+      <p class="auth-lead">${register ? 'Name und Passwort reichen. Danach gleicht Orbit deine Instanzen ab.' : 'Melde dich an. Deine Instanzen werden mit diesem PC abgeglichen.'}</p>
+      <label class="fl" for="olName">Name</label>
+      <div class="auth-field">${ico('user', 'lead')}<input class="in" id="olName" maxlength="20" value="${esc(name0)}" placeholder="z. B. Ky3ls" autocomplete="username" spellcheck="false"></div>
+      <p class="auth-hint" id="olHint">3–20 Zeichen, Buchstaben, Zahlen und _</p>
+      <label class="fl" for="olPw">Passwort</label>
+      <div class="auth-field">${ico('lock', 'lead')}<input class="in" id="olPw" type="password" value="${esc(pw0)}" placeholder="${register ? 'Mindestens 8 Zeichen' : 'Dein Passwort'}" autocomplete="${register ? 'new-password' : 'current-password'}"><button type="button" class="auth-eye" id="olEye" title="Passwort zeigen">${ico('eye')}</button></div>
+      ${register ? `<div class="pwbar" id="olBar" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="auth-hint" id="olPwHint">Mindestens 8 Zeichen</p>
+        <label class="fl" for="olPw2">Nochmal</label>
+        <div class="auth-field">${ico('shield', 'lead')}<input class="in" id="olPw2" type="password" placeholder="Dasselbe Passwort" autocomplete="new-password"></div>
+        <p class="fine">Keine E-Mail-Wiederherstellung. Merk dir das Passwort. Es verlässt deinen PC nur verschlüsselt.</p>` : '<p class="fine">Das Passwort bleibt verschlüsselt auf diesem PC.</p>'}
+      <div class="g-err" id="olErr"></div>
+      <button class="btn p lg auth-go" id="olGo">${ico(register ? 'plus' : 'user')}${register ? 'Konto erstellen' : 'Anmelden'}</button>
+      ${register ? '' : `<button class="btn lg auth-alt" id="olPk">${ico('key')}Mit Passkey</button>`}
+    </div>`, 'auth');
+  const keepNow = () => ({ name: $('#olName').value, pw: $('#olPw').value });
+  $('#olIn').onclick = () => { if (!register) return; orbitLogin(false, keepNow()); };
+  $('#olUp').onclick = () => { if (register) return; orbitLogin(true, keepNow()); };
+  $('#olEye').onclick = () => { const i = $('#olPw'); i.type = i.type === 'password' ? 'text' : 'password'; $('#olEye').classList.toggle('on', i.type === 'text'); };
+  const paint = () => {
+    const name = $('#olName').value.trim(), ok = /^[A-Za-z0-9_]{3,20}$/.test(name);
+    $('#olHint').className = 'auth-hint' + (name && ok ? ' ok' : name ? ' bad' : '');
+    if (!register) return;
+    const pw = $('#olPw').value;
+    let s = 0;
+    if (pw.length >= 8) s++;
+    if (pw.length >= 12) s++;
+    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+    if (/\d/.test(pw) || /[^A-Za-z0-9]/.test(pw)) s++;
+    $$('#olBar i').forEach((el, n) => { el.className = n < s ? 's' + s : ''; });
+    $('#olPwHint').textContent = ['Mindestens 8 Zeichen', 'Kurz', 'Okay', 'Stark', 'Sehr stark'][s];
+  };
+  $('#olName').oninput = paint;
+  $('#olPw').oninput = paint;
   const go = async () => {
     const name = $('#olName').value.trim(), pw = $('#olPw').value;
     if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return $('#olErr').textContent = 'Name: 3–20 Zeichen, nur Buchstaben, Zahlen und _';
     if (register && pw.length < 8) return $('#olErr').textContent = 'Das Passwort braucht mindestens 8 Zeichen.';
     if (register && pw !== $('#olPw2').value) return $('#olErr').textContent = 'Die Passwörter sind nicht gleich.';
     const b = $('#olGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + (register ? 'Erstelle…' : 'Melde an…');
-    try { const r = await api('cloud.login', { name, password: pw, register }); closeModal(); toast(register ? 'Orbit-Konto erstellt' : 'Bei Orbit angemeldet', 'Hallo ' + r.name + ', deine Instanzen werden abgeglichen'); await cloudStatus(); cloudUI('sync'); if (S.page === 'settings') setBody(); }
-    catch (e) { b.disabled = false; b.innerHTML = ico(register ? 'plus' : 'user') + (register ? 'Erstellen' : 'Anmelden'); $('#olErr').textContent = e.message; }
+    try {
+      const r = await api('cloud.login', { name, password: pw, register });
+      if (r.need === 'totp') return orbitFactor(r.ticket, r.name || name);
+      orbitDone(r.name, register);
+    }
+    catch (e) { b.disabled = false; b.innerHTML = ico(register ? 'plus' : 'user') + (register ? 'Konto erstellen' : 'Anmelden'); $('#olErr').textContent = e.message; }
   };
+  if (!register) $('#olPk').onclick = () => orbitPasskey($('#olName').value.trim());
   $('#olGo').onclick = go;
   $$('#mbox .in').forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); });
-  setTimeout(() => $('#olName').focus(), 50);
+  paint();
+  setTimeout(() => $(name0 ? '#olPw' : '#olName').focus(), 50);
 }
 window.orbitLogin = orbitLogin;
+function orbitDone(name, created) {
+  closeModal();
+  toast(created ? 'Orbit-Konto erstellt' : 'Bei Orbit angemeldet', 'Hallo ' + name + ', deine Instanzen werden abgeglichen');
+  cloudStatus().then(() => { cloudUI('sync'); if (S.page === 'settings') setBody(); });
+}
+function b64uToBuf(s) {
+  s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bufToB64u(buf) {
+  const b = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function pkFail(e) {
+  if (!window.isSecureContext || !navigator.credentials?.create) return 'Passkeys gehen nur im Launcher, mit Windows Hello oder einem Sicherheitsschlüssel.';
+  if (e?.name === 'NotAllowedError') return 'Passkey abgebrochen.';
+  return e?.message || 'Passkey fehlgeschlagen.';
+}
+function orbitFactor(ticket, name) {
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>
+    <aside class="auth-side"><span class="auth-mark">${blockSvg('orbit')}</span><h2>Zweiter Schritt.</h2><p>Dein Konto ist mit einem Code geschützt. Den zeigt die Authenticator-App, oder du nimmst einen Wiederherstellungscode.</p></aside>
+    <div class="auth-main"><h1>Code eingeben</h1><p class="auth-lead">${esc(name)}, das Passwort stimmt. Jetzt der Code.</p>
+      <input class="in auth-code" id="olCode" inputmode="numeric" autocomplete="one-time-code" placeholder="000 000" maxlength="14">
+      <div class="g-err" id="olErr"></div>
+      <button class="btn p lg auth-go" id="olGo">${ico('shield')}Bestätigen</button></div>`, 'auth');
+  const go = async () => {
+    const code = $('#olCode').value.trim();
+    if (code.length < 6) return $('#olErr').textContent = 'Der Code hat 6 Ziffern.';
+    const b = $('#olGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…';
+    try { const r = await api('cloud.totp', { ticket, code }); orbitDone(r.name || name, false); }
+    catch (e) { b.disabled = false; b.innerHTML = ico('shield') + 'Bestätigen'; $('#olErr').textContent = e.message; }
+  };
+  $('#olGo').onclick = go;
+  $('#olCode').onkeydown = e => { if (e.key === 'Enter') go(); };
+  setTimeout(() => $('#olCode').focus(), 50);
+}
+async function orbitPasskey(name) {
+  const err = $('#olErr');
+  if (!window.isSecureContext || !navigator.credentials?.get) { if (err) err.textContent = pkFail(); return; }
+  try {
+    const o = await api('cloud.passkey.begin', { name: name || null });
+    const cred = await navigator.credentials.get({ publicKey: { challenge: b64uToBuf(o.challenge), rpId: o.rpId, allowCredentials: (o.allowCredentials || []).map(c => ({ type: 'public-key', id: b64uToBuf(c.id) })), timeout: o.timeout, userVerification: 'preferred' } });
+    const r = cred.response;
+    const done = await api('cloud.passkey.finish', { id: cred.id, clientDataJSON: bufToB64u(r.clientDataJSON), authenticatorData: bufToB64u(r.authenticatorData), signature: bufToB64u(r.signature) });
+    orbitDone(done.name, false);
+  } catch (e) { if (err) err.textContent = pkFail(e); else fail('Passkey', e); }
+}
+async function cloudPasskeyAdd() {
+  if (!window.isSecureContext || !navigator.credentials?.create) return fail('Passkey', { message: pkFail() });
+  try {
+    const o = await api('cloud.passkey.add.begin');
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: b64uToBuf(o.challenge), rp: { name: 'Orbit', id: o.rpId },
+      user: { id: b64uToBuf(o.user.id), name: o.user.name, displayName: o.user.displayName },
+      pubKeyCredParams: o.pubKeyCredParams, timeout: o.timeout, attestation: 'none',
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      excludeCredentials: (o.excludeCredentials || []).map(c => ({ type: 'public-key', id: b64uToBuf(c.id) })),
+    } });
+    await api('cloud.passkey.add.finish', { clientDataJSON: bufToB64u(cred.response.clientDataJSON), attestationObject: bufToB64u(cred.response.attestationObject), name: 'Dieser PC' });
+    toast('Passkey gespeichert', 'Beim nächsten Mal kannst du dich damit anmelden.');
+    if (S.page === 'settings') setBody();
+  } catch (e) { fail('Passkey', { message: pkFail(e) }); }
+}
+window.cloudPasskeyAdd = cloudPasskeyAdd;
+window.cloudPasskeyDel = async id => {
+  if (!await confirmBox('Passkey entfernen?', 'Auf diesem Gerät kannst du dich damit nicht mehr anmelden.', 'Entfernen', true)) return;
+  try { await api('cloud.passkey.remove', { id }); if (S.page === 'settings') setBody(); } catch (e) { fail('Passkey', e); }
+};
+function cloudTotpOn() {
+  api('cloud.totp.start').then(s => {
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Zwei-Faktor</div><h1>Authenticator einrichten</h1>
+      <p>Trag den Schlüssel in deine Authenticator-App ein. Danach den 6-stelligen Code.</p>
+      <div class="auth-secret"><code id="olSec">${esc(s.secret)}</code><button class="ib sm" id="olCopy" title="Kopieren">${ico('copy')}</button></div>
+      <label class="fl" for="olCode">Code</label><input class="in auth-code" id="olCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <div class="g-err" id="olErr"></div>
+      <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="olGo">${ico('shield')}Aktivieren</button></div>`, 'form');
+    $('#olCopy').onclick = () => navigator.clipboard?.writeText(s.secret).then(() => toast('Schlüssel kopiert')).catch(() => { });
+    $('#olGo').onclick = async () => {
+      try {
+        const r = await api('cloud.totp.confirm', { code: $('#olCode').value.trim() });
+        modal(`<div class="kicker">Zwei-Faktor</div><h1>Codes weglegen</h1><p>Jeder Code gilt einmal, falls du die App nicht dabei hast. Orbit zeigt sie kein zweites Mal.</p><div class="rec-grid">${(r.recovery || []).map(c => `<code>${esc(c)}</code>`).join('')}</div><div class="act" style="justify-content:flex-end"><button class="btn p" id="olOk">Ich habe sie gespeichert</button></div>`, 'form');
+        $('#olOk').onclick = () => { closeModal(); toast('Zwei-Faktor aktiv'); if (S.page === 'settings') setBody(); };
+      } catch (e) { $('#olErr').textContent = e.message; }
+    };
+  }).catch(e => fail('Zwei-Faktor', e));
+}
+window.cloudTotpOn = cloudTotpOn;
+window.cloudTotpOff = async () => {
+  modal(`<h1>Zwei-Faktor aus</h1><p>Passwort und ein aktueller Code aus der App.</p><label class="fl">Passwort</label><input class="in" id="tfPw" type="password"><label class="fl">Code</label><input class="in" id="tfCode" inputmode="numeric" maxlength="6"><div class="g-err" id="tfErr"></div><div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn d" id="tfGo">Ausschalten</button></div>`, 'form');
+  $('#tfGo').onclick = async () => {
+    try { await api('cloud.totp.disable', { password: $('#tfPw').value, code: $('#tfCode').value.trim() }); closeModal(); toast('Zwei-Faktor aus'); if (S.page === 'settings') setBody(); }
+    catch (e) { $('#tfErr').textContent = e.message; }
+  };
+};
 async function cloudSyncNow(btn) {
   if (btn) { btn.disabled = true; btn.innerHTML = ico('refresh', 'i spin') + 'Synchronisiert…'; }
   cloudUI('sync');
@@ -1877,8 +2162,17 @@ async function cloudSettings(b, card) {
   const c = await cloudStatus();
   if (S.stab !== 'cloud') return;
   if (!c.loggedIn) {
-    b.innerHTML = card('', `<div class="cloudhero"><span class="ch-ic">${ico('cloud')}</span><h2>Deine Instanzen überall</h2><p>Mit einem Orbit-Konto liegen Instanzen, Mod-Listen, Optionen, Configs, Einstellungen und Skins auf deinem Konto. Auf einem anderen PC anmelden, und alles wird automatisch wiederhergestellt.</p>
-      <div class="row" style="justify-content:center;gap:10px"><button class="btn p" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
+    b.innerHTML = card('', `<div class="cloudhero">
+      <span class="ch-ic">${blockSvg('orbit')}</span>
+      <div class="kicker">Orbit-Konto</div>
+      <h2>Ein Konto für jeden PC</h2>
+      <p>Instanzen, Mod-Listen, Optionen, Configs, Einstellungen und Skins liegen auf deinem Konto. Auf einem anderen PC anmelden, und alles kommt zurück. Mods werden dabei frisch aus dem Katalog geladen.</p>
+      <div class="ch-grid">
+        <div><b>Instanzen</b><span>Version, RAM, Spielzeit</span></div>
+        <div><b>Mods</b><span>Exakte Versionen</span></div>
+        <div><b>Design</b><span>Akzent, HUD, Skins</span></div>
+      </div>
+      <div class="row" style="justify-content:center;gap:10px"><button class="btn p lg" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn lg" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
       + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste, Configs</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen werden sie frisch aus dem Katalog geladen.</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Einstellungen, Orbit Client, Skins</b><p>Akzentfarbe, Standard-RAM, HUD-Layout, deine Skin-Bibliothek</p></div>${ico('check')}</div>
@@ -1891,6 +2185,9 @@ async function cloudSettings(b, card) {
       <button class="btn p" onclick="cloudSyncNow(this)">${ico('refresh')}Jetzt synchronisieren</button></div>
       ${me ? `<div class="mt"></div><div class="bar"><i style="width:${Math.max(1, me.bytes / me.maxBytes * 100)}%"></i></div><p class="fine">${bytes(me.bytes)} von ${bytes(me.maxBytes)} Cloud-Speicher · ${me.items} Einträge</p>` : ''}`)
     + (me?.devices?.length ? '<div class="mt"></div>' + card('Angemeldete Geräte', me.devices.map(d => `<div class="srow"><div><b>${esc(d.device || 'Unbekannt')}</b><p>Zuletzt aktiv ${esc(ago(d.last).toLowerCase())}</p></div>${ico('monitor')}</div>`).join('')) : '')
+    + '<div class="mt"></div>' + card('Schutz', `<div class="srow"><div><b>Zwei-Faktor</b><p>${me?.totp ? 'Aktiv. Nach dem Passwort kommt ein Code aus der App.' : 'Zusätzlich zum Passwort ein Code aus der Authenticator-App.'}</p></div><button class="btn sm" onclick="${me?.totp ? 'cloudTotpOff()' : 'cloudTotpOn()'}">${ico('shield')}${me?.totp ? 'Ausschalten' : 'Einschalten'}</button></div>
+      ${(me?.passkeys || []).map(p => `<div class="srow"><div><b>${esc(p.name || 'Passkey')}</b><p>Hinzugefügt ${esc(ago(p.created).toLowerCase())}</p></div><button class="ib sm d" title="Entfernen" onclick="cloudPasskeyDel('${jsq(p.id)}')">${ico('trash')}</button></div>`).join('')}
+      <div class="srow"><div><b>Passkey</b><p>Anmelden mit Windows Hello oder einem Sicherheitsschlüssel, ohne Passwort.</p></div><button class="btn sm" onclick="cloudPasskeyAdd()">${ico('key')}Hinzufügen</button></div>`)
     + '<div class="mt"></div>' + card('Konto', `<div class="srow"><div><b>Passwort ändern</b><p>Meldet alle anderen Geräte ab.</p></div><button class="btn sm" onclick="cloudPassword()">${ico('lock')}Ändern</button></div>
       <div class="srow"><div><b>Abmelden</b><p>Nur auf diesem PC.</p></div><button class="btn sm" onclick="cloudLogout()">${ico('logout')}Abmelden</button></div>
       <div class="srow"><div><b>Konto löschen</b><p>Löscht das Konto und alle Cloud-Daten. Instanzen auf deinen PCs bleiben.</p></div><button class="btn sm d" onclick="cloudDelete()">${ico('trash')}Löschen</button></div>`);
@@ -2079,7 +2376,7 @@ const Mock = {
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
     { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: iso(H), created: iso(DAY * 20), mods: 19, group: 'PvP', content: [] },
-    { id: 'fabulously-optimized', name: 'Fabulously Optimized', mcVersion: '1.21.11', loader: 'fabric', loaderVersion: '0.18.4', kind: 'modpack', icon: 'box', iconUrl: null, mpSlug: 'fabulously-optimized', ramMb: 4096, playSeconds: 72000, lastPlayed: iso(DAY), created: iso(DAY * 30), mods: 49, content: [] },
+    { id: 'fabulously-optimized', name: 'Fabulously Optimized', mcVersion: '1.21.11', loader: 'fabric', loaderVersion: '0.18.4', kind: 'modpack', icon: 'box', iconUrl: null, modpackProject: 'fabulously-optimized', ramMb: 4096, playSeconds: 72000, lastPlayed: iso(DAY), created: iso(DAY * 30), mods: 49, content: [] },
     { id: 'survival-1-21-11', name: 'Survival mit Freunden', mcVersion: '1.21.11', loader: 'vanilla', kind: 'custom', icon: 'grass', ramMb: 0, playSeconds: 210000, lastPlayed: iso(DAY * 2), created: iso(DAY * 90), mods: 0, group: 'Survival', content: [] },
     { id: 'technik-abenteuer', name: 'Technik-Abenteuer', mcVersion: '1.21.1', loader: 'neoforge', loaderVersion: '21.1.266', kind: 'custom', icon: 'ruby', ramMb: 8192, playSeconds: 92000, lastPlayed: iso(DAY * 5), created: iso(DAY * 60), mods: 214, group: 'Survival', content: [] },
     { id: 'pvp-1-8-9', name: 'PvP 1.8.9', mcVersion: '1.8.9', loader: 'vanilla', kind: 'custom', icon: 'diamond', ramMb: 2048, playSeconds: 12000, lastPlayed: iso(DAY * 12), created: iso(DAY * 120), mods: 0, group: 'PvP', content: [] },
@@ -2126,7 +2423,7 @@ const Mock = {
     switch (cmd) {
       case 'init': {
         if (/gate|noid/.test(location.search)) M.accounts = [];
-        if (!M.fo) { M.fo = 1; try { const p = await (await fetch('https://api.modrinth.com/v2/project/fabulously-optimized')).json(); M.instances[1].iconUrl = p.icon_url; M.instances[1].modpackProject = p.id; } catch { } }
+        if (!M.fo) { M.fo = 1; try { const p = await (await fetch('https://api.modrinth.com/v2/project/fabulously-optimized')).json(); const g = (p.gallery || []).find(x => x.featured) || p.gallery?.[0]; M.instances[1].iconUrl = p.icon_url; M.instances[1].bannerUrl = g?.url || g?.raw_url; M.instances[1].modpackProject = p.id; } catch { } }
         if (/running/.test(location.search)) setTimeout(() => onEvent('state', { id: 'orbit-client-26-3', running: true }), 400);
         return { needAppId: /noid/.test(location.search), version: '0.3.0', root: 'C:\\Users\\Ky3ls\\AppData\\Roaming\\OrbitLauncher', settings: M.settings, instances: M.instances, accounts: M.accounts, active: M.accounts[0]?.uuid, running: [] };
       }
@@ -2145,19 +2442,30 @@ const Mock = {
       case 'instance.delete': M.instances = M.instances.filter(i => i.id !== a.id); return {};
       case 'instance.duplicate': { const c = { ...inst(), id: a.id + '-kopie', name: inst().name + ' (Kopie)', lastPlayed: null, playSeconds: 0 }; M.instances.unshift(c); return c; }
       case 'instance.repair': await sleep(800); return { ok: true };
+      case 'content.resolve': return { changed: false };
       case 'instance.content': {
         const i = inst();
         if (a.type === 'mod') {
           const slugs = M.mods[a.id] || []; if (!slugs.length) return [];
           const ps = await M.projs(slugs);
-          return slugs.map((s, k) => { const p = ps.find(x => x.slug === s); return { title: p?.title || s, file: `${s}-${i.mcVersion}.jar`, version: p ? (p.versions?.length ? `${(k % 3) + 1}.${k + 2}.${k * 3 % 10}` : '1.0') : '1.0', size: (0.3 + (k * 0.37) % 3) * 1e6, on: k !== 7, dependency: ['fabric-api', 'yacl', 'cloth-config'].includes(s), projectId: a.id === 'technik-abenteuer' && k % 2 ? 'cf:' + (238000 + k) : p?.id, icon: p?.icon_url }; });
+          const rows = slugs.map((s, k) => { const p = ps.find(x => x.slug === s); return { title: p?.title || s, file: `${s}-${i.mcVersion}.jar`, version: p ? (p.versions?.length ? `${(k % 3) + 1}.${k + 2}.${k * 3 % 10}` : '1.0') : '1.0', size: (0.3 + (k * 0.37) % 3) * 1e6, on: k !== 7, dependency: ['fabric-api', 'yacl', 'cloth-config'].includes(s), projectId: a.id === 'technik-abenteuer' && k % 2 ? 'cf:' + (238000 + k) : p?.id, icon: p?.icon_url }; });
+          if (i.kind === 'modpack') for (let n = rows.length; n < 30; n++) rows.push({ title: 'Mod ' + (n + 1), file: `mod-${n}.jar`, version: '1.0.' + n, size: 1e6 + n * 1000, on: true, projectId: 'mod-' + n, source: 'modrinth' });
+          return rows;
         }
-        if (a.type === 'shader' && i.loader === 'fabric') return [{ title: 'Complementary Reimagined', file: 'ComplementaryReimagined_r5.6.zip', on: true, size: 4.1e6, version: 'r5.6' }];
+        if (a.type === 'shader' && i.loader === 'fabric') return i.kind === 'modpack'
+          ? [{ title: 'Complementary Reimagined', file: 'ComplementaryReimagined_r5.6.zip', on: true, size: 4.1e6, version: 'r5.6', projectId: 'complementary-reimagined', source: 'modrinth' }, { title: '§6§lI Like Vanilla v1.4.zip', file: '§6§lI Like Vanilla v1.4.zip', on: true, size: 1.2e6, source: 'local' }]
+          : [{ title: 'Complementary Reimagined', file: 'ComplementaryReimagined_r5.6.zip', on: true, size: 4.1e6, version: 'r5.6' }];
+        if (a.type === 'resourcepack' && i.kind === 'modpack') return [{ title: "§6Bray's Bow and Arrows v1.2.4.zip", file: "§6Bray's Bow and Arrows v1.2.4.zip", on: true, size: 2.4e6, source: 'local' }, { title: '§3Fresh §bWeapons & Tools.zip', file: '§3Fresh §bWeapons & Tools.zip', on: true, size: 1.1e6, source: 'local' }, { title: 'Fresh Animations', file: 'FreshAnimations_v1.10.5.zip', on: true, size: 8.2e6, version: '1.10.5', projectId: 'fresh-animations', source: 'modrinth' }];
         if (a.type === 'resourcepack' && i.kind !== 'orbit') return [{ title: 'Fresh Animations', file: 'FreshAnimations_v1.10.zip', on: true, size: 2.2e6, version: '1.10' }];
         return [];
       }
-      case 'content.updates': return [{ projectId: 'AANobbMI', title: 'Sodium', from: '0.8.14', to: '0.8.15' }];
-      case 'content.updateAll': await sleep(600); return { count: 1 };
+      case 'content.updates': return [{ projectId: 'AANobbMI', title: 'Sodium', from: '0.8.14', to: '0.8.15', versionId: 'sodium-new' }, { projectId: 'mod-12', title: 'Mod 13', from: '1.0.12', to: '1.0.20', versionId: 'mod-12-new' }];
+      case 'content.updateAll': await sleep(400); return { count: 1 };
+      case 'content.versions': {
+        const newest = a.projectId === 'AANobbMI' ? 'sodium-new' : a.projectId === 'mod-12' ? 'mod-12-new' : a.projectId + '-new';
+        return [{ id: newest, number: '1.4.0', name: 'Neu', channel: 'release', date: iso(1), current: false }, { id: 'cur', number: '1.3.2', name: 'Aktuell', channel: 'release', date: iso(12), current: true }, { id: a.projectId + '-old', number: '1.2.0', name: 'Älter', channel: 'beta', date: iso(40), current: false }];
+      }
+      case 'content.setVersion': await sleep(250); return { count: 1 };
       case 'content.addFile': return { count: 0 };
       case 'instance.worlds': {
         const i = inst();
@@ -2183,10 +2491,19 @@ const Mock = {
         return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
       } catch { return [{ title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }]; }
       case 'cloud.status': return { loggedIn: !!M.cloud, name: M.cloud, lastSync: M.cloud ? iso(60e3 * 3) : null };
-      case 'cloud.login': await sleep(700); M.cloud = a.name; setTimeout(() => { onEvent('cloud', { state: 'sync' }); setTimeout(() => onEvent('cloud', { state: 'done', pushed: 6, pulled: 0, created: 0, at: iso(0) }), 900); }, 100); return { name: a.name };
+      case 'cloud.login': await sleep(400); if (a.password === 'zweit') return { need: 'totp', ticket: 't', name: a.name }; M.cloud = a.name; setTimeout(() => { onEvent('cloud', { state: 'sync' }); setTimeout(() => onEvent('cloud', { state: 'done', pushed: 6, pulled: 0, created: 0, at: iso(0) }), 900); }, 100); return { name: a.name };
+      case 'cloud.totp': await sleep(300); if (a.code.replace(/\s/g, '') !== '123456') throw new Error('Code falsch.'); M.cloud = 'Ky3ls'; return { name: 'Ky3ls' };
+      case 'cloud.totp.start': return { secret: 'ORBITLAUNCHERKEY234', otpauth: 'otpauth://totp/Orbit:Ky3ls?secret=ORBITLAUNCHERKEY234&issuer=Orbit' };
+      case 'cloud.totp.confirm': if (a.code !== '123456') throw new Error('Code falsch.'); M.totpOn = true; return { recovery: ['K7NP-2QWM', 'H4RT-9LSD', 'B8CX-5VJA', 'M3QF-6YTE', 'P2WN-8KHC', 'D5LS-4RBG', 'Q9VM-3TXA', 'F6HJ-7NCE'] };
+      case 'cloud.totp.disable': if (a.code !== '123456') throw new Error('Code falsch.'); M.totpOn = false; return {};
+      case 'cloud.passkey.begin': return { challenge: 'aaaa', rpId: 'orbit.local', timeout: 60000, allowCredentials: [] };
+      case 'cloud.passkey.finish': M.cloud = 'Ky3ls'; return { name: 'Ky3ls' };
+      case 'cloud.passkey.add.begin': return { challenge: 'aaaa', rpId: 'orbit.local', timeout: 60000, user: { id: 'dQ', name: 'Ky3ls', displayName: 'Ky3ls' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }], excludeCredentials: [] };
+      case 'cloud.passkey.add.finish': M.passkeys = [{ id: 'abc', name: 'Dieser PC', created: iso(0) }]; return { ok: true };
+      case 'cloud.passkey.remove': M.passkeys = (M.passkeys || []).filter(p => p.id !== a.id); return {};
       case 'cloud.logout': M.cloud = null; return {};
       case 'cloud.sync': await sleep(900); return { pushed: 2, pulled: 1, created: 0, deleted: 0, restore: 0 };
-      case 'cloud.me': return { name: M.cloud, created: iso(DAY * 3), items: 14, bytes: 412e3, maxBytes: 40e6, devices: [{ device: 'GAMING-PC', last: iso(60e3) }, { device: 'LAPTOP', last: iso(DAY * 2) }] };
+      case 'cloud.me': return { name: M.cloud, created: iso(DAY * 3), items: 14, bytes: 412e3, maxBytes: 40e6, totp: !!M.totpOn, passkeys: M.passkeys || [], devices: [{ device: 'GAMING-PC', last: iso(60e3) }, { device: 'LAPTOP', last: iso(DAY * 2) }] };
       case 'launch.official': await sleep(800); return { profile: 'Orbit · ' + inst().name, opened: true, found: true };
       case 'update.check': return /upd/.test(location.search) ? { configured: true, current: '0.3.0', latest: '0.3.1', available: true, date: '15.11.2026', size: 73e6, notes: ['Automatische Updates direkt im Launcher', 'Update-Hinweis mit Änderungen und Fortschritt', 'Updates warten, bis Minecraft beendet ist'] } : { configured: true, current: '0.3.0', latest: '0.3.0', available: false };
       case 'update.download': for (let k = 0; k <= 100; k += 10) { onEvent('update', { pct: k, done: k * 73e4, total: 73e6 }); await sleep(80); } return { ok: true };

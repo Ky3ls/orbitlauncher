@@ -175,6 +175,31 @@ switch (mode)
         Console.WriteLine($"Startbereit: Java {plan.JavaMajor}, {plan.Classpath.Count} Classpath-Einträge");
         break;
     }
+    case "list":
+    {
+        var inst = Instances.Create("Fresh", "26.3", "fabric", "0.19.5", "modpack");
+        var rp = Path.Combine(inst.Dir, "resourcepacks");
+        var sp = Path.Combine(inst.Dir, "shaderpacks");
+        File.WriteAllText(Path.Combine(rp, "§6Bray's Bow and Arrows v1.2.4.zip"), "pack");
+        File.WriteAllText(Path.Combine(rp, "§6Bray's Bow and Arrows v1.2.4.zip.rpo"), "{}");
+        File.WriteAllText(Path.Combine(rp, "[HMI] Gous's Hand Poses.zip.rpo"), "{}");
+        File.WriteAllText(Path.Combine(sp, "_0EUPHORIA_PATCHES_ERROR_LOGS.txt"), "log");
+        File.WriteAllText(Path.Combine(sp, "ComplementaryReimagined_r5.9.3.zip.txt"), "note");
+        var err = Path.Combine(sp, "_0EuphoriaPatches_ErrorShader", "shaders");
+        Directory.CreateDirectory(err);
+        File.WriteAllText(Path.Combine(err, "composite.fsh"), "shadercode");
+        File.WriteAllText(Path.Combine(sp, "ComplementaryReimagined_r5.9.3.zip"), "shader");
+        string P(object o, string n) => o.GetType().GetProperty(n)!.GetValue(o)?.ToString() ?? "";
+        var packs = Instances.ListFiles(inst, "resourcepack");
+        var shaders = Instances.ListFiles(inst, "shader");
+        Console.WriteLine("packs " + packs.Count + " " + string.Join(" | ", packs.Select(o => P(o, "title") + " / " + P(o, "file"))));
+        Console.WriteLine("shaders " + shaders.Count + " " + string.Join(" | ", shaders.Select(o => P(o, "title") + " " + P(o, "size"))));
+        if (packs.Count != 1 || P(packs[0], "title") != "Bray's Bow and Arrows v1.2.4") throw new Exception("resource pack row wrong");
+        if (shaders.Count != 1 || P(shaders[0], "file") != "ComplementaryReimagined_r5.9.3.zip") throw new Exception("shader rows " + shaders.Count);
+        if (shaders.Any(o => P(o, "file").Contains("Error", StringComparison.OrdinalIgnoreCase) || P(o, "file").EndsWith(".txt"))) throw new Exception("note listed");
+        Console.WriteLine("list ok");
+        break;
+    }
     case "mrpack":
     {
         var inst = await Modrinth.InstallModpack(args[2], null, prog);

@@ -21,6 +21,8 @@ public class Instance
     public string Icon { get; set; } = "grass";
     /// <summary>Project icon for modpack instances (Modrinth CDN).</summary>
     public string? IconUrl { get; set; }
+    /// <summary>Wide gallery image for the instance header.</summary>
+    public string? BannerUrl { get; set; }
     public int RamMb { get; set; } = 0;
     public string? JavaPath { get; set; }
     public string? JvmArgs { get; set; }
@@ -36,6 +38,8 @@ public class Instance
     public List<InstalledContent> Content { get; set; } = new();
     /// <summary>Files of a CurseForge modpack the authors only allow on curseforge.com: "name|url".</summary>
     public List<string>? ManualDownloads { get; set; }
+    /// <summary>Content files already checked against the catalog that are not a project ("type|file").</summary>
+    public List<string> CatalogMisses { get; set; } = new();
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;
@@ -117,22 +121,83 @@ public static class Instances
         _ => "mods",
     });
 
+    /// <summary>Name without a trailing .disabled, so toggled files keep their identity.</summary>
+    public static string EnabledName(string file)
+    {
+        var fn = Path.GetFileName(file);
+        return fn.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase) ? fn[..^".disabled".Length] : fn;
+    }
+
+    /// <summary>Drops Minecraft color codes (§6, §l, …) from a display string.</summary>
+    public static string StripFmt(string s) => Regex.Replace(s, "§.", "").Trim();
+
+    /// <summary>Readable row title: project name when we have one, otherwise the file name without color codes or container extension.</summary>
+    public static string DisplayTitle(string? title, string file)
+    {
+        var stem = StripFmt(Path.GetFileNameWithoutExtension(EnabledName(file)));
+        if (stem.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || stem.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+            stem = StripFmt(Path.GetFileNameWithoutExtension(stem));
+        var raw = string.IsNullOrWhiteSpace(title) ? "" : StripFmt(title);
+        if (raw.Length == 0) return stem;
+        var full = StripFmt(EnabledName(file));
+        if (raw.Equals(full, StringComparison.OrdinalIgnoreCase) || raw.Equals(stem, StringComparison.OrdinalIgnoreCase)
+            || raw.Equals(full + ".zip", StringComparison.OrdinalIgnoreCase) || raw.Equals(stem + ".zip", StringComparison.OrdinalIgnoreCase)
+            || raw.Equals(stem + ".jar", StringComparison.OrdinalIgnoreCase))
+            return stem;
+        return raw;
+    }
+
+    /// <summary>True for a real mod, resource pack or shader. Sidecars (.rpo), notes (.txt) and half-downloads are not content.</summary>
+    public static bool IsListedContent(string type, string path)
+    {
+        var name = Path.GetFileName(path);
+        if (name.Length == 0 || name[0] == '.' || name.EndsWith(".part", StringComparison.OrdinalIgnoreCase)) return false;
+        var enabled = EnabledName(name);
+        if (IsErrorDump(name)) return false;
+        if (Directory.Exists(path))
+        {
+            if (type == "shader") return Directory.Exists(Path.Combine(path, "shaders"));
+            if (type == "resourcepack") return File.Exists(Path.Combine(path, "pack.mcmeta"));
+            return false;
+        }
+        if (type == "mod") return enabled.EndsWith(".jar", StringComparison.OrdinalIgnoreCase);
+        if (type is "resourcepack" or "shader") return enabled.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        return false;
+    }
+
+    /// <summary>Shader error dumps and log leftovers a modpack sometimes leaves next to the real files.</summary>
+    private static bool IsErrorDump(string name)
+    {
+        var n = name.Replace(" ", "").Replace("_", "").Replace("-", "");
+        return n.Contains("errorlog", StringComparison.OrdinalIgnoreCase)
+            || n.Contains("errorlogs", StringComparison.OrdinalIgnoreCase)
+            || n.Contains("errorshader", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Files in mods/resourcepacks/shaderpacks including ones the user copied in by hand.</summary>
     public static List<object> ListFiles(Instance i, string type)
     {
         var dir = ContentDir(i, type);
         Directory.CreateDirectory(dir);
-        var known = i.Content.Where(c => c.Type == type).ToDictionary(c => c.File.Replace(".disabled", ""), c => c, StringComparer.OrdinalIgnoreCase);
+        var known = new Dictionary<string, InstalledContent>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in i.Content)
+            if (c.Type == type) known.TryAdd(EnabledName(c.File), c);
+        var misses = new HashSet<string>(i.CatalogMisses ?? new(), StringComparer.OrdinalIgnoreCase);
         var r = new List<object>();
-        foreach (var f in Directory.EnumerateFileSystemEntries(dir).OrderBy(x => x))
+        foreach (var f in Directory.EnumerateFileSystemEntries(dir).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
+            if (!IsListedContent(type, f)) continue;
             var fn = Path.GetFileName(f);
-            if (fn.EndsWith(".part") || fn.StartsWith('.')) continue;
-            var on = !fn.EndsWith(".disabled");
-            var baseName = fn.Replace(".disabled", "");
+            var on = !fn.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase);
+            var baseName = EnabledName(fn);
             known.TryGetValue(baseName, out var c);
-            long size = File.Exists(f) ? new FileInfo(f).Length : 0;
-            r.Add(new { file = baseName, on, size, title = c?.Title ?? Path.GetFileNameWithoutExtension(baseName), projectId = c?.ProjectId, version = c?.VersionNumber, icon = c?.IconUrl, dependency = c?.Dependency ?? false });
+            var projectId = string.IsNullOrEmpty(c?.ProjectId) ? null : c!.ProjectId;
+            var source = c != null ? (string.IsNullOrEmpty(c.Source) ? null : c.Source) : misses.Contains(type + "|" + baseName) ? "local" : null;
+            r.Add(new
+            {
+                file = baseName, on, size = File.Exists(f) ? new FileInfo(f).Length : -1L, title = DisplayTitle(c?.Title, baseName),
+                projectId, version = c?.VersionNumber, icon = c?.IconUrl, dependency = c?.Dependency ?? false, source,
+            });
         }
         return r;
     }
@@ -143,7 +208,7 @@ public static class Instances
         var a = Path.Combine(dir, file); var b = a + ".disabled";
         if (on && File.Exists(b)) File.Move(b, a, true);
         if (!on && File.Exists(a)) File.Move(a, b, true);
-        var c = i.Content.FirstOrDefault(x => x.Type == type && x.File == file);
+        var c = i.Content.FirstOrDefault(x => x.Type == type && EnabledName(x.File) == file);
         if (c != null) { c.Enabled = on; Save(i); }
     }
 
@@ -156,7 +221,8 @@ public static class Instances
             if (File.Exists(f)) File.Delete(f);
             else if (Directory.Exists(f)) Directory.Delete(f, true);
         }
-        i.Content.RemoveAll(x => x.Type == type && x.File == file);
+        i.Content.RemoveAll(x => x.Type == type && EnabledName(x.File) == file);
+        i.CatalogMisses?.RemoveAll(x => x.Equals(type + "|" + file, StringComparison.OrdinalIgnoreCase));
         Save(i);
     }
 }

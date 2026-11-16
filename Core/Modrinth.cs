@@ -42,6 +42,14 @@ public static class Modrinth
 
     public static Task<JsonNode> Project(string idOrSlug, CancellationToken ct = default) => Net.Json($"{Api}/project/{Uri.EscapeDataString(idOrSlug)}", ct);
 
+    /// <summary>Wide gallery image, preferring the smaller CDN size over the raw file.</summary>
+    public static string? Cover(JsonNode proj)
+    {
+        var g = proj["gallery"]?.AsArray();
+        var feat = g?.FirstOrDefault(x => (bool?)x?["featured"] == true) ?? g?.FirstOrDefault();
+        return (string?)feat?["url"] ?? (string?)feat?["raw_url"];
+    }
+
     public static async Task<JsonArray> ProjectVersions(string idOrSlug, string[]? loaders, string? mc, CancellationToken ct = default)
     {
         var url = $"{Api}/project/{Uri.EscapeDataString(idOrSlug)}/version?include_changelog=false";
@@ -132,6 +140,23 @@ public static class Modrinth
     }
 
     public record UpdateInfo(string ProjectId, string Title, string From, string To, string VersionId);
+
+    public record VersionChoice(string Id, string Number, string Name, string Channel, string? Date, bool Current);
+
+    /// <summary>Versions that fit this instance, newest first. Falls back to every loader build when none matches the Minecraft version.</summary>
+    public static async Task<List<VersionChoice>> Versions(Instance inst, InstalledContent c, CancellationToken ct = default)
+    {
+        var loaders = LoadersFor(c.Type, inst.Loader);
+        var arr = await ProjectVersions(c.ProjectId, loaders, inst.McVersion, ct);
+        if (arr.Count == 0) arr = await ProjectVersions(c.ProjectId, loaders, null, ct);
+        return arr.Take(40).Select(v => new VersionChoice(
+            (string)v!["id"]!,
+            (string?)v["version_number"] ?? "",
+            (string?)v["name"] ?? "",
+            (string?)v["version_type"] ?? "release",
+            (string?)v["date_published"],
+            (string?)v["id"] == c.VersionId)).ToList();
+    }
 
     public static async Task<List<UpdateInfo>> CheckUpdates(Instance inst, CancellationToken ct = default)
     {
@@ -229,7 +254,146 @@ public static class Modrinth
             }
         }
         Instances.Save(inst);
+        p?.Report(new Progress("Inhalte werden erkannt", 0, 1));
+        await AttachCatalog(inst, ct);
         return inst;
+    }
+
+    private static readonly SemaphoreSlim CatalogGate = new(1, 1);
+
+    /// <summary>
+    /// Links modpack files to catalog projects (name, icon, version) via their hash.
+    /// Files the catalog does not know stay in the list, but are not labeled as hand-added.
+    /// </summary>
+    public static async Task<bool> AttachCatalog(Instance inst, CancellationToken ct = default)
+    {
+        await CatalogGate.WaitAsync(ct);
+        try
+        {
+            var cur = Instances.Get(inst.Id);
+            if (cur == null) return false;
+            cur.CatalogMisses ??= new();
+            var miss = new HashSet<string>(cur.CatalogMisses, StringComparer.OrdinalIgnoreCase);
+            var known = new HashSet<string>(cur.Content.Where(c => !string.IsNullOrEmpty(c.ProjectId) && !string.IsNullOrEmpty(c.IconUrl)).Select(c => c.Type + "|" + Instances.EnabledName(c.File)), StringComparer.OrdinalIgnoreCase);
+            var pending = new List<(string type, string path, string file)>();
+            var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var type in new[] { "mod", "resourcepack", "shader" })
+            {
+                var dir = Instances.ContentDir(cur, type);
+                if (!Directory.Exists(dir)) continue;
+                foreach (var path in Directory.EnumerateFileSystemEntries(dir))
+                {
+                    if (!Instances.IsListedContent(type, path)) continue;
+                    var file = Instances.EnabledName(Path.GetFileName(path));
+                    var key = type + "|" + file;
+                    live.Add(key);
+                    if (known.Contains(key) || miss.Contains(key)) continue;
+                    if (Directory.Exists(path)) { miss.Add(key); continue; }
+                    pending.Add((type, path, file));
+                }
+            }
+
+            var hashed = new List<(string type, string file, string sha)>();
+            var hits = new Dictionary<string, (string pid, string vid, string? ver)>(StringComparer.OrdinalIgnoreCase);
+            var complete = pending.Count == 0;
+            if (pending.Count > 0)
+            {
+                try
+                {
+                    var bag = new System.Collections.Concurrent.ConcurrentBag<(string type, string file, string sha)>();
+                    await Parallel.ForEachAsync(pending, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct }, (item, c) =>
+                    {
+                        try { bag.Add((item.type, item.file, Net.Sha1(item.path))); } catch { }
+                        return ValueTask.CompletedTask;
+                    });
+                    hashed.AddRange(bag);
+                    for (var i = 0; i < hashed.Count; i += 100)
+                    {
+                        var chunk = hashed.Skip(i).Take(100).Select(h => h.sha).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                        var body = new JsonObject { ["hashes"] = new JsonArray(chunk.Select(h => (JsonNode)h).ToArray()), ["algorithm"] = "sha1" };
+                        var res = await Net.Post($"{Api}/version_files", body.ToJsonString(), null, ct);
+                        foreach (var kv in res.AsObject())
+                        {
+                            var pid = (string?)kv.Value?["project_id"];
+                            var vid = (string?)kv.Value?["id"];
+                            if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(vid)) continue;
+                            hits[kv.Key] = (pid, vid, (string?)kv.Value?["version_number"]);
+                        }
+                    }
+                    complete = true;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { complete = false; }
+            }
+
+            var titles = new Dictionary<string, (string? title, string? icon)>();
+            var pids = hits.Values.Select(h => h.pid).Distinct().ToList();
+            if (pids.Count > 0)
+            {
+                try
+                {
+                    for (var i = 0; i < pids.Count; i += 80)
+                    {
+                        var chunk = pids.Skip(i).Take(80).ToArray();
+                        var url = $"{Api}/projects?ids={Uri.EscapeDataString(JsonSerializer.Serialize(chunk))}";
+                        foreach (var p in (await Net.Json(url, ct)).AsArray())
+                        {
+                            var id = (string?)p?["id"];
+                            if (string.IsNullOrEmpty(id)) continue;
+                            titles[id] = ((string?)p?["title"], (string?)p?["icon_url"]);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { /* title falls back to the cleaned file name */ }
+            }
+
+            foreach (var item in hashed)
+            {
+                var key = item.type + "|" + item.file;
+                if (!hits.TryGetValue(item.sha, out var hit))
+                {
+                    if (complete) miss.Add(key);
+                    continue;
+                }
+                titles.TryGetValue(hit.pid, out var meta);
+                cur.Content.Add(new InstalledContent
+                {
+                    ProjectId = hit.pid, VersionId = hit.vid,
+                    Title = string.IsNullOrWhiteSpace(meta.title) ? Instances.DisplayTitle(null, item.file) : Instances.StripFmt(meta.title),
+                    Type = item.type, File = item.file, Sha1 = item.sha, IconUrl = meta.icon, VersionNumber = hit.ver,
+                    Source = "modrinth", Enabled = File.Exists(Path.Combine(Instances.ContentDir(cur, item.type), item.file)),
+                });
+            }
+
+            var kept = miss.Where(live.Contains).ToList();
+            var added = cur.Content.Where(c => hits.ContainsKey(c.Sha1 ?? "")).ToList();
+            var fresh = Instances.Get(inst.Id) ?? cur;
+            var changed = false;
+            foreach (var c in added)
+            {
+                var key = c.Type + "|" + Instances.EnabledName(c.File);
+                var old = fresh.Content.FirstOrDefault(x => string.Equals(x.Type + "|" + Instances.EnabledName(x.File), key, StringComparison.OrdinalIgnoreCase));
+                if (old != null)
+                {
+                    if (!string.IsNullOrEmpty(old.ProjectId) && !string.IsNullOrEmpty(old.IconUrl)) continue;
+                    fresh.Content.Remove(old);
+                }
+                fresh.Content.Add(c);
+                changed = true;
+            }
+            fresh.CatalogMisses ??= new();
+            if (kept.Count != fresh.CatalogMisses.Count || kept.Any(k => !fresh.CatalogMisses.Contains(k)))
+            {
+                fresh.CatalogMisses = kept;
+                changed = true;
+            }
+            if (changed) Instances.Save(fresh);
+            inst.Content = fresh.Content;
+            inst.CatalogMisses = fresh.CatalogMisses;
+            return changed;
+        }
+        finally { CatalogGate.Release(); }
     }
 
     /// <summary>Modpack straight from Modrinth: picks the best version, downloads the .mrpack and imports it.</summary>
@@ -242,7 +406,7 @@ public static class Modrinth
         p?.Report(new Progress("Modpack wird geladen", 0, 1, (string?)proj["title"]));
         await Net.Download(new DlItem((string)file["url"]!, tmp, (string?)file["hashes"]?["sha1"], (long?)file["size"] ?? 0), ct);
         var inst = await ImportPack(tmp, (string?)proj["title"], p, ct, (string)ver["project_id"]!, (string)ver["id"]!);
-        inst.IconUrl = (string?)proj["icon_url"]; Instances.Save(inst);
+        inst.IconUrl = (string?)proj["icon_url"]; inst.BannerUrl = Cover(proj); Instances.Save(inst);
         try { File.Delete(tmp); } catch { }
         return inst;
     }

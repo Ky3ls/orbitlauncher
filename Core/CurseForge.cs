@@ -110,6 +110,23 @@ public static class CurseForge
                 await InstallOne(inst, dm, null, true, res, seen, p, ct);
     }
 
+    public static async Task<List<Modrinth.VersionChoice>> Versions(Instance inst, InstalledContent c, CancellationToken ct = default)
+    {
+        var id = int.Parse(c.ProjectId[3..]);
+        var q = $"/mods/{id}/files?pageSize=40&gameVersion=" + Uri.EscapeDataString(inst.McVersion);
+        var lt = c.Type == "mod" ? LoaderType(inst.Loader) : 0;
+        if (lt != 0) q += "&modLoaderType=" + lt;
+        var files = (await Get(q, ct))["data"]!.AsArray();
+        return files.Where(f => f != null && (bool?)f["isServerPack"] != true && !string.IsNullOrEmpty((string?)f["downloadUrl"]))
+            .Select(f => new Modrinth.VersionChoice(
+                ((int)f!["id"]!).ToString(),
+                (string?)f["displayName"] ?? "",
+                (string?)f["fileName"] ?? "",
+                (int?)f["releaseType"] switch { 2 => "beta", 3 => "alpha", _ => "release" },
+                (string?)f["fileDate"],
+                ((int)f["id"]!).ToString() == c.VersionId)).ToList();
+    }
+
     public static async Task<List<Modrinth.UpdateInfo>> CheckUpdates(Instance inst, CancellationToken ct = default)
     {
         var r = new List<Modrinth.UpdateInfo>();
@@ -192,6 +209,8 @@ public static class CurseForge
         }
         inst.ManualDownloads = manual;
         Instances.Save(inst);
+        p?.Report(new Progress("Inhalte werden erkannt", 0, 1));
+        await Modrinth.AttachCatalog(inst, ct);
         return inst;
     }
 

@@ -24,4 +24,41 @@ let [s, r] = await call('POST', '/v1/register', { name: 'x', ph: ph('x', 'pw') }
 [s] = await call('GET', '/v1/sync', null, tA); assert.equal(s, 401);
 for (let i = 0; i < 10; i++) await call('POST', '/v1/login', { name: TN, ph: ph(TN, 'nope') });
 [s] = await call('POST', '/v1/login', { name: TN, ph: ph(TN, 'neu12345') }); assert.equal(s, 429, 'rate limit');
+
+const N2 = 'U_' + Math.random().toString(36).slice(2, 10);
+[s, r] = await call('POST', '/v1/register', { name: N2, ph: ph(N2, 'geheim123'), device: 'PC' }); assert.equal(s, 200); const t2 = r.token;
+[s, r] = await call('POST', '/v1/totp/start', {}, t2); assert.equal(s, 200); const secret = r.secret;
+const step = Math.floor(Date.now() / 30000);
+const codeAt = c => { const h = crypto.createHmac('sha1', Buffer.from(base32d(secret))).update(Buffer.from([0, 0, 0, 0, (c >>> 24) & 255, (c >>> 16) & 255, (c >>> 8) & 255, c & 255])).digest(); const o = h[19] & 15; return String(((h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1000000).padStart(6, '0'); };
+function base32d(str) { const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = 0, v = 0; const out = []; for (const c of str) { const i = A.indexOf(c); v = (v << 5) | i; bits += 5; if (bits >= 8) { bits -= 8; out.push((v >> bits) & 255); } } return Uint8Array.from(out); }
+[s] = await call('POST', '/v1/totp/confirm', { code: '000000' }, t2); assert.equal(s, 401);
+[s, r] = await call('POST', '/v1/totp/confirm', { code: codeAt(step) }, t2); assert.equal(s, 200); assert.equal(r.recovery.length, 8);
+[s, r] = await call('POST', '/v1/login', { name: N2, ph: ph(N2, 'geheim123') }); assert.equal(r.need, 'totp'); assert.ok(r.ticket);
+[s] = await call('POST', '/v1/login/totp', { ticket: r.ticket, code: '000000' }); assert.equal(s, 401);
+[s, r] = await call('POST', '/v1/login', { name: N2, ph: ph(N2, 'geheim123') }); const ticket = r.ticket;
+[s, r] = await call('POST', '/v1/login/totp', { ticket, code: codeAt(step + 1) }); assert.equal(s, 200, 'totp login'); const t3 = r.token;
+[s, r] = await call('GET', '/v1/me', null, t3); assert.equal(r.totp, true);
+
+const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const jwk = publicKey.export({ format: 'jwk' });
+const b64d = s => Buffer.from(s, 'base64url');
+const x = b64d(jwk.x), y = b64d(jwk.y);
+const cose = Buffer.concat([Buffer.from([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20]), x, Buffer.from([0x22, 0x58, 0x20]), y]);
+[s, r] = await call('POST', '/v1/passkey/add/begin', {}, t3); assert.equal(s, 200);
+const rpHash = crypto.createHash('sha256').update('orbit.local').digest();
+const credId = crypto.randomBytes(16);
+let ad = Buffer.concat([rpHash, Buffer.from([0x41, 0, 0, 0, 0]), Buffer.alloc(16), Buffer.from([0, 16]), credId, cose]);
+const client = obj => Buffer.from(JSON.stringify(obj)).toString('base64url');
+const cReg = client({ type: 'webauthn.create', challenge: r.challenge, origin: 'https://orbit.local' });
+const att = Buffer.concat([Buffer.from([0xa3, 0x63, 0x66, 0x6d, 0x74, 0x64, 0x6e, 0x6f, 0x6e, 0x65, 0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61, 0x58, ad.length]), ad]);
+[s] = await call('POST', '/v1/passkey/add/finish', { clientDataJSON: cReg, attestationObject: att.toString('base64url'), name: 'Testkey' }, t3); assert.equal(s, 200, 'passkey add');
+[s, r] = await call('POST', '/v1/passkey/begin', { name: N2 }); assert.equal(s, 200); assert.equal(r.allowCredentials.length, 1);
+const cGet = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge: r.challenge, origin: 'https://orbit.local' }));
+ad = Buffer.concat([rpHash, Buffer.from([0x05, 0, 0, 0, 1])]);
+const signed = Buffer.concat([ad, crypto.createHash('sha256').update(cGet).digest()]);
+const raw = crypto.sign('sha256', signed, { key: privateKey, dsaEncoding: 'ieee-p1363' });
+const der = crypto.sign('sha256', signed, { key: privateKey, dsaEncoding: 'der' });
+[s, r] = await call('POST', '/v1/passkey/finish', { id: credId.toString('base64url'), clientDataJSON: cGet.toString('base64url'), authenticatorData: ad.toString('base64url'), signature: der.toString('base64url'), device: 'PC' });
+assert.equal(s, 200, 'passkey login ' + raw.length); assert.ok(r.token);
+[s, r] = await call('GET', '/v1/me', null, t3); assert.equal(r.passkeys.length, 1);
 console.log('API OK');
