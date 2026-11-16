@@ -1314,17 +1314,15 @@ async function niRender() {
   if (N.tab === 'orbit') return niOrbit(m);
   const games = await niGames(N.loader);
   if (!games.includes(N.mc)) N.mc = games[0] || N.mc;
-  const q = N.vq.trim().toLowerCase(), shown = games.filter(v => !q || v.toLowerCase().includes(q));
   const latest = games[0];
   m.innerHTML = `<h2>Eigene Instanz</h2><p class="sub">Version und Mod-Loader wählen. Alles Nötige wird im Hintergrund geladen, du kannst sofort weitermachen.</p>
     <div class="vrow2"><div><label class="fl">Name</label><input class="in" id="niName" placeholder="${esc(niDefName())}" value="${esc(N.name)}"></div>
       <div><label class="fl">Gruppe <span class="muted">(optional)</span></label><input class="in" id="niGroup" list="niGroups" placeholder="z. B. Survival" value="${esc(N.group)}"><datalist id="niGroups">${[...new Set(S.instances.map(x => x.group).filter(Boolean))].map(g => `<option>${esc(g)}</option>`).join('')}</datalist></div></div>
     <label class="fl">Symbol</label><div id="niIcon"></div>
     <label class="fl">Mod-Loader</label><div class="ldcards" id="niLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === N.loader ? 'on' : ''}" data-ld="${k}" style="--lc:${LCOL[k]}">${ldIcon(k)}<b>${n}</b><small>${LDESC[k]}</small></button>`).join('')}</div>
-    <div class="vhead"><label class="fl">Spielversion</label><span class="sp"></span>
-      <select class="sel" id="niVf">${[['release', 'Releases'], ['snapshot', 'Snapshots'], ...(N.loader === 'vanilla' ? [['old', 'Uralt (Beta/Alpha)']] : [])].map(([k, n]) => `<option value="${k}" ${N.vf === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      <div class="srch sm">${ico('search')}<input class="in" id="niVq" placeholder="Suchen…" value="${esc(N.vq)}"></div></div>
-    <div class="vlist" id="niVl">${shown.length ? shown.slice(0, 120).map(v => `<button data-mc="${esc(v)}" class="${v === N.mc ? 'on' : ''}">${esc(v)}${v === latest && !q ? '<i>Neu</i>' : ''}</button>`).join('') : '<div class="muted" style="padding:10px">Keine passende Version.</div>'}</div>
+    <label class="fl">Spielversion</label>
+    <div class="vpick2"><div class="seg" id="niVf">${[['release', 'Releases'], ['snapshot', 'Snapshots'], ...(N.loader === 'vanilla' ? [['old', 'Uralt']] : [])].map(([k, n]) => `<button data-vf="${k}" class="${N.vf === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <select class="sel wide" id="niMc">${games.length ? games.map((v, k) => `<option value="${esc(v)}" ${v === N.mc ? 'selected' : ''}>${esc(v)}${k === 0 ? '  (neueste)' : ''}</option>`).join('') : '<option value="">Keine Version</option>'}</select></div>
     ${PERF[N.loader] ? `<div class="srow"><div><b>${ico('zap')}Performance-Mods dazu</b><p>${PERF[N.loader].map(p => p[1]).join(', ')}. Mehr FPS, weniger RAM. Nur was zur Version passt.</p></div><div class="tg sm ${N.perf ? 'on' : ''}" id="niPerf"></div></div>` : ''}
     <div class="srow"><div><b>${ico('compass')}Danach Mods aussuchen</b><p>Öffnet Entdecken direkt mit der neuen Instanz als Ziel.</p></div><div class="tg sm ${N.discover ? 'on' : ''}" id="niDisc"></div></div>
     <button class="lnk niadv" id="niAdv">${ico(N.adv ? 'chevd' : 'right')}Erweitert</button>
@@ -1336,9 +1334,8 @@ async function niRender() {
   $('#niName').oninput = e => { N.name = e.target.value; niPrev(); };
   $('#niGroup').oninput = e => { N.group = e.target.value; niPrev(); };
   $('#niLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; N.loader = b.dataset.ld; N.lv = ''; if (N.loader !== 'vanilla' && N.vf === 'old') N.vf = 'release'; niPrev(); niRender(); };
-  $('#niVf').onchange = e => { N.vf = e.target.value; niRender(); };
-  let t = 0; $('#niVq').oninput = e => { N.vq = e.target.value; clearTimeout(t); t = setTimeout(async () => { await niRender(); const i = $('#niVq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 200); };
-  $('#niVl').onclick = e => { const b = e.target.closest('[data-mc]'); if (!b) return; N.mc = b.dataset.mc; N.lv = ''; $$('#niVl button').forEach(x => x.classList.toggle('on', x === b)); $('#niName').placeholder = niDefName(); niPrev(); niLoaderVersions(); };
+  $('#niVf').onclick = e => { const b = e.target.closest('[data-vf]'); if (!b) return; N.vf = b.dataset.vf; niRender(); };
+  $('#niMc').onchange = e => { N.mc = e.target.value; N.lv = ''; $('#niName').placeholder = niDefName(); niPrev(); niLoaderVersions(); };
   $('#niPerf') && ($('#niPerf').onclick = e => { N.perf = !N.perf; e.target.classList.toggle('on', N.perf); niPrev(); });
   $('#niDisc').onclick = e => { N.discover = !N.discover; e.target.classList.toggle('on', N.discover); };
   $('#niAdv').onclick = () => { N.adv = !N.adv; $('#niAdvBox').classList.toggle('hidden', !N.adv); $('#niAdv').innerHTML = ico(N.adv ? 'chevd' : 'right') + 'Erweitert'; };

@@ -1916,3 +1916,5 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 
 #niVf{height:34px;min-width:150px}
 .vhead .srch.sm{width:180px}
+.vpick2{display:flex;gap:10px;align-items:center}.vpick2 .seg{flex:none}.vpick2 .sel{flex:1;height:42px}
+.vpick2>*:last-child{flex:1;min-width:0;width:auto!important;max-width:100%}.vpick2{margin-bottom:14px}
