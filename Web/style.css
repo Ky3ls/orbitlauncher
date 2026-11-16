@@ -1857,3 +1857,19 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .mprev i:last-child{background:linear-gradient(135deg,rgba(var(--a-rgb),.55),rgba(var(--a-rgb),.15))}
 [data-mode=light] :is(.spot,.ihero,.phero,.hero2) .glass{background:rgba(16,16,20,.88)}
 [data-mode=light] .chip:is(.van,.fab,.qui,.frg,.neo,.a,.g){filter:brightness(.6) saturate(1.5)}
+
+/* design settings: effect | colour | mode side by side */
+.dsg3{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) minmax(0,.7fr);gap:14px;align-items:start}
+.dsg3>.card{height:100%}
+.dsg3 .fxpick{grid-template-columns:repeat(3,1fr);gap:8px}
+.dsg3 .fxpick button{padding:8px}
+.dsg3 .fxi{height:86px}
+.dsg3 .fxpick small{display:none}
+.dsg3 .themes{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px}
+.dsg3 .sw i{width:44px;height:44px}
+.dsg3 .modes{grid-template-columns:1fr;gap:8px}
+.dsg3 .mprev{height:44px}
+@media (max-width:1250px){.dsg3{grid-template-columns:1fr 1fr}.dsg3>.card:last-child{grid-column:1/-1}.dsg3 .modes{grid-template-columns:repeat(3,1fr)}}
+.dsg3 .modes button{display:grid;grid-template-columns:64px 1fr;grid-template-rows:auto auto;column-gap:12px;align-items:center;align-content:center}
+.dsg3 .mprev{grid-row:1/3;width:64px;height:46px;margin:0}
+.dsg3 .modes b{align-self:end}.dsg3 .modes small{align-self:start}
