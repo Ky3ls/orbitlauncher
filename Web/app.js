@@ -3632,6 +3632,18 @@ function fxDraw(dt) {
     }
   }
   x.globalAlpha = 1;
+  // the modpack spotlight stays in front: cut it out of the effect layer
+  if (S.page === 'home') {
+    const sp = document.getElementById('spot');
+    if (sp) {
+      const r = sp.getBoundingClientRect();
+      if (r.bottom > 0 && r.top < FX.h) {
+        x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'destination-out'; x.beginPath();
+        if (x.roundRect) x.roundRect(r.left, r.top, r.width, r.height, 26); else x.rect(r.left, r.top, r.width, r.height);
+        x.fill(); x.restore();
+      }
+    }
+  }
 }
 function fxLoop() {
   cancelAnimationFrame(FX.raf); FX.raf = 0;
