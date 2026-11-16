@@ -1422,3 +1422,19 @@ select.sel-native{display:none !important}
 .ihero .acts .ib{background:rgba(14,14,17,.72);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.12);color:var(--text)}
 .ihero .acts .ib:hover{background:rgba(30,30,36,.85)}
 .ihero h1,.ihero .kicker{text-shadow:0 2px 16px rgba(0,0,0,.6)}
+
+/* screenshots: multi-select */
+.shot .cap{display:flex;justify-content:space-between;align-items:center;padding:10px 12px}
+.shot .cb{position:absolute;left:10px;top:10px;z-index:2;width:24px;height:24px;border-radius:8px;background:rgba(10,10,11,.7);border-color:rgba(255,255,255,.5);opacity:0;transition:opacity .15s,background .2s}
+.shot:hover .cb,.sgal.selecting .shot .cb,.shot.sel .cb{opacity:1}
+.shot.sel{border-color:rgba(var(--a-rgb),.75);box-shadow:0 0 0 3px rgba(var(--a-rgb),.25)}
+.shot.sel i{transform:scale(.96);border-radius:10px;filter:brightness(.85)}
+.sgal.selecting .shot{cursor:pointer}
+.shbar{position:sticky;top:0;z-index:5;backdrop-filter:blur(14px)}
+#shSelBtn.on{border-color:rgba(var(--a-rgb),.5);background:rgba(var(--a-rgb),.12)}
+
+/* project header: banner fades softly into the page instead of a hard edge */
+.phero{border-bottom:0;overflow:visible;padding-bottom:34px}
+.phero::before{content:'';position:absolute;inset:-30px -30px 0;z-index:-1;overflow:hidden;pointer-events:none}
+.ph-bg{inset:0 0 -40px 0;-webkit-mask:linear-gradient(180deg,#000 40%,transparent 100%);mask:linear-gradient(180deg,#000 40%,transparent 100%);transform:none}
+.phero::after{inset:0 0 -40px 0;background:linear-gradient(90deg,rgba(7,7,9,.85),rgba(7,7,9,.35));-webkit-mask:linear-gradient(180deg,#000 40%,transparent 100%);mask:linear-gradient(180deg,#000 40%,transparent 100%)}

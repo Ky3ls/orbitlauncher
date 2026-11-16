@@ -949,24 +949,63 @@ async function importLaunchers() {
 /* ======================= SCREENSHOTS ======================= */
 PAGES.shots = async el => {
   crumbs([['Screenshots']]);
-  el.innerHTML = `<div class="ph"><div><div class="kicker">Alle Instanzen</div><h1>Screenshots</h1><p class="pd">Alles, was du im Spiel mit F2 aufgenommen hast.</p></div><div class="ph-r"><select class="sel" id="shF"><option value="">Alle Instanzen</option></select></div></div><div class="sgal" id="sgal"><div class="spinner"></div></div>`;
+  el.innerHTML = `<div class="ph"><div><div class="kicker">Alle Instanzen</div><h1>Screenshots</h1><p class="pd">Alles, was du im Spiel mit F2 aufgenommen hast.</p></div><div class="ph-r"><button class="btn" id="shSelBtn">${ico('check')}Auswählen</button><select class="sel" id="shF"><option value="">Alle Instanzen</option></select></div></div>
+    <div id="shBar"></div><div class="sgal" id="sgal"><div class="spinner"></div></div>`;
   let list = []; try { list = await api('screenshots.list'); } catch { }
   S.shots = list;
+  const sel = new Set(); let selMode = false, last = -1;
   const ids = [...new Set(list.map(x => x.id))];
   $('#shF').innerHTML += ids.map(id => `<option value="${esc(id)}">${esc(instById(id)?.name || id)}</option>`).join('');
-  const draw = () => {
-    const f = $('#shF').value, l = list.map((x, i) => [x, i]).filter(([x]) => !f || x.id === f);
-    $('#sgal').innerHTML = l.length ? l.map(([x, i]) => `<button class="shot tilt" data-i="${i}"><i style="background-image:url('${esc(x.url)}')"></i><span><b>${esc(instById(x.id)?.name || x.version)}</b><small>${esc(new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</small></span></button>`).join('')
-      : `<div class="lempty" style="grid-column:1/-1"><span class="iic">${ico('image')}</span><h2>Noch keine Screenshots</h2><p>Drück im Spiel F2. Deine Screenshots aus allen Instanzen landen hier.</p></div>`;
+  const visible = () => { const f = $('#shF').value; return list.map((x, i) => [x, i]).filter(([x]) => !f || x.id === f).map(([, i]) => i); };
+  const bar = () => {
+    const n = sel.size, vis = visible(), all = vis.length && vis.every(i => sel.has(i));
+    $('#shSelBtn').classList.toggle('on', selMode);
+    $('#shSelBtn').innerHTML = selMode ? `${ico('x')}Fertig` : `${ico('check')}Auswählen`;
+    $('#shBar').innerHTML = selMode ? `<div class="selbar shbar"><b>${n ? n + ' ausgewählt' : 'Klick auf Bilder, um sie auszuwählen'}</b><span class="muted" style="font-size:11.5px">Umschalt = Bereich</span><span class="sp"></span>
+      <button class="btn sm" data-b="all">${ico(all ? 'x' : 'check')}${all ? 'Keine' : 'Alle'}</button>
+      <button class="btn sm" data-b="open" ${n ? '' : 'disabled'}>${ico('folder')}Im Ordner zeigen</button>
+      <button class="btn sm d" data-b="del" ${n ? '' : 'disabled'}>${ico('trash')}Löschen${n ? ' (' + n + ')' : ''}</button></div>` : '';
+    $$('#sgal .shot').forEach(t => { const on = sel.has(+t.dataset.i); t.classList.toggle('sel', on); t.querySelector('.cb')?.classList.toggle('on', on); });
+    $('#sgal').classList.toggle('selecting', selMode);
   };
-  $('#shF').onchange = draw; draw();
+  const draw = () => {
+    const vis = visible();
+    $('#sgal').innerHTML = vis.length ? vis.map(i => { const x = list[i]; return `<button class="shot tilt" data-i="${i}"><span class="cb" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><i style="background-image:url('${esc(x.url)}')"></i><span class="cap"><b>${esc(instById(x.id)?.name || x.version)}</b><small>${esc(new Date(x.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</small></span></button>`; }).join('')
+      : `<div class="lempty" style="grid-column:1/-1"><span class="iic">${ico('image')}</span><h2>Noch keine Screenshots</h2><p>Drück im Spiel F2. Deine Screenshots aus allen Instanzen landen hier.</p></div>`;
+    bar();
+  };
+  const toggle = (i, range) => {
+    if (range && last >= 0) { const vis = visible(), a = vis.indexOf(last), b = vis.indexOf(i); if (a >= 0 && b >= 0) { vis.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(k => sel.add(k)); last = i; return bar(); } }
+    sel.has(i) ? sel.delete(i) : sel.add(i); last = i; bar();
+  };
+  $('#shF').onchange = () => { sel.clear(); last = -1; draw(); };
+  $('#shSelBtn').onclick = () => { selMode = !selMode; if (!selMode) sel.clear(); bar(); };
+  $('#shBar').onclick = async e => {
+    const b = e.target.closest('[data-b]'); if (!b) return;
+    const vis = visible();
+    if (b.dataset.b === 'all') { if (vis.every(i => sel.has(i))) sel.clear(); else vis.forEach(i => sel.add(i)); return bar(); }
+    const items = [...sel].map(i => list[i]);
+    if (b.dataset.b === 'open') { const x = items[0]; return api('screenshots.open', { id: x.id, file: x.file }); }
+    if (b.dataset.b === 'del') {
+      if (!await confirmBox(`${items.length} Screenshot${items.length > 1 ? 's' : ''} löschen?`, 'Die Bilder werden von der Festplatte gelöscht.', 'Löschen', true)) return;
+      let ok = 0; for (const x of items) { try { await api('screenshots.delete', { id: x.id, file: x.file }); ok++; } catch { } }
+      toast('Gelöscht', `${ok} Screenshot${ok === 1 ? '' : 's'}`);
+      go('shots', {}, false);
+    }
+  };
+  draw();
   $('#sgal').onclick = e => {
     const b = e.target.closest('[data-i]'); if (!b) return;
-    const x = S.shots[+b.dataset.i];
+    const i = +b.dataset.i;
+    if (e.target.closest('[data-s]') || e.ctrlKey || e.metaKey || e.shiftKey) { if (!selMode) selMode = true; return toggle(i, e.shiftKey); }
+    if (selMode) return toggle(i, e.shiftKey);
+    const x = S.shots[i];
     modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><img class="shotbig" src="${esc(x.url)}" alt="">
       <div class="act" style="justify-content:space-between"><span class="muted" style="font-size:12px">${esc(x.file)} · ${esc(instById(x.id)?.name || '')}</span>
       <span class="row"><button class="btn" onclick="api('screenshots.open',{id:'${jsq(x.id)}',file:'${jsq(x.file)}'})">${ico('folder')}Im Ordner zeigen</button><button class="btn d" onclick="api('screenshots.delete',{id:'${jsq(x.id)}',file:'${jsq(x.file)}'}).then(()=>{closeModal();go('shots',{},false)})">${ico('trash')}Löschen</button></span></div>`, 'form wide');
   };
+  el._esc = e => { if (e.key === 'Escape' && S.page === 'shots' && selMode && !$('#modal').classList.contains('show')) { selMode = false; sel.clear(); bar(); } };
+  document.removeEventListener('keydown', S.shotEsc || (() => { })); S.shotEsc = el._esc; document.addEventListener('keydown', S.shotEsc);
 };
 
 /* ---------- logs ---------- */
