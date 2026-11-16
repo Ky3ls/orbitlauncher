@@ -70,6 +70,11 @@ public partial class MainWindow : Window
             int dark = 1; DwmSetWindowAttribute(h, 20, ref dark, sizeof(int));     // dark title/border
         };
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
+        // minimized: let the web view drop caches and run with as little memory as possible
+        StateChanged += (_, _) =>
+        {
+            try { if (Web.CoreWebView2 != null) Web.CoreWebView2.MemoryUsageTargetLevel = WindowState == WindowState.Minimized ? CoreWebView2MemoryUsageTargetLevel.Low : CoreWebView2MemoryUsageTargetLevel.Normal; } catch { }
+        };
         Loaded += async (_, _) => await InitWeb();
         Closing += (_, _) => { _rpc.Dispose(); SaveBounds(); S.Save(); _overlay.Detach(); _overlay.Close(); };
         WatchConfig();
