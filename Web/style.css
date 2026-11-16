@@ -1415,7 +1415,8 @@ select.sel-native{display:none !important}
 
 /* instance header: banner stays behind the title, everything on it gets a solid glass backing */
 .ih-bg{height:250px}
-.ihero::after{height:250px;background:linear-gradient(180deg,rgba(10,10,11,.25) 0%,rgba(10,10,11,.45) 45%,rgba(10,10,11,.92) 82%,#0a0a0b 100%)}
+.ihero::after{height:250px;background:linear-gradient(180deg,rgba(10,10,11,.2) 0%,rgba(10,10,11,.55) 60%,rgba(10,10,11,.7) 100%);-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 45%,transparent 100%);mask-image:linear-gradient(180deg,#000 0%,#000 45%,transparent 100%)}
+.ih-bg{-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 28%,transparent 100%);mask-image:linear-gradient(180deg,#000 0%,#000 28%,transparent 100%)}
 .istats div{background:rgba(14,14,17,.78);backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 24px -16px rgba(0,0,0,.9)}
 .istats small{color:var(--sub)}
 .ihero .acts .ib{background:rgba(14,14,17,.72);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.12);color:var(--text)}
