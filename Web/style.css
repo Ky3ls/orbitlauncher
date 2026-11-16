@@ -1794,3 +1794,8 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .snav .tab.on{background:rgba(var(--a-rgb),.1)}
 /* account button when signed out: just "Anmelden" */
 .sacc.out .an small{display:none}
+/* cover fallback must not clip the icon that hangs over the edge */
+.nocov{overflow:visible}
+.nocov .cfb{inset:0;clip-path:inset(0)}
+.ptile .gimg.nocov .cfb{border-radius:inherit}
+.ptile .gimg.nocov .pic{z-index:2}
