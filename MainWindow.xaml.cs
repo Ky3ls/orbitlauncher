@@ -78,6 +78,9 @@ public partial class MainWindow : Window
         Deactivated += (_, _) => { idle.Stop(); idle.Start(); };
         Activated += (_, _) => { idle.Stop(); Slim(false); };
         Loaded += (_, _) => { var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(12) }; t.Tick += (_, _) => { t.Stop(); TrimMemory(); }; t.Start(); };
+        var data0 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrbitLauncher");
+        _webTask = Task.Run(() => ExtractWeb(Path.Combine(data0, "web")));
+        _envTask = CoreWebView2Environment.CreateAsync(null, Path.Combine(data0, "WebView2"));
         Loaded += async (_, _) => await InitWeb();
         Closing += (_, _) => { _rpc.Dispose(); SaveBounds(); S.Save(); _overlay.Detach(); _overlay.Close(); };
         WatchConfig();
@@ -121,9 +124,8 @@ public partial class MainWindow : Window
         try
         {
             var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrbitLauncher");
-            var webTask = Task.Run(() => ExtractWeb(Path.Combine(data, "web")));
-            var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(data, "WebView2"));
-            Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 10, 10, 11);
+            var webTask = _webTask!;
+            var env = await _envTask!;
             await Web.EnsureCoreWebView2Async(env);
             var c = Web.CoreWebView2;
             c.Settings.AreDefaultContextMenusEnabled = false;
@@ -141,6 +143,7 @@ public partial class MainWindow : Window
             c.SetVirtualHostNameToFolderMapping("shots.orbit", Paths.Instances, CoreWebView2HostResourceAccessKind.Allow);
             c.WebMessageReceived += OnMessage;
             Web.ZoomFactor = _zoom;
+            c.NavigationCompleted += (_, _) => Boot.Visibility = Visibility.Collapsed;
             c.Navigate("https://orbit.local/index.html");
         }
         catch (WebView2RuntimeNotFoundException)
@@ -265,6 +268,8 @@ public partial class MainWindow : Window
         }
         catch { }
     }
+    private Task<string>? _webTask;
+    private Task<CoreWebView2Environment>? _envTask;
     private bool _argsUsed;
     private object Dto(Instance i)
     {

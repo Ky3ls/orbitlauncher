@@ -10,6 +10,28 @@
                       CornerRadius="0" UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
     <Grid x:Name="Root">
-        <wv2:WebView2 x:Name="Web"/>
+        <wv2:WebView2 x:Name="Web" DefaultBackgroundColor="#0A0A0B"/>
+        <!-- native start screen: visible at once, until the UI has loaded -->
+        <Grid x:Name="Boot" Background="#0A0A0B">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock HorizontalAlignment="Center" FontFamily="Segoe UI" FontSize="30" FontWeight="SemiBold">
+                    <Run Text="Orbit" Foreground="#F4F4F5"/><Run Text="Launcher" Foreground="#FF7A3D"/>
+                </TextBlock>
+                <Border Width="160" Height="3" CornerRadius="2" Background="#1F1F24" Margin="0,18,0,0" ClipToBounds="True">
+                    <Border x:Name="BootBar" Width="56" Height="3" CornerRadius="2" Background="#FF7A3D" HorizontalAlignment="Left">
+                        <Border.RenderTransform><TranslateTransform x:Name="BootMove"/></Border.RenderTransform>
+                        <Border.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="BootMove" Storyboard.TargetProperty="X" From="-56" To="160" Duration="0:0:1.1"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Border.Triggers>
+                    </Border>
+                </Border>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
