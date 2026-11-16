@@ -1487,3 +1487,20 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .isact{grid-template-columns:repeat(2,1fr)}
 #mMain .note{display:flex;gap:10px;align-items:center}
 #mMain .note svg.i{flex:none;width:16px;height:16px}
+
+/* library: stats as a sidebar like discover */
+.lgrid .lbar{margin-top:0}
+.lside .lstats{display:flex;flex-direction:column;gap:6px;margin:0;padding:0 2px}
+.lside .lst{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.025)}
+.lside .lst>svg.i{width:34px;height:34px;padding:8px;border-radius:10px}
+.lside .lst b{font-size:19px}.lside .lst.txt b{font-size:14px}
+.lside .lmix{flex-direction:column;align-items:stretch;gap:10px;padding:4px 8px 6px;border:0;background:none}
+.lside .lmb{min-width:0}
+.lside .lml{flex-direction:column;gap:6px}.lside .lml span{justify-content:flex-start}.lside .lml b{margin-left:auto}
+.lgrid .igrid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+@media (max-width:1100px){.lside .lstats{grid-template-columns:none}}
+.lside .lmb{flex:none;height:8px}
+.lgrid .lbar{flex-wrap:nowrap}
+.lgrid .lbar .srch{flex:1;min-width:140px}.lgrid .lbar .srch .in{width:100%}
+.lgrid .lbar>.sp{display:none}
+.icard.ghost small{white-space:normal;max-width:180px;line-height:1.4}

@@ -557,10 +557,11 @@ PAGES.library = el => {
   crumbs([['Bibliothek']]);
   const L = S.lib;
   el.innerHTML = `<div class="ph"><div><div class="kicker">Deine Instanzen</div><h1>Bibliothek</h1></div><div class="ph-r"><button class="btn" data-pop onclick="importMenu(event)">${ico('upload')}Importieren${ico('chevd')}</button><button class="btn p" onclick="newInstance()">${ico('plus')}Instanz erstellen</button></div></div>
+    <div class="dgrid lgrid"><aside class="filters">${libStats()}</aside><div>
     <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ['orbit', 'Orbit Client']].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="srch">${ico('search')}<input class="in" id="libQ" placeholder="Instanzen durchsuchen…" value="${esc(L.q)}"></div><span class="sp"></span>
       <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select></div>
-    ${libStats()}<div id="libGrid"></div>`;
+    <div id="libGrid"></div></div></div>`;
   countUp(el);
   const save = () => { try { localStorage.setItem('orbit.lib', JSON.stringify(L)); } catch { } renderLibGrid(); };
   $('#libTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; L.tab = b.dataset.k; $$('#libTabs button').forEach(x => x.classList.toggle('on', x === b)); save(); };
@@ -577,14 +578,14 @@ function libStats() {
   const ld = {}; I.forEach(i => ld[i.loader] = (ld[i.loader] || 0) + 1);
   const mix = Object.entries(ld).sort((a, b) => b[1] - a[1]);
   const card = (ic, n, l, sub, click) => `<div class="lst ${click ? 'ck' : ''} ${typeof n === 'number' ? '' : 'txt'}" ${click ? `onclick="${click}"` : ''}>${ico(ic)}<div><b ${typeof n === 'number' ? `data-count="${n}"` : ''}>${typeof n === 'number' ? 0 : esc(n)}</b><span>${l}</span><small class="ell">${sub}</small></div></div>`;
-  return `<div class="lstats">
+  return `<div class="fbox lside"><div class="fh">${ico('activity')}Statistik</div><div class="lstats">
     ${card('library', I.length, 'Instanzen', `${packs} Modpack${packs === 1 ? '' : 's'} · ${modded} mit Mods`)}
     ${card('clock', Math.round(secs / 3600), 'Stunden gespielt', fav?.playSeconds ? 'Am meisten: ' + esc(fav.name) : 'Noch nichts gespielt', fav?.playSeconds ? `go('inst',{id:'${jsq(fav.id)}'})` : '')}
     ${card('puzzle', mods, 'Mods installiert', `Ø ${modded ? Math.round(mods / modded) : 0} pro Modded-Instanz`)}
     ${last ? card('play', last.name, 'Zuletzt gespielt', esc(ago(last.lastPlayed)) + ' · ' + esc(instSub(last)), `go('inst',{id:'${jsq(last.id)}'})`) : card('play', '—', 'Zuletzt gespielt', 'Starte eine Instanz')}
-    <div class="lmix"><div class="lmb">${mix.map(([k, n]) => `<i style="flex:${n};background:${LCOL[k] || '#888'}" title="${esc(LOADERS[k]?.[0] || k)}: ${n}"></i>`).join('')}</div>
-      <div class="lml">${mix.map(([k, n]) => `<span><i style="background:${LCOL[k] || '#888'}"></i>${esc(LOADERS[k]?.[0] || k)}<b>${n}</b></span>`).join('')}</div></div>
-  </div>`;
+  </div></div>
+  <div class="fbox lside"><div class="fh">${ico('layers')}Mod-Loader</div><div class="lmix"><div class="lmb">${mix.map(([k, n]) => `<i style="flex:${n};background:${LCOL[k] || '#888'}" title="${esc(LOADERS[k]?.[0] || k)}: ${n}"></i>`).join('')}</div>
+    <div class="lml">${mix.map(([k, n]) => `<span><i style="background:${LCOL[k] || '#888'}"></i>${esc(LOADERS[k]?.[0] || k)}<b>${n}</b></span>`).join('')}</div></div></div>`;
 }
 const vkey = v => (v || '').split(/[.\-]/).map(x => /^\d+$/.test(x) ? x.padStart(4, '0') : x).join('.');
 function renderLibGrid() {
