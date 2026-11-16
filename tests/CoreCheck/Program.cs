@@ -17,6 +17,14 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "skins":
+    {
+        var pl = System.Text.Json.JsonSerializer.Serialize(await SkinSources.Player(args.ElementAtOrDefault(2) ?? "Notch"));
+        Console.WriteLine("player: " + pl[..Math.Min(160, pl.Length)]);
+        var d = await SkinSources.Defaults();
+        Console.WriteLine("defaults: " + string.Join(", ", d.Select(x => x.Name + "/" + x.Variant)));
+        break;
+    }
     case "findpack":
     {
         CurseForge.Key = File.ReadAllText(args[2]).Trim();

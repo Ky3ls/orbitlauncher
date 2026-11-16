@@ -1715,3 +1715,27 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .lside .lst span{order:1;flex:none;font-size:13px}
 .lside .lst b{order:2;margin-left:auto;font-size:13px;min-width:0}
 .lside .lst.txt b{font-size:12.5px;max-width:120px}
+
+/* capes */
+.capes{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.capeb{position:relative;width:auto;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 6px 8px;border-radius:14px}
+.capeb i{width:40px;height:64px;margin:0;border-radius:4px;background-size:256px 128px;background-position:-4px -4px;box-shadow:0 8px 18px -8px rgba(0,0,0,.8)}
+.capeb span{font-size:11px;max-width:100%}
+.capeb em{position:absolute;top:6px;right:6px;font-style:normal;font-size:8.5px;font-weight:700;padding:1px 5px;border-radius:5px;background:var(--a);color:#000}
+.capeb:hover{transform:translateY(-2px)}
+.capenone{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:14px;border:1px dashed var(--line2);color:var(--sub)}
+.capenone svg.i{width:20px;height:20px;color:var(--a);flex:none;margin-top:2px}
+.capenone b{font-size:13px;color:var(--text)}.capenone p{font-size:12px;margin-top:2px;line-height:1.45}
+.mcm .cp .f{backface-visibility:visible}
+/* editor tooltips */
+.se-tools button{position:relative}
+.se-tools button[data-tip]::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translate(-4px,-50%);white-space:nowrap;padding:6px 10px;border-radius:9px;background:rgba(20,20,24,.97);border:1px solid var(--line2);color:var(--text);font-size:12px;font-weight:600;box-shadow:0 12px 30px -10px rgba(0,0,0,.9);opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;z-index:20}
+.se-tools button[data-key]::before{content:attr(data-key);position:absolute;left:calc(100% + 12px);top:50%;transform:translate(-4px,-50%);opacity:0;z-index:21;pointer-events:none}
+.se-tools button[data-tip][data-key]::after{content:attr(data-tip) '   ' attr(data-key)}
+.se-tools button:hover::after{opacity:1;transform:translate(0,-50%)}
+.se-tools{z-index:5}
+
+.skc-find{display:flex;gap:8px;margin-bottom:12px}
+.skc-find .srch{flex:1}.skc-find .srch .in{width:100%}
+.fchip.std{display:inline-flex;align-items:center;gap:5px;border-color:rgba(var(--a-rgb),.35)}
+.fchip.std svg.i{width:13px;height:13px;color:var(--a)}

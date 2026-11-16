@@ -846,6 +846,9 @@ public partial class MainWindow : Window
                 var e = Skins.Add(png, name, Str(a, "variant"));
                 return new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) };
             }
+            case "skins.defaults": return await WithTask(async p => { p.Report(new Progress("Standard-Skins werden geladen", 0, 1, "")); return await SkinSources.Defaults(); });
+            case "skins.player": return await SkinSources.Player(Str(a, "name"));
+            case "skins.link": return new { data = await SkinSources.FromLink(Str(a, "url")) };
             case "skins.save":
             {
                 // editor: overwrite an existing skin or add a new one

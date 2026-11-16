@@ -1956,7 +1956,7 @@ function cuboid(w, h, d, u, v, U, tex, ox, oy, oz, inflate = 0) {
     + face(w, d, u + d, v, `rotateX(90deg) translateZ(${H / 2}px)`, sx, sz)
     + face(w, d, u + d + w, v, `rotateX(-90deg) translateZ(${H / 2}px)`, sx, sz);
 }
-function skinModel(url, slim, U = 8, legacy = false) {
+function skinModel(url, slim, U = 8, legacy = false, cape = null) {
   const tex = { url: esc(url), h: legacy ? 32 : 64 }, aw = slim ? 3 : 4, ax = 4 + aw / 2;
   const part = (cls, px, py, inner) => `<div class="pt ${cls}" style="transform:translate3d(${px * U}px,${py * U}px,0)">${inner}</div>`;
   // part pivots: head at neck, arms at shoulders, legs at hips (y down, model center = 0)
@@ -1966,7 +1966,8 @@ function skinModel(url, slim, U = 8, legacy = false) {
   const lArm = legacy ? cuboid(aw, 12, 4, 40, 16, U, tex, 0, 4 * U, 0) : cuboid(aw, 12, 4, 32, 48, U, tex, 0, 4 * U, 0) + `<div class="ov">${cuboid(aw, 12, 4, 48, 48, U, tex, 0, 4 * U, 0, .5)}</div>`;
   const rLeg = cuboid(4, 12, 4, 0, 16, U, tex, 0, 6 * U, 0) + (legacy ? '' : `<div class="ov">${cuboid(4, 12, 4, 0, 32, U, tex, 0, 6 * U, 0, .5)}</div>`);
   const lLeg = legacy ? cuboid(4, 12, 4, 0, 16, U, tex, 0, 6 * U, 0) : cuboid(4, 12, 4, 16, 48, U, tex, 0, 6 * U, 0) + `<div class="ov">${cuboid(4, 12, 4, 0, 48, U, tex, 0, 6 * U, 0, .5)}</div>`;
-  return `<div class="mcm">${part('hd', 0, -8, head)}${part('bd', 0, -8, body)}${part('ra', -ax, -6, rArm)}${part('la', ax, -6, lArm)}${part('rl', -2, 4, rLeg)}${part('ll', 2, 4, lLeg)}</div>`;
+  const cp = cape ? `<div class="pt cp" style="transform:translate3d(0,${-8 * U}px,${-2.6 * U}px) rotateX(-12deg) rotateY(180deg)">${cuboid(10, 16, 1, 0, 0, U, { url: esc(cape), h: 32 }, 0, 8 * U, 0)}</div>` : '';
+  return `<div class="mcm">${cp}${part('hd', 0, -8, head)}${part('bd', 0, -8, body)}${part('ra', -ax, -6, rArm)}${part('la', ax, -6, lArm)}${part('rl', -2, 4, rLeg)}${part('ll', 2, 4, lLeg)}</div>`;
 }
 const texH = url => new Promise(r => { const im = new Image(); im.onload = () => r(im.naturalHeight); im.onerror = () => r(64); im.src = url; });
 const SV = { rot: -25, tilt: -8, spin: true, walk: false, t: 0, raf: 0 };
@@ -2016,7 +2017,8 @@ function selSkin() {
 async function skinShow() {
   const s = selSkin(), st = $('#skStage'); if (!st) return;
   const h = await texH(s.url);
-  st.innerHTML = '<span class="floor"></span>' + skinModel(s.url, s.variant === 'slim', 9, h === 32);
+  const capeOn = S.skins.capePrev !== undefined ? S.skins.capePrev : S.skins.prof?.capes?.find(c => c.state === 'ACTIVE')?.url;
+  st.innerHTML = '<span class="floor"></span>' + skinModel(s.url, s.variant === 'slim', 9, h === 32, capeOn ? capeOn.replace('http://', 'https://') : null);
   viewerLoop();
   const canApply = !s.current && !s.demo && S.accounts.length;
   $('#skBar').innerHTML = `<div class="row"><b class="ell" style="flex:1">${esc(s.name)}</b>${s.current ? '<span class="chip g">Aktiv</span>' : ''}</div>
@@ -2038,7 +2040,9 @@ function skinSide() {
   const active = K.prof?.skins?.find(s => s.state === 'ACTIVE'), capes = K.prof?.capes || [];
   const card = (id, name, url, variant, extra = '') => `<div class="skc ${K.sel === id ? 'on' : ''}" data-sk="${esc(id)}">${extra}<div class="thumb">${skinModel(url, variant === 'slim', 4.2).replace('class="mcm"', 'class="mcm" style="transform:rotateX(-8deg) rotateY(-28deg)"')}</div><b>${esc(name)}</b><small>${variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></div>`;
   el.innerHTML = `${K.prof?.error ? `<div class="note w" style="margin:0 0 14px">Profil konnte nicht geladen werden: ${esc(K.prof.error)}</div>` : ''}
-    ${capes.length ? `<div class="sec" style="margin-top:0"><h2>Umhänge</h2></div><div class="capes" id="skCapes"><button class="capeb ${capes.some(c => c.state === 'ACTIVE') ? '' : 'on'}" data-cape=""><i class="none"></i>Keiner</button>${capes.map(c => `<button class="capeb ${c.state === 'ACTIVE' ? 'on' : ''}" data-cape="${esc(c.id)}"><i style="background-image:url('${esc(c.url.replace('http://', 'https://'))}')"></i>${esc(c.alias || 'Umhang')}</button>`).join('')}</div>` : ''}
+    <div class="sec" style="margin-top:0"><h2>Umhänge</h2><span class="muted">${capes.length}</span><span class="sp"></span><span class="muted" style="font-size:11.5px">Drüberfahren = Vorschau</span></div>
+    ${K.prof && !K.prof.error ? (capes.length ? `<div class="capes" id="skCapes"><button class="capeb ${capes.some(c => c.state === 'ACTIVE') ? '' : 'on'}" data-cape=""><i class="none"></i><span>Keiner</span></button>${capes.map(c => `<button class="capeb ${c.state === 'ACTIVE' ? 'on' : ''}" data-cape="${esc(c.id)}" data-curl="${esc(c.url.replace('http://', 'https://'))}"><i style="background-image:url('${esc(c.url.replace('http://', 'https://'))}')"></i><span class="ell">${esc(c.alias || 'Umhang')}</span>${c.state === 'ACTIVE' ? '<em>Aktiv</em>' : ''}</button>`).join('')}</div>`
+      : `<div class="capenone">${ico('shield')}<div><b>Noch keine Umhänge</b><p>Umhänge gibt es von Mojang, zum Beispiel über Events, Minecraft Live oder Käufe. Sobald dein Konto einen hat, kannst du ihn hier wählen.</p></div></div>`) : `<div class="capenone">${ico('user')}<div><b>Mit Microsoft anmelden</b><p>Umhänge gehören zu deinem Minecraft-Konto.</p></div></div>`}
     <div class="sec" ${capes.length ? '' : 'style="margin-top:0"'}><h2>Deine Skins</h2><span class="muted">${K.lib.length}</span></div>
     <div class="sklib" id="skLib"><button class="skc add" id="skAdd"><span>${ico('plus')}<b>Skin hinzufügen</b><small>PNG, 64×64</small></span></button>
       ${active ? card('__cur', 'Aktueller Skin', active.url.replace('http://', 'https://'), active.variant === 'SLIM' ? 'slim' : 'classic', '<span class="badge">AKTIV</span>') : ''}
@@ -2052,8 +2056,13 @@ function skinSide() {
     const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); const x = K.lib.find(y => y.id === ren.dataset.ren); const n = await promptBox('Umbenennen', 'Name', x.name); if (n) { x.name = n; api('skins.update', { id: x.id, name: n }); skinSide(); skinShow(); } return; }
     const c = e.target.closest('[data-sk]'); if (c) { K.sel = c.dataset.sk; $$('#skLib .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow(); }
   };
+  if ($('#skCapes')) {
+    const cs = $('#skCapes');
+    cs.onmouseover = e => { const b = e.target.closest('[data-cape]'); if (!b || K.capePrev === (b.dataset.curl || null)) return; K.capePrev = b.dataset.curl || null; skinShow(); };
+    cs.onmouseleave = () => { delete K.capePrev; skinShow(); };
+  }
   if ($('#skCapes')) $('#skCapes').onclick = async e => {
-    const b = e.target.closest('[data-cape]'); if (!b) return;
+    const b = e.target.closest('[data-cape]'); if (!b) return; delete K.capePrev;
     try { const prof = await api('skin.cape', { id: b.dataset.cape || null }); if (prof?.capes) K.prof = prof; else K.prof.capes.forEach(c => c.state = c.id === b.dataset.cape ? 'ACTIVE' : 'INACTIVE'); toast('Umhang geändert'); skinSide(); }
     catch (er) { fail('Umhang', er); }
   };
@@ -2080,6 +2089,20 @@ function skPainter(cv) {
     front([u, v, w, h, d], fx, fy, fw, fh, c) { P.fill(u + d + fx, v + d + fy, fw, fh, c); },
     back([u, v, w, h, d], fx, fy, fw, fh, c) { P.fill(u + 2 * d + w + fx, v + d + fy, fw, fh, c); },
     top([u, v, w, h, d], c) { P.fill(u + d, v, w, d, c); },
+    shadeFaces() {
+      const im = x.getImageData(0, 0, 64, 64), d = im.data;
+      for (const L of [0, 1]) for (const k in SKP) {
+        const [u, v, w, h, dp] = SKP[k][L];
+        const faces = [[u + dp, v, w, dp, 'top'], [u + dp + w, v, w, dp, 'bot'], [u, v + dp, dp, h, 's'], [u + dp, v + dp, w, h, 's'], [u + dp + w, v + dp, dp, h, 's'], [u + 2 * dp + w, v + dp, w, h, 's']];
+        for (const [fx, fy, fw, fh, t] of faces) for (let yy = fy; yy < fy + fh; yy++) for (let xx = fx; xx < fx + fw; xx++) {
+          const i = (yy * 64 + xx) * 4; if (!d[i + 3]) continue;
+          let f = t === 'top' ? 1.07 : t === 'bot' ? .86 : 1.05 - .15 * ((yy - fy) / Math.max(1, fh - 1));
+          if (xx === fx || xx === fx + fw - 1 || (t === 's' && yy === fy + fh - 1)) f *= .9;
+          d[i] = Math.min(255, d[i] * f); d[i + 1] = Math.min(255, d[i + 1] * f); d[i + 2] = Math.min(255, d[i + 2] * f);
+        }
+      }
+      x.putImageData(im, 0, 0);
+    },
     noise(rnd, amt = .07) {
       const im = x.getImageData(0, 0, 64, 64), d = im.data;
       for (let i = 0; i < d.length; i += 4) { if (!d[i + 3]) continue; const f = 1 + (rnd() - .5) * 2 * amt; d[i] *= f; d[i + 1] *= f; d[i + 2] *= f; }
@@ -2094,6 +2117,7 @@ const CLOTH = ['#E5484D', '#3D9BFF', '#2DD4A0', '#F5B53D', '#8B7BFF', '#FF7A3D',
 const THEMES_SK = [
   ['casual', 'Alltag'], ['hoodie', 'Hoodie'], ['suit', 'Anzug'], ['knight', 'Ritter'], ['ninja', 'Ninja'], ['astro', 'Astronaut'], ['wizard', 'Zauberer'],
   ['pirate', 'Pirat'], ['gamer', 'Gamer'], ['chef', 'Koch'], ['zombie', 'Untot'], ['robot', 'Roboter'], ['sport', 'Sport'], ['farmer', 'Farmer'],
+  ['samurai', 'Samurai'], ['viking', 'Wikinger'], ['cyber', 'Cyberpunk'], ['demon', 'Dämon'], ['angel', 'Engel'], ['bones', 'Knochen'], ['fox', 'Fuchs-Hoodie'], ['frog', 'Frosch-Hoodie'],
 ];
 function skFace(P, s, eye, rnd, o = {}) {
   const H = SKP.head[0];
@@ -2146,10 +2170,31 @@ function genSkin(seed, theme) {
     case 'robot': ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], shade(s, -.1))); P.front(B, 2, 3, 4, 4, '#111827'); P.front(B, 3, 4, 2, 2, pick(['#22D3EE', '#EF4444', '#A3E635'])); P.top(SKP.head[0], shade(s, -.3)); P.front(SKP.head[0], 0, 6, 8, 1, '#111827');
       for (let i = 0; i < 12; i += 4) { P.band(RA, i, i + 1, shade(s, -.4)); P.band(LA, i, i + 1, shade(s, -.4)); } break;
     case 'sport': { sleeves(3); P.front(B, 3, 3, 2, 4, '#fff'); P.back(B, 3, 3, 2, 4, '#fff'); P.box(RL, '#F4F4F5'); P.box(LL, '#F4F4F5'); P.band(RL, 0, 4, c2); P.band(LL, 0, 4, c2); P.band(RL, 4, 10, s); P.band(LL, 4, 10, s); shoes(pick(['#F4F4F5', '#EF4444', '#111'])); skHair(P, hair, pick(['short', 'bald', 'fringe'])); break; }
+    case 'samurai': { const r = pick(['#B91C1C', '#1E3A8A', '#111114', '#4C1D95']); ['body', 'rarm', 'larm'].forEach(x => P.box(SKP[x][0], r)); P.box(RL, '#18181B'); P.box(LL, '#18181B'); sleeves(8); shoes('#3F2A14');
+      P.front(B, 0, 0, 3, 12, shade(r, -.3)); P.front(B, 5, 0, 3, 12, shade(r, -.3)); P.band(B, 6, 8, '#F5B53D'); skHair(P, '#111114', 'short'); P.top(SKP.head[0], '#111114'); P.fill(8 + 3, 0, 2, 3, '#111114');
+      P.top(O('head'), shade(r, -.4)); P.band(O('head'), 0, 1, shade(r, -.4)); break; }
+    case 'viking': { const f = pick(['#7C2D12', '#57534E', '#365314', '#1E3A8A']); ['body', 'rarm', 'larm'].forEach(x => P.box(SKP[x][0], f)); P.box(RL, '#3F2A14'); P.box(LL, '#3F2A14'); sleeves(7); shoes('#57534E', 3); P.band(B, 8, 9, '#3F2A14'); P.front(B, 3, 8, 2, 1, '#F5B53D');
+      const hc = pick(['#E3C16F', '#B45309', '#8A2E1E', '#F2E2B0']); skHair(P, hc, 'long'); P.front(SKP.head[0], 1, 5, 6, 3, hc); P.front(SKP.head[0], 3, 6, 2, 1, shade(s, -.3));
+      P.top(O('head'), '#9CA3AF'); P.band(O('head'), 0, 2, '#9CA3AF'); P.fill(32, 8, 2, 3, '#F4F4F5'); P.fill(48 + 6, 8, 2, 3, '#F4F4F5'); break; }
+    case 'cyber': { const n = pick(['#22D3EE', '#F472B6', '#A3E635', '#FACC15', '#A78BFA']); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], '#0F0F14')); P.front(B, 0, 0, 1, 12, n); P.front(B, 7, 0, 1, 12, n); P.band(B, 9, 10, n);
+      P.band(RA, 6, 7, n); P.band(LA, 6, 7, n); P.band(RL, 5, 6, n); P.band(LL, 5, 6, n); skHair(P, n, 'fringe'); P.box(O('head'), 'rgba(0,0,0,0)'); P.front(O('head'), 0, 3, 8, 2, '#111'); P.front(O('head'), 1, 3, 6, 1, n); break; }
+    case 'demon': { s = pick(['#7F1D1D', '#991B1B', '#3B0764']); skFace(P, s, '#FDE047', rnd); ['body', 'rarm', 'larm'].forEach(x => P.box(SKP[x][0], s)); P.box(RL, '#18181B'); P.box(LL, '#18181B'); shoes('#0a0a0a');
+      P.front(B, 1, 2, 6, 3, shade(s, -.3)); P.top(SKP.head[0], '#111'); P.fill(32 + 8, 0, 2, 2, '#E5E7EB'); P.fill(32 + 14, 0, 2, 2, '#E5E7EB'); P.top(O('head'), 'rgba(0,0,0,0)'); P.fill(40, 0, 1, 3, '#E5E7EB'); P.fill(47, 0, 1, 3, '#E5E7EB'); break; }
+    case 'angel': ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], '#F8FAFC')); sleeves(9); P.band(B, 5, 6, '#FDE68A'); skHair(P, pick(['#F2E2B0', '#E3C16F', '#F4F4F5']), 'long'); shoes('#E5E7EB');
+      P.top(O('head'), 'rgba(0,0,0,0)'); P.fill(40 + 1, 0, 6, 1, '#FDE047'); P.fill(40, 1, 1, 6, '#FDE047'); P.fill(47, 1, 1, 6, '#FDE047'); P.fill(41, 7, 6, 1, '#FDE047'); break;
+    case 'bones': { const b = pick(['#E7E5E4', '#D6D3D1', '#A8A29E']); skFace(P, b, '#111', rnd, {}); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], '#1C1917'));
+      for (const k of ['rarm', 'larm', 'rleg', 'lleg']) P.front(SKP[k][0], 1, 0, 2, 12, b); for (let i = 1; i < 11; i += 2) P.front(B, 1, i, 6, 1, b); P.front(B, 3, 0, 2, 12, b);
+      P.front(SKP.head[0], 1, 3, 2, 2, '#111'); P.front(SKP.head[0], 5, 3, 2, 2, '#111'); P.front(SKP.head[0], 2, 6, 4, 1, '#111'); break; }
+    case 'fox': case 'frog': { const fur = theme === 'fox' ? pick(['#EA580C', '#F97316', '#C2410C']) : pick(['#65A30D', '#4D7C0F', '#84CC16']), bel = theme === 'fox' ? '#FFF7ED' : '#ECFCCB';
+      ['body', 'rarm', 'larm'].forEach(x => P.box(SKP[x][0], fur)); P.front(B, 2, 2, 4, 8, bel); sleeves(10); P.box(RL, pick(['#1F2937', '#273449'])); P.box(LL, pick(['#1F2937', '#273449'])); shoes(); skHair(P, hair, 'fringe');
+      P.box(O('head'), 'rgba(0,0,0,0)'); P.top(O('head'), fur); P.band(O('head'), 0, 2, fur); P.back(O('head'), 0, 0, 8, 8, fur);
+      if (theme === 'fox') { P.fill(40, 0, 2, 2, '#111'); P.fill(46, 0, 2, 2, '#111'); P.front(O('head'), 0, 0, 2, 1, '#111'); P.front(O('head'), 6, 0, 2, 1, '#111'); }
+      else { P.front(O('head'), 1, 0, 2, 2, '#F4F4F5'); P.front(O('head'), 5, 0, 2, 2, '#F4F4F5'); P.front(O('head'), 2, 1, 1, 1, '#111'); P.front(O('head'), 5, 1, 1, 1, '#111'); }
+      break; }
     case 'farmer': sleeves(5); P.box(SKP.body[0], '#E5E7EB'); P.front(B, 1, 3, 6, 9, '#2563EB'); P.front(B, 1, 0, 1, 3, '#2563EB'); P.front(B, 6, 0, 1, 3, '#2563EB'); P.box(RL, '#2563EB'); P.box(LL, '#2563EB'); shoes('#78350F'); skHair(P, hair, 'short');
       P.top(O('head'), '#E3C16F'); P.band(O('head'), 0, 2, '#E3C16F'); P.band(O('head'), 2, 3, '#B45309'); break;
   }
-  P.noise(rnd, .06);
+  P.noise(rnd, .05); P.shadeFaces();
   return cv.toDataURL('image/png');
 }
 // flat front picture of a skin (for fast thumbnails)
@@ -2191,8 +2236,14 @@ async function seLoad(url, name, variant, id) {
     else x.drawImage(im, 0, 0);
   }
   SE.name = name || 'Mein Skin'; SE.variant = variant || 'classic'; SE.id = id || null; SE.undo = []; SE.redo = []; SE.dirty = false;
+  SE.orig = x.getImageData(0, 0, 64, 64);
 }
 const seUrl = () => SE.cv.toDataURL('image/png');
+async function seReset() {
+  if (!SE.orig) return;
+  if (SE.dirty && !await confirmBox('Zurücksetzen?', 'Alle Änderungen seit dem Laden gehen verloren. Mit Strg+Z kannst du es rückgängig machen.', 'Zurücksetzen', true)) return;
+  sePush(); SE.P.x.putImageData(SE.orig, 0, 0); SE.dirty = false; seRefresh(); toast('Zurückgesetzt');
+}
 function sePush() { SE.undo.push(SE.P.x.getImageData(0, 0, 64, 64)); if (SE.undo.length > 80) SE.undo.shift(); SE.redo = []; SE.dirty = true; }
 function seUndo(redo) {
   const from = redo ? SE.redo : SE.undo, to = redo ? SE.undo : SE.redo; if (!from.length) return;
@@ -2325,9 +2376,10 @@ async function skEditorPage(body) {
   seCanvas();
   if (!SE.loaded) { SE.loaded = true; await seLoad(genSkin(Math.floor(Math.random() * 99), 'casual'), 'Mein Skin', 'classic'); }
   body.innerHTML = `<div class="sed">
-    <div class="se-tools" id="seTools">${SETOOLS.map(([k, ic, n, key]) => `<button data-t="${k}" title="${n} (${key})">${ico(ic)}</button>`).join('')}
-      <hr><button data-sz="1" title="Pinsel 1px" class="sz">1</button><button data-sz="2" title="Pinsel 2px" class="sz">2</button><button data-sz="3" title="Pinsel 3px" class="sz">3</button>
-      <hr><button id="seMir" title="Spiegeln (M): links und rechts gleichzeitig malen">${ico('dup')}</button><button id="seUndo" title="Rückgängig (Strg+Z)">${ico('back')}</button><button id="seRedo" title="Wiederholen (Strg+Y)" style="transform:scaleX(-1)">${ico('back')}</button></div>
+    <div class="se-tools" id="seTools">${SETOOLS.map(([k, ic, n, key]) => `<button data-t="${k}" data-tip="${n}" data-key="${key}">${ico(ic)}</button>`).join('')}
+      <hr><button data-sz="1" data-tip="Pinsel 1 Pixel" class="sz">1</button><button data-sz="2" data-tip="Pinsel 2×2 Pixel" class="sz">2</button><button data-sz="3" data-tip="Pinsel 3×3 Pixel" class="sz">3</button>
+      <hr><button id="seMir" data-tip="Spiegeln: beide Seiten gleichzeitig" data-key="M">${ico('dup')}</button><button id="seUndo" data-tip="Rückgängig" data-key="Strg+Z">${ico('back')}</button><button id="seRedo" data-tip="Wiederholen" data-key="Strg+Y"><span style="display:grid;transform:scaleX(-1)">${ico('back')}</span></button>
+      <button id="seReset" data-tip="Zurücksetzen auf den geladenen Skin">${ico('refresh')}</button></div>
     <div class="se-main">
       <div class="se-top"><div class="seg sm" id="seViewSw"><button data-vw="3d">3D malen</button><button data-vw="2d">Textur</button><button data-vw="split">Beides</button></div>
         <div class="seg sm" id="seLayer"><button data-l="base">Basis</button><button data-l="over">Überzug</button></div>
@@ -2346,7 +2398,7 @@ async function skEditorPage(body) {
         <div class="se-sub">Zuletzt</div><div class="se-pal small" id="seRecent"></div></div>
       <div class="fbox"><div class="fh">${ico('sparkle')}Schnellstart</div><div class="se-quick">
         <button data-q="rnd">${ico('rotate')}Zufälliger Skin</button><button data-q="blank">${ico('square')}Leere Vorlage</button><button data-q="skin">${ico('user')}Nur Haut</button>
-        <button data-q="m2l">${ico('dup')}Rechts → Links kopieren</button><button data-q="clrov">${ico('layers')}Überzug leeren</button><button data-q="open">${ico('upload')}PNG öffnen</button></div></div>
+        <button data-q="m2l">${ico('dup')}Rechts → Links kopieren</button><button data-q="reset">${ico('refresh')}Zurücksetzen</button><button data-q="clrov">${ico('layers')}Überzug leeren</button><button data-q="open">${ico('upload')}PNG öffnen</button></div></div>
       <div class="fbox"><div class="fh">${ico('check')}Speichern</div><div style="padding:0 6px 6px">
         <input class="in" id="seName" value="${esc(SE.name)}" placeholder="Name">
         <div class="se-save"><button class="btn" id="seLib">${ico('library')}In Bibliothek</button><button class="btn" id="seExp">${ico('download')}PNG</button></div>
@@ -2361,6 +2413,7 @@ async function skEditorPage(body) {
     if (e.target.closest('#seMir')) { SE.mirror = !SE.mirror; $('#seMir').classList.toggle('on', SE.mirror); toast(SE.mirror ? 'Spiegeln an' : 'Spiegeln aus'); }
     if (e.target.closest('#seUndo')) seUndo(false);
     if (e.target.closest('#seRedo')) seUndo(true);
+    if (e.target.closest('#seReset')) seReset();
   };
   $('#seViewSw').onclick = e => { const b = e.target.closest('[data-vw]'); if (!b) return; SE.view = b.dataset.vw; seLayout(); };
   $('#seLayer').onclick = e => { const b = e.target.closest('[data-l]'); if (!b) return; SE.layer = b.dataset.l; seLayout(); $('#seStage').classList.toggle('noov', SE.layer === 'base'); };
@@ -2374,6 +2427,7 @@ async function skEditorPage(body) {
   $('#seName').oninput = e => SE.name = e.target.value;
   $('.se-quick').onclick = async e => {
     const q = e.target.closest('[data-q]')?.dataset.q; if (!q) return;
+    if (q === 'reset') return seReset();
     if (q === 'open') { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png'; inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; const url = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(f); }); sePush(); await seLoad(url, f.name.replace(/\.png$/i, ''), SE.variant); seStage(); seRefresh(); $('#seName').value = SE.name; }; inp.click(); return; }
     sePush();
     if (q === 'rnd') { const th = THEMES_SK[Math.floor(Math.random() * THEMES_SK.length)][0]; const im = new Image(); im.onload = () => { SE.P.x.clearRect(0, 0, 64, 64); SE.P.x.drawImage(im, 0, 0); seRefresh(); }; im.src = genSkin(Math.floor(Math.random() * 1e6), th); return; }
@@ -2445,13 +2499,31 @@ const SKC = { theme: '', q: '', sel: null, page: 1 };
 async function skCollectionPage(body) {
   const all = skCollection();
   body.innerHTML = `<div class="skcol"><div class="skc-main">
-      <div class="skc-bar"><div class="fchips" id="skcTh"><button class="fchip ${!SKC.theme ? 'on' : ''}" data-th="">Alle <em>${all.length}</em></button>${THEMES_SK.map(([k, n]) => `<button class="fchip ${SKC.theme === k ? 'on' : ''}" data-th="${k}">${n}</button>`).join('')}</div></div>
+      <div class="skc-find"><div class="srch">${ico('search')}<input class="in" id="skcQ" placeholder="Spielername oder Link zu einer Skin-PNG…"></div><button class="btn p" id="skcGo">${ico('download')}Laden</button></div>
+      <div class="skc-bar"><div class="fchips" id="skcTh"><button class="fchip ${!SKC.theme ? 'on' : ''}" data-th="">Alle <em>${all.length}</em></button><button class="fchip std ${SKC.theme === 'std' ? 'on' : ''}" data-th="std">${ico('cube')}Minecraft-Standard</button>${THEMES_SK.map(([k, n]) => `<button class="fchip ${SKC.theme === k ? 'on' : ''}" data-th="${k}">${n}</button>`).join('')}</div></div>
       <div class="skc-grid" id="skcGrid"></div><div id="skcMore"></div></div>
     <div class="skc-side" id="skcSide"></div></div>`;
-  $('#skcTh').onclick = e => { const b = e.target.closest('[data-th]'); if (!b) return; SKC.theme = b.dataset.th; SKC.page = 1; $$('#skcTh .fchip').forEach(x => x.classList.toggle('on', x === b)); skcGrid(); };
+  $('#skcTh').onclick = async e => { const b = e.target.closest('[data-th]'); if (!b) return; SKC.theme = b.dataset.th; SKC.page = 1; $$('#skcTh .fchip').forEach(x => x.classList.toggle('on', x === b)); if (SKC.theme === 'std') await skcDefaults(); skcGrid(); };
+  const find = async () => {
+    const q = $('#skcQ').value.trim(); if (!q) return;
+    const b = $('#skcGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
+    try {
+      const r = /^https:\/\//i.test(q) ? { name: decodeURIComponent(q.split('/').pop().replace(/\.png.*$/i, '')).slice(0, 32) || 'Skin', variant: 'classic', ...(await api('skins.link', { url: q })) } : await api('skins.player', { name: q });
+      SKC.imp = { id: 'imp', theme: 'imp', name: r.name, variant: r.variant, url: r.data, cape: r.cape }; SKC.sel = 'imp'; skcSide();
+    } catch (er) { fail('Laden', er); }
+    b.disabled = false; b.innerHTML = ico('download') + 'Laden';
+  };
+  $('#skcGo').onclick = find; $('#skcQ').onkeydown = e => { if (e.key === 'Enter') find(); };
+  if (SKC.theme === 'std') await skcDefaults();
   skcGrid(); skcSide();
 }
-function skcList() { return skCollection().filter(s => !SKC.theme || s.theme === SKC.theme); }
+async function skcDefaults() {
+  if (S.skDefaults) return;
+  try { S.skDefaults = (await api('skins.defaults')).map((d, i) => ({ id: 'std-' + i, theme: 'std', name: d.name + (d.variant === 'slim' ? ' (schlank)' : ''), variant: d.variant, url: d.data })); }
+  catch (e) { S.skDefaults = []; fail('Standard-Skins', e); }
+}
+const skcAll = () => [...(SKC.imp ? [SKC.imp] : []), ...(S.skDefaults || []), ...skCollection()];
+function skcList() { return skcAll().filter(s => s.theme !== 'imp' && (!SKC.theme || s.theme === SKC.theme)); }
 async function skcGrid() {
   const g = $('#skcGrid'); if (!g) return;
   const l = skcList(), shown = l.slice(0, SKC.page * 48);
@@ -2462,7 +2534,7 @@ async function skcGrid() {
   // thumbnails are generated in small batches so the page stays smooth
   const imgs = [...g.querySelectorAll('img[data-u]')];
   for (let i = 0; i < imgs.length; i++) {
-    const s = skCollection().find(x => x.id === imgs[i].dataset.u);
+    const s = skcAll().find(x => x.id === imgs[i].dataset.u);
     imgs[i].src = await skThumb(skColUrl(s));
     if (i % 12 === 11) await new Promise(r => setTimeout(r, 0));
     if (!$('#skcGrid')) return;
@@ -2470,17 +2542,17 @@ async function skcGrid() {
 }
 async function skcSide() {
   const el = $('#skcSide'); if (!el) return;
-  const s = skCollection().find(x => x.id === SKC.sel) || skcList()[0]; if (!s) return;
+  const s = skcAll().find(x => x.id === SKC.sel) || skcList()[0]; if (!s) return;
   SKC.sel = s.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x.dataset.id === s.id));
   const url = skColUrl(s);
-  el.innerHTML = `<div class="skc-view"><div class="stage3" id="skcStage"><span class="floor"></span>${skinModel(url, s.variant === 'slim', 8)}</div></div>
-    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(THEMES_SK.find(t => t[0] === s.theme)[1])} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
+  el.innerHTML = `<div class="skc-view"><div class="stage3" id="skcStage"><span class="floor"></span>${skinModel(url, s.variant === 'slim', 8, false, s.cape || null)}</div></div>
+    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(s.theme === 'std' ? 'Minecraft-Standard' : s.theme === 'imp' ? 'Geladen' + (s.cape ? ' · mit Umhang' : '') : THEMES_SK.find(t => t[0] === s.theme)[1])} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
     <div class="col" style="gap:8px;margin-top:14px">
       ${S.accounts.length ? `<button class="btn p" id="skcApply" style="justify-content:center">${ico('check')}Übernehmen</button>` : ''}
       <button class="btn" id="skcEdit" style="justify-content:center">${ico('edit')}Im Editor bearbeiten</button>
       <button class="btn" id="skcSave" style="justify-content:center">${ico('library')}In Bibliothek</button></div>`;
   const m = $('#skcStage .mcm'); let r = -25; const spin = () => { if (!$('#skcStage') || SKC.sel !== s.id) return; r += .4; m.style.transform = `rotateX(-8deg) rotateY(${r}deg)`; requestAnimationFrame(spin); }; spin();
-  const add = async () => { const e = await api('skins.add', { data: url, url, name: s.name, variant: s.variant }); if (S.skins?.lib) S.skins.lib.unshift(e); return e; };
+  const add = async () => { const e = await api('skins.add', { data: url, name: s.name, variant: s.variant }); if (S.skins?.lib) S.skins.lib.unshift(e); return e; };
   $('#skcSave').onclick = async () => { try { await add(); toast('In Bibliothek', s.name); } catch (e) { fail('Skin', e); } };
   $('#skcEdit').onclick = async () => { await seLoad(url, s.name, s.variant); SE.loaded = true; S.skTab = 'editor'; go('skins', {}, false); };
   if ($('#skcApply')) $('#skcApply').onclick = async () => { const b = $('#skcApply'); b.disabled = true; try { const e = await add(); await api('skin.apply', { id: e.id, variant: s.variant }); toast('Skin übernommen', s.name); } catch (er) { fail('Skin', er); } b.disabled = false; };
@@ -3617,11 +3689,15 @@ const Mock = {
       case 'storage.info': return [['instances', 14.2e9], ['versions', 1.1e9], ['libraries', 2.4e9], ['assets', 1.9e9], ['runtime', 0.9e9], ['cache', 0.21e9]].map(([name, size]) => ({ name, size }));
       case 'cache.clear': return {};
       case 'skins.list': return M.skins || (M.skins = [['Orbit', 0, 'classic'], ['Waldläufer', 1, 'classic'], ['Lila Hoodie', 2, 'slim'], ['Rotes Trikot', 3, 'classic']].map(([name, n, variant]) => ({ id: 's' + n, name, variant, url: demoSkin(n), added: iso(n * DAY) })));
-      case 'skins.add': if (a.url) { const e = { id: 's' + Date.now(), name: a.name, variant: a.variant, url: a.url }; M.skins.unshift(e); return e; } return null;
+      case 'skins.add': if (a.url || a.data) { const e = { id: 's' + Date.now(), name: a.name, variant: a.variant, url: a.data || a.url }; M.skins.unshift(e); return e; } return null;
       case 'skins.save': { const e = { id: a.id || 's' + Date.now(), name: a.name, variant: a.variant, url: a.data }; M.skins = (M.skins || []).filter(x => x.id !== e.id); M.skins.unshift(e); return e; }
       case 'skins.update': { const e = M.skins.find(x => x.id === a.id); if (a.name) e.name = a.name; if (a.variant) e.variant = a.variant; return {}; }
       case 'skins.remove': M.skins = M.skins.filter(x => x.id !== a.id); return {};
-      case 'skin.profile': return M.prof || (M.prof = { id: M.accounts[0]?.uuid, name: 'Ky3ls', skins: [{ id: 'cur', state: 'ACTIVE', url: demoSkin(0), variant: 'CLASSIC' }], capes: [] });
+      case 'skin.profile': return M.prof || (M.prof = { id: M.accounts[0]?.uuid, name: 'Ky3ls', skins: [{ id: 'cur', state: 'ACTIVE', url: demoSkin(0), variant: 'CLASSIC' }], capes: [['c1', 'Migrator', '#3D9BFF', 'ACTIVE'], ['c2', 'Vanilla', '#2DD4A0', 'INACTIVE'], ['c3', 'Cherry Blossom', '#FF9FBF', 'INACTIVE']].map(([id, alias, col, state]) => { const c = document.createElement('canvas'); c.width = 64; c.height = 32; const x = c.getContext('2d'); x.fillStyle = col; x.fillRect(0, 0, 22, 17); x.fillStyle = shade(col, -.3); x.fillRect(1, 1, 10, 2); x.fillRect(3, 6, 6, 6); return { id, alias, state, url: c.toDataURL() }; }) });
+      case 'skin.cape': M.prof.capes.forEach(c => c.state = c.id === a.id ? 'ACTIVE' : 'INACTIVE'); return M.prof;
+      case 'skins.defaults': await sleep(400); return ['Steve', 'Alex', 'Ari', 'Efe', 'Kai', 'Makena', 'Noor', 'Sunny', 'Zuri'].flatMap((n, i) => [{ name: n, variant: 'classic', data: genSkin(i + 500, 'casual') }, { name: n, variant: 'slim', data: genSkin(i + 600, 'casual') }]);
+      case 'skins.player': await sleep(400); return { name: a.name, variant: 'classic', data: genSkin(a.name.length * 7, 'gamer'), cape: null };
+      case 'skins.link': throw new Error('Im Browser nicht verfügbar');
       case 'skin.apply': { await sleep(700); const e = M.skins.find(x => x.id === a.id); M.prof.skins = [{ id: 'cur', state: 'ACTIVE', url: e.url, variant: a.variant === 'slim' ? 'SLIM' : 'CLASSIC' }]; return M.prof; }
       case 'skin.cape': return M.prof;
       case 'auth.appid': M.appid = a.id; return { ok: true };
