@@ -1620,7 +1620,7 @@ function projTabs(soft) {
   $('#pTabs').innerHTML = t.map(([k, n, ic, c]) => `<button data-t="${k}" class="${P.tab === k ? 'on' : ''}">${ico(ic)}${n}${c ? `<span class="c">${c}</span>` : ''}</button>`).join('');
   if (soft && P.tab !== 'versions') return;
   const b = $('#pBody');
-  if (P.tab === 'desc') { b.innerHTML = `<div class="md" id="pMd">${mdRender(p.body || p.description || '')}</div>`; mdBind($('#pMd')); }
+  if (P.tab === 'desc') { b.innerHTML = `<div class="md pdesc" id="pMd">${mdRender(p.body || p.description || '')}</div>`; mdStructure($('#pMd')); mdBind($('#pMd')); }
   if (P.tab === 'gallery') {
     b.innerHTML = `<div class="gal">${(p.gallery || []).sort((x, y) => (y.featured - x.featured) || (x.ordering - y.ordering)).map((g, i) => `<button data-g="${i}"><i style="background-image:url('${esc(g.url)}')"></i>${g.title || g.description ? `<div><b>${esc(g.title || '')}</b><small>${esc(g.description || '')}</small></div>` : ''}</button>`).join('')}</div>`;
     b.onclick = e => { const g = e.target.closest('[data-g]'); if (!g) return; const x = p.gallery[+g.dataset.g]; $('#lightbox').innerHTML = `<div><img src="${esc(x.raw_url || x.url)}" alt="">${x.title ? `<p>${esc(x.title)}</p>` : ''}</div>`; $('#lightbox').classList.remove('hidden'); };
@@ -1682,7 +1682,11 @@ function mdInline(s) {
     .replace(/~~([^~]+)~~/g, '<del>$1</del>');
 }
 function mdRender(src) {
-  const lines = String(src).replace(/\r/g, '').split('\n'), out = [];
+  // reference-style links: [text][1] … [1]: https://…
+  const refs = {};
+  src = String(src).replace(/\r/g, '').replace(/^ {0,3}\[([^\]\n]+)\]:\s*<?(\S+?)>?(?:\s+["'(].*["')])?\s*$/gm, (_, k, u) => { refs[k.toLowerCase()] = u; return ''; });
+  if (Object.keys(refs).length) src = src.replace(/(!?)\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\[([^\]\n]*)\]/g, (m, bang, t, k) => { const u = refs[(k || t).toLowerCase()]; return u ? `${bang}[${t}](${u})` : m; });
+  const lines = src.split('\n'), out = [];
   let i = 0;
   const isBlock = l => /^\s*(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|\|)|^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l);
   while (i < lines.length) {
@@ -1741,6 +1745,38 @@ function sanitize(html) {
   };
   walk(root);
   return root.innerHTML;
+}
+/** Gives a rendered project description structure: button rows, centered media, feature cards per section. */
+function mdStructure(root) {
+  if (!root) return;
+  const blank = n => (n.nodeType === 3 && !n.textContent.trim()) || n.nodeName === 'BR';
+  const isImgLink = k => (k.nodeName === 'A' && k.querySelector('img') && !k.textContent.trim()) || k.nodeName === 'IMG' || k.nodeName === 'PICTURE';
+  root.querySelectorAll('p, center, div[align]').forEach(p => {
+    const kids = [...p.childNodes].filter(n => !blank(n));
+    if (!kids.length || !kids.every(isImgLink)) return;
+    if (kids.length >= 2) { p.classList.add('mdbadges'); return; }
+    p.classList.add('mdfig');
+    if (/youtube\.com|youtu\.be/.test(kids[0].getAttribute?.('href') || '')) p.classList.add('mdvid');
+  });
+  const lead = [...root.children].find(k => k.tagName === 'P' && !k.className && k.textContent.trim().length > 30);
+  if (lead && ![...root.children].slice(0, [...root.children].indexOf(lead)).some(k => /^H\d$/.test(k.tagName))) lead.classList.add('mdlead');
+  const secs = []; let cur = null;
+  for (const k of [...root.children]) {
+    if (/^H[23]$/.test(k.tagName)) { cur = document.createElement('section'); cur.className = 'mdsec ' + k.tagName.toLowerCase(); k.before(cur); cur.append(k); secs.push(cur); }
+    else if (k.tagName === 'H1' || k.tagName === 'HR') cur = null;
+    else if (cur) cur.append(k);
+  }
+  // short neighbouring sub-sections become a grid of cards
+  let run = [];
+  const small = x => x.classList.contains('h3') && x.textContent.length < 1100 && !x.querySelector('table,pre,.mdfig img');
+  const flush = () => { if (run.length >= 2) { const g = document.createElement('div'); g.className = 'mdcards'; run[0].before(g); run.forEach(x => g.append(x)); } run = []; };
+  for (const x of secs) {
+    if (small(x) && run.length && run[run.length - 1].nextElementSibling === x) run.push(x);
+    else { flush(); if (small(x)) run = [x]; }
+  }
+  flush();
+  // FAQ-style blockquotes: **Q**: … → question / answer
+  root.querySelectorAll('blockquote').forEach(b => { if (/^\s*Q\s*:/i.test(b.textContent)) b.classList.add('mdqa'); });
 }
 function mdBind(el) {
   if (!el) return;
