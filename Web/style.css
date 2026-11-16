@@ -1899,3 +1899,12 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 [data-mode=light] .skview .sbar{background:#fff}
 [data-mode=light] .skview .floor{background:radial-gradient(closest-side,rgba(0,0,0,.18),transparent)}
 [data-mode=light] .se-3d,[data-mode=light] .se-2d,[data-mode=light] .skc-view{background:radial-gradient(70% 60% at 50% 40%,rgba(var(--a-rgb),.12),transparent 70%),#EEF0F5}
+/* design: colours in the middle get the most room */
+.dsg3{grid-template-columns:minmax(0,1fr) minmax(0,1.45fr) minmax(0,.75fr)}
+.dsg3 .fxi{height:70px}
+.dsg3 .fxpick b{font-size:12px}
+.dsg3 .themes{grid-template-columns:repeat(5,1fr);gap:16px 6px}
+.dsg3 .sw i{width:50px;height:50px}
+.dsg3 .fxpick{grid-template-columns:repeat(3,minmax(0,1fr))}
+.dsg3 .fxpick button{min-width:0}
+.dsg3 .fxpick b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
