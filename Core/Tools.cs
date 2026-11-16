@@ -306,6 +306,30 @@ public static class Transfer
     }
 
     /// <summary>Fills the project, profile picture and banner from the original install or the catalog.</summary>
+    private static string NormName(string s) => new string(Instances.StripFmt(s).ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    /// <summary>Modpack project with exactly this name (CurseForge first, then the other catalog), or null.</summary>
+    public static async Task<string?> FindModpack(string name, CancellationToken ct = default)
+    {
+        var n = NormName(name);
+        if (n.Length < 3) return null;
+        if (CurseForge.Ready)
+        {
+            try
+            {
+                var r = await CurseForge.Get($"/mods/search?gameId={CurseForge.Game}&classId={CurseForge.ClassModpacks}&searchFilter={Uri.EscapeDataString(name)}&sortField=2&sortOrder=desc&pageSize=10", ct);
+                var hit = r["data"]?.AsArray().FirstOrDefault(m => NormName((string?)m?["name"] ?? "") == n);
+                if (hit != null) return "cf:" + (int)hit["id"]!;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { }
+        }
+        var facets = Uri.EscapeDataString("[[\"project_type:modpack\"]]");
+        var mr = await Net.Json($"{Modrinth.Api}/search?limit=10&query={Uri.EscapeDataString(name)}&facets={facets}", ct);
+        var mh = mr["hits"]?.AsArray().FirstOrDefault(h => NormName((string?)h?["title"] ?? "") == n);
+        return (string?)mh?["project_id"];
+    }
+
     public static async Task<bool> Enrich(Instance inst, CancellationToken ct = default)
     {
         var changed = false;
@@ -317,6 +341,12 @@ public static class Transfer
                 if (string.IsNullOrEmpty(inst.ModpackProject) && !string.IsNullOrEmpty(hit.Project)) { inst.ModpackProject = hit.Project; changed = true; }
                 if (string.IsNullOrEmpty(inst.IconUrl) && !string.IsNullOrEmpty(hit.IconUrl)) { inst.IconUrl = hit.IconUrl; changed = true; }
             }
+        }
+        // still not linked: look the modpack up by its exact name, once
+        if (string.IsNullOrEmpty(inst.ModpackProject) && !inst.LinkTried && inst.Kind != "orbit")
+        {
+            inst.LinkTried = true; changed = true;
+            try { var pid = await FindModpack(inst.Name, ct); if (pid != null) inst.ModpackProject = pid; } catch { }
         }
         if (!string.IsNullOrEmpty(inst.ModpackProject) && inst.ModpackProject.StartsWith("cf:", StringComparison.Ordinal) && int.TryParse(inst.ModpackProject[3..], out var cfId)
             && (string.IsNullOrEmpty(inst.BannerUrl) || string.IsNullOrEmpty(inst.IconUrl)) && CurseForge.Ready)

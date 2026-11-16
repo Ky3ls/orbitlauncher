@@ -17,6 +17,12 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "findpack":
+    {
+        CurseForge.Key = File.ReadAllText(args[2]).Trim();
+        foreach (var n in args.Skip(3)) Console.WriteLine($"{n} -> {await Transfer.FindModpack(n) ?? "nicht gefunden"}");
+        break;
+    }
     case "fp":
     {
         CurseForge.Key = File.ReadAllText(args[2]).Trim();

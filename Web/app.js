@@ -397,7 +397,7 @@ function instCtx(e, id) {
   const i = instById(id); if (!i) return;
   const run = S.running.has(id);
   ctxMenu(e, [[run ? 'stop' : 'play', run ? 'Beenden' : 'Spielen', () => play(id)], ['rocket', 'Im Minecraft Launcher öffnen', () => playOfficial(id)], ['plus', 'Inhalte hinzufügen', () => go('discover', { type: i.loader === 'vanilla' ? 'resourcepack' : 'mod', target: id })],
-    ['eye', 'Anzeigen', () => go('inst', { id })], ['settings', 'Einstellungen', () => instSettings(id)], '-',
+    ['eye', 'Anzeigen', () => go('inst', { id })], ...(i.modpackProject ? [['compass', 'Modpack-Seite', () => go('project', { id: i.modpackProject })]] : []), ['settings', 'Einstellungen', () => instSettings(id)], '-',
     ['folder', 'Ordner öffnen', () => api('folder.open', { id, what: '' })], ['dup', 'Duplizieren', () => duplicateInst(id)], ['upload', 'Als Modpack exportieren', () => exportInst(id)], '-',
     ['trash', 'Löschen', () => deleteInst(id), true]]);
 }
@@ -620,6 +620,7 @@ function instHead(i) {
   const cover = i.bannerUrl || '';
   el.innerHTML = `<div class="ihero"><div class="ih-bg ${cover ? 'cover' : ''}" id="iBanner" style="${cover ? `background-image:url('${esc(cover)}')` : (i.iconUrl ? `background-image:url('${esc(i.iconUrl)}')` : '')}">${cover || i.iconUrl ? '' : `<span>${blockSvg(i.icon)}</span>`}</div><div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1></div>
     <div class="acts"><button class="btn lg ${run ? 'stop' : 'play glow'}" onclick="play('${jsq(i.id)}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
+      ${i.modpackProject ? `<button class="ib" title="Modpack-Seite" onclick="go('project',{id:'${jsq(i.modpackProject)}'})">${ico('compass')}</button>` : ''}
       <button class="ib" title="Ordner öffnen" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}</button>
       <button class="ib" title="Einstellungen" onclick="instSettings('${jsq(i.id)}')">${ico('settings')}</button>
       <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div>
@@ -636,7 +637,7 @@ function instBrand(i) {
     if (r.bannerUrl) i.bannerUrl = r.bannerUrl;
     if (r.modpackProject) i.modpackProject = r.modpackProject;
     if (r.kind) i.kind = r.kind;
-    if (r.iconUrl || r.bannerUrl || r.kind) { i._banner = 0; instHead(i); }
+    if (r.iconUrl || r.bannerUrl || r.kind || r.modpackProject) { i._banner = 0; instHead(i); }
   }).catch(() => { });
 }
 function instBanner(i) {
@@ -738,18 +739,10 @@ function renderContent(i, types) {
   }
   const tile = x => {
     const u = x.projectId && upd.get(x.projectId), k = key(x), sel = C.sel.has(k);
-    const manual = !x.projectId && x.source !== 'local';
-    const bits = [];
-    if (x.dependency) bits.push('Abhängigkeit');
-    if (x.version) bits.push(x.version);
-    if (x.size >= 0) bits.push(bytes(x.size));
-    else bits.push('Ordner');
-    if (C.type === 'all') bits.push({ mod: 'Mod', resourcepack: 'Paket', shader: 'Shader' }[x.type] || '');
-    if (manual) bits.push('Selbst hinzugefügt');
-    const meta = `<span class="ell">${esc(bits.filter(Boolean).join(' · '))}</span>${x.projectId ? `<button class="vlink" data-ver>Version</button>` : ''}`;
-    return `<article class="ctile ${x.on ? '' : 'off'} ${sel ? 'sel' : ''} ${u ? 'hasup' : ''}" data-k="${esc(k)}" title="${esc(plain(x.file))}"><div class="pv">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<span class="cb ${sel ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></div>
-      <div class="tx"><b>${esc(contentName(x))}</b><small>${meta}</small></div>
-      <div class="ac">${u ? `<button class="ib sm up" data-u title="Aktualisieren">${ico('arrowup')}</button>` : ''}<span class="tools">${x.projectId ? `<button class="ib sm" title="Projekt ansehen" data-p="${esc(x.projectId)}">${ico('eye')}</button>` : ''}<button class="ib sm d" title="Entfernen" data-rm>${ico('trash')}</button></span><div class="tg sm ${x.on ? 'on' : ''}" data-tg></div></div></article>`;
+    const sub = [x.dependency ? 'Abhängigkeit' : '', x.version || (x.projectId ? '' : 'Eigene Datei')].filter(Boolean).join(' · ');
+    return `<article class="ctile ${x.on ? '' : 'off'} ${sel ? 'sel' : ''} ${x.projectId ? 'link' : ''}" data-k="${esc(k)}" title="${esc(plain(x.file))}"><div class="pv">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<span class="cb ${sel ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></div>
+      <div class="tx"><b>${esc(contentName(x))}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+      <div class="ac">${u ? `<button class="upill" data-u title="Neue Version: ${esc(u.to)}">${ico('arrowup')}Update</button>` : ''}<button class="ib sm ghost more" data-m title="Mehr">${ico('more')}</button><div class="tg sm ${x.on ? 'on' : ''}" data-tg></div></div></article>`;
   };
   const sections = (C.type === 'all' || C.type === 'updates' ? types : types.filter(t => t[0] === C.type)).map(([t, n]) => ({ t, n, total: list.filter(x => x.type === t).length, items: view.filter(x => x.type === t) })).filter(g => g.items.length);
   const pager = pages > 1 ? `<nav class="cpager"><button class="ib sm" data-pg="prev" ${C.page <= 1 ? 'disabled' : ''}>${ico('left')}</button><span>Seite ${C.page} von ${pages}</span><button class="ib sm" data-pg="next" ${C.page >= pages ? 'disabled' : ''}>${ico('right')}</button></nav>` : '';
@@ -796,6 +789,17 @@ function renderContent(i, types) {
       return setContentVersion(i, x, hit.versionId);
     }
     if (e.target.closest('[data-ver]')) return pickVersion(i, x);
+    if (e.target.closest('[data-m]')) {
+      const hit = upd.get(x.projectId);
+      return ctxMenu(e, [
+        ...(x.projectId ? [['eye', 'Projekt ansehen', () => go('project', { id: x.projectId })], ['layers', 'Version wählen', () => pickVersion(i, x)]] : []),
+        ...(hit ? [['arrowup', 'Auf ' + hit.to + ' aktualisieren', () => setContentVersion(i, x, hit.versionId)]] : []),
+        [x.on ? 'x' : 'check', x.on ? 'Deaktivieren' : 'Aktivieren', async () => { x.on = !x.on; try { await api('content.toggle', { id: i.id, type: x.type, file: x.file, on: x.on }); } catch (er) { fail('Fehler', er); } renderContent(i, types); }],
+        '-', ['trash', 'Entfernen', async () => { if (!await confirmBox('Entfernen?', `„${contentName(x)}“ wird aus der Instanz gelöscht.`, 'Entfernen', true)) return; try { await api('content.remove', { id: i.id, type: x.type, file: x.file }); C.all = C.all.filter(y => y !== x); renderContent(i, types); } catch (er) { fail('Fehler', er); } }, true],
+      ]);
+    }
+    // a click on the card itself opens the project page
+    if (x.projectId && !e.target.closest('button,.tg,.cb')) return go('project', { id: x.projectId });
   };
 }
 const CH_DE = { release: 'Release', beta: 'Beta', alpha: 'Alpha' };

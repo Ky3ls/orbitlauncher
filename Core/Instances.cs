@@ -42,6 +42,8 @@ public class Instance
     public List<string> CatalogMisses { get; set; } = new();
     /// <summary>Version of the content recognition that produced CatalogMisses (2 = with CurseForge fingerprints).</summary>
     public int CatalogV { get; set; }
+    /// <summary>True once we looked the instance up in the catalogs by its name (to link it to its modpack).</summary>
+    public bool LinkTried { get; set; }
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;
@@ -184,7 +186,7 @@ public static class Instances
         var known = new Dictionary<string, InstalledContent>(StringComparer.OrdinalIgnoreCase);
         foreach (var c in i.Content)
             if (c.Type == type) known.TryAdd(EnabledName(c.File), c);
-        var misses = new HashSet<string>(i.CatalogMisses ?? new(), StringComparer.OrdinalIgnoreCase);
+        var misses = new HashSet<string>(i.CatalogV >= 2 || !CurseForge.Ready ? i.CatalogMisses ?? new() : new(), StringComparer.OrdinalIgnoreCase);
         var r = new List<object>();
         foreach (var f in Directory.EnumerateFileSystemEntries(dir).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {

@@ -1398,3 +1398,17 @@ select.sel-native{display:none !important}
 .csel-list button.on{background:rgba(var(--a-rgb),.13);color:var(--text);font-weight:600}
 .csel-list button svg.i{width:14px;height:14px;color:var(--a);flex:none}
 .csel-list button[disabled]{opacity:.4}
+
+/* content cards: calm, one menu */
+.ctile .ac{gap:6px}
+.ctile .tools{display:none}
+.ctile.link{cursor:pointer}
+.ctile:hover{border-color:var(--line2);background:linear-gradient(180deg,rgba(255,255,255,.05),transparent 70%),var(--card)}
+.ctile .more{width:30px;height:30px;color:var(--mute)}
+.ctile .more:hover{color:var(--text);background:rgba(255,255,255,.07)}
+.ctile .more svg.i{transform:none !important}
+.ctile.hasup{border-color:var(--line)}
+.upill{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px 0 8px;border-radius:99px;background:rgba(var(--a-rgb),.15);border:1px solid rgba(var(--a-rgb),.4);color:var(--a);font-size:11.5px;font-weight:650;transition:background .2s}
+.upill:hover{background:rgba(var(--a-rgb),.28)}
+.upill svg.i{width:12px;height:12px;stroke-width:2.4}
+.ctile small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
