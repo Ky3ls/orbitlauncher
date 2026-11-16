@@ -40,6 +40,8 @@ public class Instance
     public List<string>? ManualDownloads { get; set; }
     /// <summary>Content files already checked against the catalog that are not a project ("type|file").</summary>
     public List<string> CatalogMisses { get; set; } = new();
+    /// <summary>Version of the content recognition that produced CatalogMisses (2 = with CurseForge fingerprints).</summary>
+    public int CatalogV { get; set; }
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;

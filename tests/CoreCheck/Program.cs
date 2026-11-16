@@ -17,6 +17,16 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "fp":
+    {
+        CurseForge.Key = File.ReadAllText(args[2]).Trim();
+        var files = Directory.GetFiles(args[3], "*.jar");
+        var fps = files.ToDictionary(f => f, f => CurseForge.Fingerprint(f));
+        var m = await CurseForge.Match(fps.Values);
+        var mods = await CurseForge.Mods(m.Values.Select(v => v.mod));
+        foreach (var (f, fp) in fps) Console.WriteLine($"{Path.GetFileName(f)} fp={fp} -> {(m.TryGetValue(fp, out var x) ? (string?)mods.GetValueOrDefault(x.mod)?["name"] + " / " + (string?)x.file["displayName"] : "nicht gefunden")}");
+        break;
+    }
     case "cf":
     {
         CurseForge.Key = File.ReadAllText(args[2]).Trim();

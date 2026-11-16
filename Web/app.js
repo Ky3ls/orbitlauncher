@@ -551,22 +551,20 @@ function instCard(i, mini) {
 }
 
 /* ======================= LIBRARY ======================= */
-S.lib = { tab: 'all', q: '', sort: 'played', group: 'group' };
-try { Object.assign(S.lib, JSON.parse(localStorage.getItem('orbit.lib') || '{}'), { q: '' }); } catch { }
+S.lib = { tab: 'all', q: '', sort: 'played', group: 'none' };
+try { Object.assign(S.lib, JSON.parse(localStorage.getItem('orbit.lib') || '{}'), { q: '', group: 'none' }); } catch { }
 PAGES.library = el => {
   crumbs([['Bibliothek']]);
   const L = S.lib;
   el.innerHTML = `<div class="ph"><div><div class="kicker">Deine Instanzen</div><h1>Bibliothek</h1></div><div class="ph-r"><button class="btn" data-pop onclick="importMenu(event)">${ico('upload')}Importieren${ico('chevd')}</button><button class="btn p" onclick="newInstance()">${ico('plus')}Instanz erstellen</button></div></div>
     <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ['orbit', 'Orbit Client']].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="srch">${ico('search')}<input class="in" id="libQ" placeholder="Instanzen durchsuchen…" value="${esc(L.q)}"></div><span class="sp"></span>
-      <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select>
-      <select class="sel" id="libGroup">${[['group', 'Gruppe'], ['loader', 'Loader'], ['version', 'Spielversion'], ['none', 'Keine']].map(([k, n]) => `<option value="${k}" ${L.group === k ? 'selected' : ''}>Gruppieren: ${n}</option>`).join('')}</select></div>
+      <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select></div>
     <div id="libGrid"></div>`;
   const save = () => { try { localStorage.setItem('orbit.lib', JSON.stringify(L)); } catch { } renderLibGrid(); };
   $('#libTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; L.tab = b.dataset.k; $$('#libTabs button').forEach(x => x.classList.toggle('on', x === b)); save(); };
   $('#libQ').oninput = e => { L.q = e.target.value; renderLibGrid(); };
   $('#libSort').onchange = e => { L.sort = e.target.value; save(); };
-  $('#libGroup').onchange = e => { L.group = e.target.value; save(); };
   renderLibGrid();
 };
 const vkey = v => (v || '').split(/[.\-]/).map(x => /^\d+$/.test(x) ? x.padStart(4, '0') : x).join('.');
@@ -1225,14 +1223,12 @@ try { const v = JSON.parse(localStorage.getItem('orbit.disc') || '{}'); if (v.vi
 const discSave = () => { try { localStorage.setItem('orbit.disc', JSON.stringify({ view: D.view, src: D.src })); } catch { } };
 PAGES.discover = async (el, a) => {
   const tgt = a.target ? instById(a.target) : null;
-  if (a.src && a.src !== D.src) { D.src = a.src; D.cats.clear(); D.page = 0; }
   if (a.type && a.type !== D.type) { D.type = a.type; D.cats.clear(); D.loaders.clear(); D.page = 0; }
   if ((a.target || null) !== D.target) { D.target = a.target || null; D.page = 0; D.compat = true; }
   if (tgt && D.type === 'modpack') D.type = tgt.loader === 'vanilla' ? 'resourcepack' : 'mod';
   crumbs(tgt ? [['Bibliothek', "go('library')"], [tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Inhalte hinzufügen']] : [['Entdecken']]);
   const types = PTYPES.filter(t => !tgt || (t[0] !== 'modpack' && (tgt.loader !== 'vanilla' || t[0] !== 'mod')));
-  el.innerHTML = `<div class="dhero ${D.src}"><div class="dh-bg"></div><div class="dh-l"><div class="kicker">${D.src === 'cf' ? 'Erweiterter Katalog' : 'Mod-Katalog'}</div><h1>Entdecken</h1><p class="pd">Über 100.000 Mods, Modpacks, Shader und Ressourcenpakete. Ein Klick, Abhängigkeiten inklusive.</p></div>
-      <div class="srcsw" id="dSrc">${Object.entries(SRC).map(([k, [n]]) => `<button data-s="${k}" class="${D.src === k ? 'on' : ''} ${k}"><i></i>${n}</button>`).join('')}</div></div>
+  el.innerHTML = `<div class="dhero"><div class="dh-bg"></div><div class="dh-l"><div class="kicker">Mod-Katalog</div><h1>Entdecken</h1><p class="pd">Hunderttausende Mods, Modpacks, Shader und Ressourcenpakete in einer Suche. Ein Klick, Abhängigkeiten inklusive.</p></div></div>
     ${tgt ? `<div class="tgtbar">${instIcon(tgt)}<div class="tx"><b>Installieren in „${esc(tgt.name)}“</b><small>${esc(instSub(tgt))} · nur passende Inhalte werden angezeigt</small></div><button class="btn sm" onclick="go('inst',{id:'${jsq(tgt.id)}'})">${ico('left')}Zur Instanz</button><button class="ib sm ghost" title="Ohne Ziel" onclick="go('discover',{type:'${D.type}'})">${ico('x')}</button></div>` : ''}
     <div class="dtypes" id="dTypes">${types.map(([k, n, ic]) => `<button data-k="${k}" class="${k === D.type ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div>
     <div class="dgrid"><div class="filters" id="dFil"></div><div>
@@ -1241,39 +1237,20 @@ PAGES.discover = async (el, a) => {
         <div class="seg vsw" id="dView"><button data-v="list" class="${D.view === 'list' ? 'on' : ''}" title="Liste">${ico('list')}</button><button data-v="grid" class="${D.view === 'grid' ? 'on' : ''}" title="Kacheln">${ico('grid')}</button></div></div>
       <div class="rinfo" id="dInfo"></div><div class="rlist ${D.view}" id="dList"></div><div class="pager" id="dPager"></div></div></div>`;
   $('#dTypes').onclick = e => { const b = e.target.closest('[data-k]'); if (b) go('discover', { type: b.dataset.k, target: D.target || undefined }); };
-  $('#dSrc').onclick = e => { const b = e.target.closest('[data-s]'); if (!b || b.dataset.s === D.src) return; D.src = b.dataset.s; D.cats.clear(); D.page = 0; discSave(); go('discover', { type: D.type, target: D.target || undefined }, false); };
   $('#dView').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; D.view = b.dataset.v; discSave(); $$('#dView button').forEach(x => x.classList.toggle('on', x === b)); $('#dList').className = 'rlist ' + D.view; };
   let t = 0;
   $('#dQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { D.q = e.target.value; D.page = 0; discSearch(); }, 300); };
   $('#dSort').onchange = e => { D.sort = e.target.value; D.page = 0; discSearch(); };
-  if (D.src === 'cf' && !(await cfReady())) return cfNoKey($('#dList'), true);
   ensureVersions().catch(() => { }).then(() => discFilters());
   discFilters(); discSearch();
 };
 async function cfReady() { if (S.cfReady === undefined) { try { S.cfReady = (await api('cf.status')).ready; } catch { S.cfReady = false; } } return S.cfReady; }
-function cfNoKey(el, full) {
-  if (full) { $('#dFil').innerHTML = ''; $('#dInfo').innerHTML = ''; $('#dPager').innerHTML = ''; }
-  el.innerHTML = `<div class="lempty cfkey"><span class="iic" style="background:rgba(241,100,54,.12);color:#F16436">${ico('zap')}</span><h2>Erweiterten Katalog freischalten</h2>
-    <p>Der erweiterte Katalog braucht einen kostenlosen API-Schlüssel. Du holst ihn dir einmal über den Button unten (mit Google oder Discord anmelden, „API Keys“) und fügst ihn hier ein. Keine Bankdaten.</p>
-    <div class="inline" style="max-width:520px;margin:0 auto"><input class="in" id="cfKeyIn" placeholder="$2a$10$…" style="font-family:var(--mono);font-size:12px"><button class="btn p" onclick="saveCfKey()">${ico('check')}Speichern</button></div>
-    <div class="row" style="justify-content:center;margin-top:12px"><button class="btn sm" onclick="openUrl('https://console.curseforge.com/')">${ico('ext')}Schlüssel holen</button><button class="btn sm" onclick="S.disc.src='mr';go('discover',{type:S.disc.type},false)">Standard-Katalog nutzen</button></div></div>`;
-}
-window.saveCfKey = async () => {
-  const k = $('#cfKeyIn')?.value.trim(); if (!k) return;
-  await setS('curseForgeKey', k); S.cfReady = undefined;
-  if (await cfReady()) { toast('Erweiterter Katalog verbunden'); go(S.page, S.args, false); } else fail('Erweiterter Katalog', 'Schlüssel wird nicht angenommen');
-};
 async function discFilters() {
   const el = $('#dFil'); if (!el) return;
   const tgt = D.target ? instById(D.target) : null;
-  let cats = [], heads = {};
-  if (D.src === 'cf') {
-    try { cats = (await cf(`/categories?gameId=432&classId=${CF_CLASS[D.type]}`)).data.filter(c => !c.isClass); } catch { }
-    heads.categories = cats.map(c => ({ name: String(c.id), label: c.name, icon: c.iconUrl ? `<img src="${esc(c.iconUrl)}" alt="">` : '' }));
-  } else {
-    try { cats = (await mr('/tag/category')).filter(c => c.project_type === D.type); } catch { }
-    cats.forEach(c => (heads[c.header] = heads[c.header] || []).push({ name: c.name, label: catName(c.name), icon: c.icon ? c.icon.replace('<svg', '<svg width="15" height="15"') : '' }));
-  }
+  let cats = []; const heads = {};
+  try { cats = (await mr('/tag/category')).filter(c => c.project_type === D.type); } catch { }
+  cats.forEach(c => (heads[c.header] = heads[c.header] || []).push({ name: c.name, label: catName(c.name), icon: c.icon ? c.icon.replace('<svg', '<svg width="15" height="15"') : '' }));
   if (!$('#dFil')) return;
   const box = (k, title, body) => `<div class="fbox ${D.closed.has(k) ? 'closed' : ''}" data-box="${k}"><button class="fh">${esc(title)}${ico('chevd')}</button><div class="fbody">${body}</div></div>`;
   const opt = (kind, v, label, on, icon = '') => `<button class="fo ${on ? 'on' : ''}" data-f="${kind}" data-v="${esc(v)}"><span class="cb ${on ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>${icon ? `<span class="ci">${icon}</span>` : ''}${esc(label)}</button>`;
@@ -1281,41 +1258,51 @@ async function discFilters() {
   if (tgt) html += `<div class="fbox"><div class="fsw"><span>Nur passend zu ${esc(tgt.mcVersion)}${D.type === 'mod' ? ' · ' + esc(LOADERS[tgt.loader]?.[0] || '') : ''}</span><div class="tg sm ${D.compat ? 'on' : ''}" id="dCompat"></div></div></div>`;
   if (!tgt || !D.compat) {
     const rel = S.versions.filter(v => v.type === 'release' || (D.snaps && v.type === 'snapshot')).map(v => v.id), vq = D.vq.trim();
-    html += box('ver', 'Spielversion', `<input class="in" id="dVq" placeholder="Version suchen…" value="${esc(D.vq)}">${[...D.vers].filter(v => !rel.includes(v)).concat(rel).filter(v => !vq || v.includes(vq)).slice(0, 120).map(v => opt('ver', v, v, D.vers.has(v))).join('')}${D.src === 'mr' ? `<div class="fsw"><span>Snapshots</span><div class="tg sm ${D.snaps ? 'on' : ''}" id="dSnap"></div></div>` : ''}`);
-    const lds = D.src === 'cf' ? (['mod', 'modpack'].includes(D.type) ? ['fabric', 'forge', 'neoforge', 'quilt'] : []) : PLOADERS[D.type];
-    if (lds.length) html += box('ld', D.type === 'shader' ? 'Shader-Loader' : 'Loader', lds.map(l => opt('ld', l, LOADERS[l]?.[0] || cap(l), D.loaders.has(l))).join(''));
+    html += box('ver', 'Spielversion', `<input class="in" id="dVq" placeholder="Version suchen…" value="${esc(D.vq)}">${[...D.vers].filter(v => !rel.includes(v)).concat(rel).filter(v => !vq || v.includes(vq)).slice(0, 120).map(v => opt('ver', v, v, D.vers.has(v))).join('')}<div class="fsw"><span>Snapshots</span><div class="tg sm ${D.snaps ? 'on' : ''}" id="dSnap"></div></div>`);
+    if (PLOADERS[D.type].length) html += box('ld', D.type === 'shader' ? 'Shader-Loader' : 'Loader', PLOADERS[D.type].map(l => opt('ld', l, LOADERS[l]?.[0] || cap(l), D.loaders.has(l))).join(''));
   }
   Object.entries(heads).forEach(([h, list]) => { if (list.length) html += box('h:' + h, HEAD_DE[h] || cap(h), list.sort((a, b) => a.label.localeCompare(b.label, 'de')).map(c => opt('cat', c.name, c.label, D.cats.has(c.name), c.icon)).join('')); });
-  if (D.src === 'mr') {
-    if (D.type !== 'resourcepack' && D.type !== 'shader') html += box('env', 'Umgebung', opt('env', 'client', 'Client', D.env.has('client')) + opt('env', 'server', 'Server', D.env.has('server')));
-    html += `<div class="fbox"><div class="fsw"><span>Nur Open Source</span><div class="tg sm ${D.open ? 'on' : ''}" id="dOpen"></div></div></div>`;
-  }
+  if (D.type !== 'resourcepack' && D.type !== 'shader') html += box('env', 'Umgebung', opt('env', 'client', 'Client', D.env.has('client')) + opt('env', 'server', 'Server', D.env.has('server')));
+  html += `<div class="fbox"><div class="fsw"><span>Nur Open Source</span><div class="tg sm ${D.open ? 'on' : ''}" id="dOpen"></div></div></div>`;
   el.innerHTML = html;
   el.onclick = e => {
     const fh = e.target.closest('.fh'); if (fh) { const b = fh.parentElement, k = b.dataset.box; b.classList.toggle('closed'); b.classList.contains('closed') ? D.closed.add(k) : D.closed.delete(k); return; }
     const o = e.target.closest('[data-f]');
-    if (o) {
-      const set = { ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env }[o.dataset.f], v = o.dataset.v;
-      if (D.src === 'cf' && o.dataset.f === 'ver' && !set.has(v)) { set.clear(); el.querySelectorAll('[data-f=ver]').forEach(x => { x.classList.remove('on'); x.querySelector('.cb').classList.remove('on'); }); }
-      set.has(v) ? set.delete(v) : set.add(v); o.classList.toggle('on', set.has(v)); o.querySelector('.cb').classList.toggle('on', set.has(v)); D.page = 0; discSearch(); return;
-    }
+    if (o) { const set = { ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env }[o.dataset.f], v = o.dataset.v; set.has(v) ? set.delete(v) : set.add(v); o.classList.toggle('on', set.has(v)); o.querySelector('.cb').classList.toggle('on', set.has(v)); D.page = 0; discSearch(); return; }
     if (e.target.id === 'dCompat') { D.compat = !D.compat; D.page = 0; discFilters(); discSearch(); }
     if (e.target.id === 'dOpen') { D.open = !D.open; e.target.classList.toggle('on'); D.page = 0; discSearch(); }
     if (e.target.id === 'dSnap') { D.snaps = !D.snaps; discFilters(); }
   };
   const vq = $('#dVq'); if (vq) vq.oninput = e => { D.vq = e.target.value; const pos = e.target.selectionStart; discFilters().then(() => { const n = $('#dVq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }); };
 }
-function discPath() {
-  const tgt = D.target ? instById(D.target) : null, lock = tgt && D.compat;
-  if (D.src === 'cf') {
-    let q = `/mods/search?gameId=432&classId=${CF_CLASS[D.type]}&sortField=${CF_SORT[D.sort]}&sortOrder=desc&index=${D.page * D.per}&pageSize=${D.per}`;
-    if (D.q.trim()) q += '&searchFilter=' + encodeURIComponent(D.q.trim());
-    const ver = lock ? tgt.mcVersion : [...D.vers][0]; if (ver) q += '&gameVersion=' + encodeURIComponent(ver);
-    const lds = lock ? (D.type === 'mod' && CF_LT[tgt.loader] ? [tgt.loader] : []) : [...D.loaders];
-    if (lds.length === 1) q += '&modLoaderType=' + CF_LT[lds[0]]; else if (lds.length) q += '&modLoaderTypes=' + encodeURIComponent(JSON.stringify(lds.map(l => CF_LT[l])));
-    if (D.cats.size) q += '&categoryIds=' + encodeURIComponent(JSON.stringify([...D.cats].map(Number).slice(0, 10)));
-    return q;
+/* both catalogs are searched together; categories are matched to the second catalog by name */
+const CF_CAT_WORDS = { adventure: ['adventure', 'exploration'], technology: ['tech'], magic: ['magic'], storage: ['storage'], optimization: ['performance', 'lightweight', 'small'], utility: ['utility', 'qol'], worldgen: ['world gen', 'biomes', 'dimensions', 'structures'], mobs: ['mobs'], food: ['food', 'farming'], equipment: ['armor', 'weapons'], library: ['library', 'api'], decoration: ['cosmetic', 'decoration'], transportation: ['transport'], management: ['map and information'], minigame: ['mini'], quests: ['quest'], 'kitchen-sink': ['kitchen'], multiplayer: ['multiplayer'], combat: ['combat', 'pvp'], challenging: ['hardcore'], lightweight: ['small', 'light'], 'game-mechanics': ['mechanics'], economy: ['economy'], social: ['social'], themed: ['themed'], realistic: ['realistic'], simplistic: ['simplistic'], 'vanilla-like': ['vanilla'] };
+async function cfCatIds() {
+  if (!D.cats.size) return [];
+  let cats = []; try { cats = (await cf(`/categories?gameId=432&classId=${CF_CLASS[D.type]}`)).data.filter(c => !c.isClass); } catch { return null; }
+  const ids = new Set();
+  for (const c of D.cats) {
+    const words = CF_CAT_WORDS[c] || [c.replace(/-/g, ' ')];
+    const hit = cats.filter(k => words.some(w => k.name.toLowerCase().includes(w)));
+    if (!hit.length) return null;            // can't match this filter there → only the first catalog
+    hit.forEach(k => ids.add(k.id));
   }
+  return [...ids].slice(0, 10);
+}
+async function cfSearchPath(per, page) {
+  const tgt = D.target ? instById(D.target) : null, lock = tgt && D.compat;
+  if (D.env.size || D.open) return null;      // filters the second catalog doesn't have
+  const ids = await cfCatIds(); if (ids === null) return null;
+  let q = `/mods/search?gameId=432&classId=${CF_CLASS[D.type]}&sortField=${CF_SORT[D.sort]}&sortOrder=desc&index=${page * per}&pageSize=${per}`;
+  if (D.q.trim()) q += '&searchFilter=' + encodeURIComponent(D.q.trim());
+  const ver = lock ? tgt.mcVersion : [...D.vers][0]; if (ver) q += '&gameVersion=' + encodeURIComponent(ver);
+  const lds = (lock ? (D.type === 'mod' && CF_LT[tgt.loader] ? [tgt.loader] : []) : [...D.loaders]).filter(l => CF_LT[l]);
+  if (lds.length === 1) q += '&modLoaderType=' + CF_LT[lds[0]]; else if (lds.length) q += '&modLoaderTypes=' + encodeURIComponent(JSON.stringify(lds.map(l => CF_LT[l])));
+  if (ids.length) q += '&categoryIds=' + encodeURIComponent(JSON.stringify(ids));
+  return q;
+}
+function mrSearchPath(per, page) {
+  const tgt = D.target ? instById(D.target) : null, lock = tgt && D.compat;
   const f = [[`project_type:${D.type}`]];
   if (lock) { f.push([`versions:${tgt.mcVersion}`]); if (D.type === 'mod') f.push(tgt.loader === 'quilt' ? ['categories:quilt', 'categories:fabric'] : [`categories:${tgt.loader}`]); }
   else { if (D.vers.size) f.push([...D.vers].map(v => `versions:${v}`)); if (D.loaders.size) f.push([...D.loaders].map(l => `categories:${l}`)); }
@@ -1323,21 +1310,36 @@ function discPath() {
   if (D.env.has('client')) f.push(['client_side:required', 'client_side:optional']);
   if (D.env.has('server')) f.push(['server_side:required', 'server_side:optional']);
   if (D.open) f.push(['open_source:true']);
-  return `/search?limit=${D.per}&offset=${D.page * D.per}&index=${D.sort}${D.q.trim() ? '&query=' + encodeURIComponent(D.q.trim()) : ''}&facets=${encodeURIComponent(JSON.stringify(f))}`;
+  return `/search?limit=${per}&offset=${page * per}&index=${D.sort}${D.q.trim() ? '&query=' + encodeURIComponent(D.q.trim()) : ''}&facets=${encodeURIComponent(JSON.stringify(f))}`;
+}
+const normTitle = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function mergeHits(a, b) {
+  const q = normTitle(D.q);
+  let out;
+  if (D.sort === 'downloads') out = [...a, ...b].sort((x, y) => (y.downloads || 0) - (x.downloads || 0));
+  else if (D.sort === 'newest' || D.sort === 'updated') out = [...a, ...b].sort((x, y) => new Date(y.date_modified || 0) - new Date(x.date_modified || 0));
+  else { out = []; for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); } }
+  if (q && D.sort === 'relevance') out.sort((x, y) => (normTitle(y.title) === q) - (normTitle(x.title) === q));
+  // the same project on both: keep the bigger one
+  const seen = new Map();
+  for (const h of out) { const k = normTitle(h.title); const o = seen.get(k); if (!o || (h.downloads || 0) > (o.downloads || 0)) seen.set(k, h); }
+  return out.filter(h => seen.get(normTitle(h.title)) === h);
 }
 let dSeq = 0;
 async function discSearch() {
   const list = $('#dList'); if (!list) return;
-  const seq = ++dSeq;
+  const seq = ++dSeq, half = Math.round(D.per / 2);
   list.innerHTML = `<div class="skel"></div>`.repeat(D.view === 'grid' ? 6 : 5);
-  let hits, total;
-  try {
-    if (D.src === 'cf') { const r = await cf(discPath()); hits = r.data.map(cfHit); total = Math.min(r.pagination.totalCount, 10000); }
-    else { const r = await mr(discPath()); hits = r.hits.map(h => ({ ...h, src: 'mr' })); total = r.total_hits; }
-  } catch (e) { if (seq === dSeq) { if (e.message === 'NO_CF_KEY') return cfNoKey(list, true); list.innerHTML = `<div class="empty">Der Katalog ist nicht erreichbar: ${esc(e.message)}</div>`; } return; }
+  const useCf = await cfReady();
+  const cfPath = useCf ? await cfSearchPath(half, D.page) : null;
+  const [m, c] = await Promise.allSettled([mr(mrSearchPath(cfPath ? half : D.per, D.page)), cfPath ? cf(cfPath) : Promise.reject(new Error('aus'))]);
   if (seq !== dSeq || !$('#dList')) return;
-  const catLabel = c => D.src === 'cf' ? ($(`#dFil [data-f=cat][data-v="${c}"]`)?.textContent.trim() || c) : catName(c);
-  const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c => ['cat', c, catLabel(c)]), [...D.env].map(e => ['env', e, cap(e)]));
+  if (m.status === 'rejected' && c.status === 'rejected') { list.innerHTML = `<div class="empty">Der Katalog ist gerade nicht erreichbar: ${esc(m.reason?.message || '')}</div>`; return; }
+  const mh = m.status === 'fulfilled' ? m.value.hits.map(h => ({ ...h, src: 'mr' })) : [];
+  const ch = c.status === 'fulfilled' ? c.value.data.map(cfHit) : [];
+  const mt = m.status === 'fulfilled' ? m.value.total_hits : 0, ct = c.status === 'fulfilled' ? Math.min(c.value.pagination.totalCount, 10000) : 0;
+  const hits = mergeHits(mh, ch), total = mt + ct, per = cfPath && c.status === 'fulfilled' ? half : D.per;
+  const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c2 => ['cat', c2, catName(c2)]), [...D.env].map(e => ['env', e, cap(e)]));
   $('#dInfo').innerHTML = `<span><b style="color:var(--text)">${total.toLocaleString('de-DE')}</b> Ergebnisse</span>${chips.map(([k, v, n]) => `<button class="fchip on" data-rm="${k}" data-v="${esc(v)}">${esc(n)}${ico('x')}</button>`).join('')}${chips.length ? '<button class="fchip" data-clr>Alle Filter entfernen</button>' : ''}`;
   $('#dInfo').onclick = e => {
     if (e.target.closest('[data-clr]')) { D.vers.clear(); D.loaders.clear(); D.cats.clear(); D.env.clear(); }
@@ -1345,11 +1347,16 @@ async function discSearch() {
     if (b || e.target.closest('[data-clr]')) { D.page = 0; discFilters(); discSearch(); }
   };
   list.innerHTML = hits.length ? hits.map(pcard).join('') : `<div class="lempty"><span class="iic">${ico('search')}</span><h2>Nichts gefunden</h2><p>Versuch einen anderen Suchbegriff oder weniger Filter.</p></div>`;
-  const pages = Math.ceil(Math.min(total, 10000) / D.per), cur = D.page;
+  const pages = Math.min(500, Math.ceil(Math.max(mt, ct) / per)), cur = D.page;
   const nums = [...new Set([0, cur - 1, cur, cur + 1, pages - 1])].filter(n => n >= 0 && n < pages).sort((a, b) => a - b);
   $('#dPager').innerHTML = pages > 1 ? `<button ${cur ? '' : 'disabled'} data-pg="${cur - 1}">${ico('left')}</button>${nums.map((n, i) => (i && n - nums[i - 1] > 1 ? '<span>…</span>' : '') + `<button class="${n === cur ? 'on' : ''}" data-pg="${n}">${n + 1}</button>`).join('')}<button ${cur < pages - 1 ? '' : 'disabled'} data-pg="${cur + 1}">${ico('right')}</button>` : '';
   $('#dPager').onclick = e => { const b = e.target.closest('[data-pg]'); if (!b) return; D.page = +b.dataset.pg; discSearch(); $('#p-discover').scrollTop = 0; };
 }
+window.saveCfKey = async () => {
+  const k = $('#cfKeyIn')?.value.trim(); if (!k) return;
+  await setS('curseForgeKey', k); S.cfReady = undefined;
+  if (await cfReady()) { toast('Katalog verbunden'); go(S.page, S.args, false); } else fail('Katalog', 'Schlüssel wird nicht angenommen');
+};
 const isInstalled = (inst, pid) => inst && (inst.content || []).some(c => c.projectId === pid);
 function pcard(h) {
   const tgt = D.target ? instById(D.target) : null, inst = isInstalled(tgt, h.project_id);
@@ -1447,7 +1454,7 @@ PAGES.project = async (el, a) => {
   const inst = isInstalled(tgt, p.id), cover = p.gallery?.find(g => g.featured)?.raw_url || p.gallery?.[0]?.raw_url || p.gallery?.[0]?.url;
   const web = p.src === 'cf' ? p.website : `https://modrinth.com/${p.project_type}/${p.slug}`;
   el.innerHTML = `<div class="phero">${cover ? `<div class="ph-bg" style="background-image:url('${esc(cover)}')"></div>` : '<div class="ph-bg none"></div>'}
-    <div class="phead">${picHtml(p.icon_url)}<div class="tx"><div class="row" style="gap:8px">${srcChip(p.src)}<span class="kicker">${esc(tname)}</span></div><h1>${esc(p.title)}</h1><p class="d">${esc(p.description)}</p>
+    <div class="phead">${picHtml(p.icon_url)}<div class="tx"><div class="kicker">${esc(tname)}</div><h1>${esc(p.title)}</h1><p class="d">${esc(p.description)}</p>
       <div class="meta"><span class="stat">${ico('download')}<b>${num(p.downloads)}</b> Downloads</span><span class="stat">${ico(p.src === 'cf' ? 'star' : 'heart')}<b>${num(p.followers)}</b> ${p.src === 'cf' ? 'Daumen hoch' : 'Follower'}</span><span class="stat">${ico('refresh')}Aktualisiert ${esc(ago(p.updated).replace('Vor', 'vor'))}</span>
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
     <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p glow" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
@@ -1516,7 +1523,7 @@ function projSide() {
       ${p.src === 'mr' && p.project_type !== 'resourcepack' && p.project_type !== 'shader' ? `<div class="kv" style="margin-top:6px"><span>Client</span><b>${env(p.client_side)}</b></div><div class="kv"><span>Server</span><b>${env(p.server_side)}</b></div>` : ''}</div>
     ${links.length ? `<div class="pbox"><h4>Links</h4>${links.map(([u, n, ic]) => `<button class="ln" onclick="openUrl('${jsq(u)}')">${ico(ic)}${esc(n)}</button>`).join('')}</div>` : ''}
     ${P.members ? `<div class="pbox"><h4>Ersteller</h4>${P.members.slice(0, 8).map(m => `<div class="mem">${picHtml(m.user.avatar_url, 'pic', 'user')}<div><b>${esc(m.user.username)}</b><small>${esc(m.role)}</small></div></div>`).join('')}</div>` : ''}
-    <div class="pbox"><h4>Details</h4><div class="kv"><span>Katalog</span><b>${SRC[p.src][0]}</b></div>${p.src === 'mr' ? `<div class="kv"><span>Lizenz</span><b>${esc(p.license?.id === 'LicenseRef-All-Rights-Reserved' ? 'Alle Rechte vorbehalten' : p.license?.id || '—')}</b></div>` : ''}<div class="kv"><span>Veröffentlicht</span><b>${esc(dateDe(p.published))}</b></div><div class="kv"><span>Aktualisiert</span><b>${esc(dateDe(p.updated))}</b></div>${P.versions ? `<div class="kv"><span>Versionen</span><b>${P.versions.length}</b></div>` : ''}</div>`;
+    <div class="pbox"><h4>Details</h4>${p.src === 'mr' ? `<div class="kv"><span>Lizenz</span><b>${esc(p.license?.id === 'LicenseRef-All-Rights-Reserved' ? 'Alle Rechte vorbehalten' : p.license?.id || '—')}</b></div>` : ''}<div class="kv"><span>Veröffentlicht</span><b>${esc(dateDe(p.published))}</b></div><div class="kv"><span>Aktualisiert</span><b>${esc(dateDe(p.updated))}</b></div>${P.versions ? `<div class="kv"><span>Versionen</span><b>${P.versions.length}</b></div>` : ''}</div>`;
 }
 
 /* ---------- markdown + HTML (project bodies mix both) → sanitized ---------- */
@@ -2548,6 +2555,59 @@ function fxLoop() {
   FX.raf = requestAnimationFrame(step);
 }
 let fxRT = 0; window.addEventListener('resize', () => { clearTimeout(fxRT); fxRT = setTimeout(() => { fxInit(); if (matchMedia('(prefers-reduced-motion: reduce)').matches) fxDraw(0); }, 200); });
+
+
+/* ======================= STYLED DROPDOWNS (every <select class="sel"> gets an own menu) ======================= */
+function cselLabel(sel) { const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; }
+function cselSync(sel) {
+  const b = sel._csel; if (!b) return;
+  b.querySelector('span').textContent = cselLabel(sel) || '—';
+  b.disabled = sel.disabled;
+}
+function cselOpen(sel) {
+  const pop = $('#selpop'), b = sel._csel;
+  if (!pop.classList.contains('hidden') && pop._for === sel) return cselClose();
+  const opts = [...sel.options], many = opts.length > 12;
+  pop._for = sel;
+  pop.innerHTML = (many ? `<div class="csel-q"><input class="in" placeholder="Suchen…"></div>` : '') + `<div class="csel-list">${opts.map((o, i) => `<button data-i="${i}" class="${i === sel.selectedIndex ? 'on' : ''}" ${o.disabled ? 'disabled' : ''}>${esc(o.textContent)}${i === sel.selectedIndex ? ico('check') : ''}</button>`).join('')}</div>`;
+  pop.classList.remove('hidden');
+  const r = b.getBoundingClientRect(), w = Math.max(r.width, 180);
+  pop.style.width = w + 'px';
+  pop.style.left = Math.min(innerWidth - w - 10, r.left) + 'px';
+  const h = pop.offsetHeight, below = innerHeight - r.bottom - 10;
+  pop.style.top = (below >= Math.min(h, 220) ? r.bottom + 6 : Math.max(10, r.top - h - 6)) + 'px';
+  pop.querySelector('.csel-list .on')?.scrollIntoView({ block: 'center' });
+  b.classList.add('open');
+  const q = pop.querySelector('.csel-q input');
+  if (q) { setTimeout(() => q.focus(), 30); q.oninput = () => { const t = q.value.toLowerCase(); pop.querySelectorAll('.csel-list button').forEach(x => x.classList.toggle('hidden', !!t && !x.textContent.toLowerCase().includes(t))); }; }
+  pop.onclick = e => {
+    const o = e.target.closest('[data-i]'); if (!o) return;
+    sel.selectedIndex = +o.dataset.i; cselSync(sel); cselClose();
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+}
+function cselClose() { const pop = $('#selpop'); pop.classList.add('hidden'); pop._for?._csel?.classList.remove('open'); pop._for = null; }
+function cselEnhance(root = document) {
+  root.querySelectorAll('select.sel:not([data-csel])').forEach(sel => {
+    sel.dataset.csel = '1';
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'csel' + (sel.classList.contains('wide') ? ' wide' : '');
+    if (sel.getAttribute('style')) b.setAttribute('style', sel.getAttribute('style'));
+    b.innerHTML = `<span></span>${ico('chevd')}`;
+    sel._csel = b; sel.classList.add('sel-native');
+    sel.after(b); cselSync(sel);
+    b.onclick = e => { e.stopPropagation(); cselOpen(sel); };
+    new MutationObserver(() => cselSync(sel)).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    sel.addEventListener('change', () => cselSync(sel));
+  });
+}
+new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) { if (n.matches?.('select.sel')) cselEnhance(n.parentElement || document); else if (n.querySelector?.('select.sel')) cselEnhance(n); } })
+  .observe(document.body, { childList: true, subtree: true });
+document.addEventListener('mousedown', e => { if (!e.target.closest('#selpop') && !e.target.closest('.csel')) cselClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cselClose(); });
+window.addEventListener('resize', cselClose);
+document.addEventListener('scroll', e => { if (!e.target.closest?.('#selpop')) cselClose(); }, true);
+cselEnhance();
 
 /* ======================= BOOT ======================= */
 async function boot() {

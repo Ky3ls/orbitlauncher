@@ -144,6 +144,58 @@ public static class CurseForge
         return r;
     }
 
+    /// <summary>CurseForge file fingerprint: MurmurHash2 (seed 1) over the file without the bytes 9, 10, 13 and 32.</summary>
+    public static uint Fingerprint(string path)
+    {
+        var raw = File.ReadAllBytes(path);
+        var buf = new byte[raw.Length]; int n = 0;
+        foreach (var b in raw) if (b is not (9 or 10 or 13 or 32)) buf[n++] = b;
+        const uint m = 0x5bd1e995; const int r = 24;
+        uint h = 1 ^ (uint)n; int i = 0;
+        while (n - i >= 4)
+        {
+            uint k = (uint)(buf[i] | buf[i + 1] << 8 | buf[i + 2] << 16 | buf[i + 3] << 24);
+            k *= m; k ^= k >> r; k *= m; h *= m; h ^= k; i += 4;
+        }
+        switch (n - i)
+        {
+            case 3: h ^= (uint)buf[i + 2] << 16; goto case 2;
+            case 2: h ^= (uint)buf[i + 1] << 8; goto case 1;
+            case 1: h ^= buf[i]; h *= m; break;
+        }
+        h ^= h >> 13; h *= m; h ^= h >> 15;
+        return h;
+    }
+
+    /// <summary>Exact fingerprint matches: fingerprint → (mod id, file).</summary>
+    public static async Task<Dictionary<uint, (int mod, JsonNode file)>> Match(IEnumerable<uint> fingerprints, CancellationToken ct = default)
+    {
+        var r = new Dictionary<uint, (int, JsonNode)>();
+        foreach (var chunk in fingerprints.Distinct().Chunk(400))
+        {
+            var res = await Post($"/fingerprints/{Game}", new JsonObject { ["fingerprints"] = new JsonArray(chunk.Select(f => (JsonNode)f).ToArray()) }, ct);
+            foreach (var mt in res["data"]?["exactMatches"]?.AsArray() ?? new JsonArray())
+            {
+                var file = mt?["file"]; if (file == null) continue;
+                var fp = (uint?)(long?)file["fileFingerprint"]; if (fp == null) continue;
+                r[fp.Value] = ((int)mt!["id"]!, file);
+            }
+        }
+        return r;
+    }
+
+    /// <summary>Several projects at once (name, logo, class).</summary>
+    public static async Task<Dictionary<int, JsonNode>> Mods(IEnumerable<int> ids, CancellationToken ct = default)
+    {
+        var r = new Dictionary<int, JsonNode>();
+        foreach (var chunk in ids.Distinct().Chunk(200))
+        {
+            var res = await Post("/mods", new JsonObject { ["modIds"] = new JsonArray(chunk.Select(i => (JsonNode)i).ToArray()) }, ct);
+            foreach (var m in res["data"]?.AsArray() ?? new JsonArray()) if (m != null) r[(int)m["id"]!] = m;
+        }
+        return r;
+    }
+
     // ===================================================================== MODPACKS (CurseForge zip with manifest.json)
 
     public static bool IsCfPack(string zip)

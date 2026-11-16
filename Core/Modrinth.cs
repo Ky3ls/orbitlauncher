@@ -273,6 +273,7 @@ public static class Modrinth
             var cur = Instances.Get(inst.Id);
             if (cur == null) return false;
             cur.CatalogMisses ??= new();
+            if (cur.CatalogV < 2 && CurseForge.Ready) cur.CatalogMisses.Clear();   // re-check once with CurseForge
             var miss = new HashSet<string>(cur.CatalogMisses, StringComparer.OrdinalIgnoreCase);
             var known = new HashSet<string>(cur.Content.Where(c => !string.IsNullOrEmpty(c.ProjectId) && !string.IsNullOrEmpty(c.IconUrl)).Select(c => c.Type + "|" + Instances.EnabledName(c.File)), StringComparer.OrdinalIgnoreCase);
             var pending = new List<(string type, string path, string file)>();
@@ -348,26 +349,65 @@ public static class Modrinth
                 catch { /* title falls back to the cleaned file name */ }
             }
 
+            // second catalog: CurseForge fingerprints for files the first one doesn't know
+            var cfHits = new Dictionary<string, (int mod, JsonNode file)>(StringComparer.OrdinalIgnoreCase);
+            var cfMods = new Dictionary<int, JsonNode>();
+            var cfOk = !CurseForge.Ready;
+            if (CurseForge.Ready)
+            {
+                try
+                {
+                    var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var pi in pending) paths[pi.type + "|" + pi.file] = pi.path;
+                    var rest = hashed.Where(h => !hits.ContainsKey(h.sha)).Select(h => (key: h.type + "|" + h.file, h)).Where(x => paths.ContainsKey(x.key)).ToList();
+                    if (rest.Count > 0)
+                    {
+                        var fps = rest.Select(x => (x.key, fp: CurseForge.Fingerprint(paths[x.key]))).ToList();
+                        var found = await CurseForge.Match(fps.Select(f => f.fp), ct);
+                        foreach (var (key, fp) in fps) if (found.TryGetValue(fp, out var m)) cfHits[key] = m;
+                        if (cfHits.Count > 0) cfMods = await CurseForge.Mods(cfHits.Values.Select(v => v.mod), ct);
+                    }
+                    cfOk = true;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { cfOk = false; }
+            }
+
+            var addedList = new List<InstalledContent>();
             foreach (var item in hashed)
             {
                 var key = item.type + "|" + item.file;
                 if (!hits.TryGetValue(item.sha, out var hit))
                 {
-                    if (complete) miss.Add(key);
+                    if (cfHits.TryGetValue(key, out var ch))
+                    {
+                        cfMods.TryGetValue(ch.mod, out var cm);
+                        var cfc = new InstalledContent
+                        {
+                            ProjectId = "cf:" + ch.mod, VersionId = ((int?)ch.file["id"])?.ToString() ?? "",
+                            Title = (string?)cm?["name"] is string cn && cn.Length > 0 ? Instances.StripFmt(cn) : Instances.DisplayTitle(null, item.file),
+                            Type = item.type, File = item.file, Sha1 = item.sha, IconUrl = (string?)cm?["logo"]?["thumbnailUrl"], VersionNumber = (string?)ch.file["displayName"],
+                            Source = "curseforge", Enabled = File.Exists(Path.Combine(Instances.ContentDir(cur, item.type), item.file)),
+                        };
+                        cur.Content.Add(cfc); addedList.Add(cfc);
+                        continue;
+                    }
+                    if (complete && cfOk) miss.Add(key);
                     continue;
                 }
                 titles.TryGetValue(hit.pid, out var meta);
-                cur.Content.Add(new InstalledContent
+                var mrc = new InstalledContent
                 {
                     ProjectId = hit.pid, VersionId = hit.vid,
                     Title = string.IsNullOrWhiteSpace(meta.title) ? Instances.DisplayTitle(null, item.file) : Instances.StripFmt(meta.title),
                     Type = item.type, File = item.file, Sha1 = item.sha, IconUrl = meta.icon, VersionNumber = hit.ver,
                     Source = "modrinth", Enabled = File.Exists(Path.Combine(Instances.ContentDir(cur, item.type), item.file)),
-                });
+                };
+                cur.Content.Add(mrc); addedList.Add(mrc);
             }
 
             var kept = miss.Where(live.Contains).ToList();
-            var added = cur.Content.Where(c => hits.ContainsKey(c.Sha1 ?? "")).ToList();
+            var added = addedList;
             var fresh = Instances.Get(inst.Id) ?? cur;
             var changed = false;
             foreach (var c in added)
@@ -388,6 +428,7 @@ public static class Modrinth
                 fresh.CatalogMisses = kept;
                 changed = true;
             }
+            if (CurseForge.Ready && cfOk && fresh.CatalogV < 2) { fresh.CatalogV = 2; changed = true; }
             if (changed) Instances.Save(fresh);
             inst.Content = fresh.Content;
             inst.CatalogMisses = fresh.CatalogMisses;
