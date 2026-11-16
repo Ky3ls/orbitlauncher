@@ -373,7 +373,7 @@ function accountUI() {
   const a = activeAcc();
   $('#saccHead').outerHTML = headHtml(a, 'head').replace('class="head', 'id="saccHead" class="head');
   $('#saccName').textContent = a ? a.name : 'Anmelden';
-  $('#saccSub').textContent = a ? 'Microsoft-Konto' : 'Nicht angemeldet';
+  $('#saccSub').textContent = a ? 'Microsoft-Konto' : 'Microsoft';
 }
 function accountPop(e) {
   e.stopPropagation();
@@ -2006,7 +2006,7 @@ PAGES.skins = async el => {
   crumbs([['Skins']]);
   const acc = activeAcc();
   S.skTab = S.skTab || 'lib';
-  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder aus Orbit-Originals und den Minecraft-Standard-Skins wählen.</p></div>
+  el.innerHTML = `<div class="ph"><div>${acc ? `<div class="kicker">${esc(acc.name)}</div>` : ''}<h1>Skins</h1></div>
     <div class="ph-r"><div class="seg sktabs" id="skTabs">${[['lib', 'Meine Skins', 'library'], ['editor', 'Editor', 'edit'], ['col', 'Sammlung', 'grid']].map(([k, n, ic]) => `<button data-k="${k}" class="${S.skTab === k ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div></div></div><div id="skBody"></div>`;
   $('#skTabs').onclick = e => { const b = e.target.closest('[data-k]'); if (!b || b.dataset.k === S.skTab) return; S.skTab = b.dataset.k; go('skins', {}, false); };
   if (S.skTab === 'editor') return skEditorPage($('#skBody'));
@@ -2056,15 +2056,13 @@ function skinSide() {
   const active = K.prof?.skins?.find(s => s.state === 'ACTIVE'), capes = K.prof?.capes || [];
   const card = (id, name, url, variant, extra = '') => `<div class="skc ${K.sel === id ? 'on' : ''}" data-sk="${esc(id)}">${extra}<div class="thumb">${skinModel(url, variant === 'slim', 4.2).replace('class="mcm"', 'class="mcm" style="transform:rotateX(-8deg) rotateY(-28deg)"')}</div><b>${esc(name)}</b><small>${variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></div>`;
   el.innerHTML = `${K.prof?.error ? `<div class="note w" style="margin:0 0 14px">Profil konnte nicht geladen werden: ${esc(K.prof.error)}</div>` : ''}
-    <div class="sec" style="margin-top:0"><h2>Umhänge</h2><span class="muted">${capes.length}</span><span class="sp"></span><span class="muted" style="font-size:11.5px">Drüberfahren = Vorschau</span></div>
-    ${K.prof && !K.prof.error ? (capes.length ? `<div class="capes" id="skCapes"><button class="capeb ${capes.some(c => c.state === 'ACTIVE') ? '' : 'on'}" data-cape=""><i class="none"></i><span>Keiner</span></button>${capes.map(c => `<button class="capeb ${c.state === 'ACTIVE' ? 'on' : ''}" data-cape="${esc(c.id)}" data-curl="${esc(c.url.replace('http://', 'https://'))}"><i style="background-image:url('${esc(c.url.replace('http://', 'https://'))}')"></i><span class="ell">${esc(c.alias || 'Umhang')}</span>${c.state === 'ACTIVE' ? '<em>Aktiv</em>' : ''}</button>`).join('')}</div>`
-      : `<div class="capenone">${ico('shield')}<div><b>Noch keine Umhänge</b><p>Umhänge gibt es von Mojang, zum Beispiel über Events, Minecraft Live oder Käufe. Sobald dein Konto einen hat, kannst du ihn hier wählen.</p></div></div>`) : `<div class="capenone">${ico('user')}<div><b>Mit Microsoft anmelden</b><p>Umhänge gehören zu deinem Minecraft-Konto.</p></div></div>`}
-    <div class="sec" ${capes.length ? '' : 'style="margin-top:0"'}><h2>Deine Skins</h2><span class="muted">${K.lib.length}</span></div>
+    ${K.prof && !K.prof.error ? `<div class="sec" style="margin-top:0"><h2>Umhänge</h2><span class="muted">${capes.length}</span></div>
+    ${capes.length ? `<div class="capes" id="skCapes"><button class="capeb ${capes.some(c => c.state === 'ACTIVE') ? '' : 'on'}" data-cape=""><i class="none"></i><span>Keiner</span></button>${capes.map(c => `<button class="capeb ${c.state === 'ACTIVE' ? 'on' : ''}" data-cape="${esc(c.id)}" data-curl="${esc(c.url.replace('http://', 'https://'))}" title="Drüberfahren für Vorschau"><i style="background-image:url('${esc(c.url.replace('http://', 'https://'))}')"></i><span class="ell">${esc(c.alias || 'Umhang')}</span>${c.state === 'ACTIVE' ? '<em>Aktiv</em>' : ''}</button>`).join('')}</div>` : `<div class="capenone">${ico('shield')}<div><b>Noch keine Umhänge</b><p>Sobald dein Konto einen hat, kannst du ihn hier wählen.</p></div></div>`}` : ''}
+    <div class="sec" ${K.prof && !K.prof.error ? '' : 'style="margin-top:0"'}><h2>Deine Skins</h2><span class="muted">${K.lib.length}</span></div>
     <div class="sklib" id="skLib"><button class="skc add" id="skAdd"><span>${ico('plus')}<b>Skin hinzufügen</b><small>PNG, 64×64</small></span></button>
       ${active ? card('__cur', 'Aktueller Skin', active.url.replace('http://', 'https://'), active.variant === 'SLIM' ? 'slim' : 'classic', '<span class="badge">AKTIV</span>') : ''}
       ${K.lib.map(x => card(x.id, x.name, x.url, x.variant, `<span class="act"><button class="ib sm" data-edit="${esc(x.id)}" title="Im Editor öffnen">${ico('palette')}</button><button class="ib sm" data-ren="${esc(x.id)}" title="Umbenennen">${ico('edit')}</button><button class="ib sm d" data-del="${esc(x.id)}" title="Löschen">${ico('trash')}</button></span>`)).join('')}
-      ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>
-    <p class="fine">Skins werden nur lokal gespeichert, bis du sie übernimmst. Übernehmen geht direkt über Mojangs offizielle Schnittstelle mit deinem Konto.</p>`;
+      ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>`;
   $('#skLib').onclick = async e => {
     if (e.target.closest('#skAdd')) { try { const x = await api('skins.add', { variant: 'classic' }); if (x) { K.lib.unshift(x); K.sel = x.id; skinSide(); skinShow(); } } catch (er) { fail('Skin', er); } return; }
     const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); if (!await confirmBox('Skin löschen?', 'Er wird aus deiner Bibliothek entfernt.', 'Löschen', true)) return; await api('skins.remove', { id: del.dataset.del }); K.lib = K.lib.filter(x => x.id !== del.dataset.del); if (K.sel === del.dataset.del) K.sel = null; skinSide(); skinShow(); return; }
