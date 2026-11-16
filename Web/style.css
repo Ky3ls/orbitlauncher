@@ -1573,7 +1573,8 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .ip-row{display:flex;align-items:center;gap:12px}
 .ip-cur{width:58px;height:58px;flex:none;border-radius:16px;display:grid;place-items:center;background:rgba(var(--a-rgb),.1);border:1px solid rgba(var(--a-rgb),.4)}
 .ip-cur svg{width:46px;height:46px}.ip-cur img{width:100%;height:100%;object-fit:cover;border-radius:15px;image-rendering:pixelated}
-.ip-cur.pop{animation:pop .45s var(--spring)}
+.ip-cur.popin{animation:ipPop .45s var(--spring)}
+@keyframes ipPop{from{transform:scale(.8)}to{transform:none}}
 .ip-quick{display:flex;gap:6px;flex-wrap:wrap}
 .ip-quick button,.ip-all button{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;border:1px solid transparent;background:rgba(var(--ov),.03);transition:transform .15s,border-color .15s,background .15s}
 .ip-quick button svg{width:32px;height:32px}
@@ -1912,3 +1913,6 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 
 .vhead{align-items:center;margin-top:18px}
 .vhead .fl{margin:0}
+
+#niVf{height:34px;min-width:150px}
+.vhead .srch.sm{width:180px}

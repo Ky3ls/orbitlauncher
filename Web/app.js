@@ -194,7 +194,7 @@ function cubeRender(key) {
   const [top, front, side] = t.length === 1 ? [t[0], t[0], t[0]] : t.length === 2 ? [t[0], t[1], t[1]] : t;
   const imgs = [top, front, side].map(n => BTEX.img[n]); if (imgs.some(x => !x)) return null;
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
-  const M = { top: [1.5, -.8125, 1.5, .8125, 8, 21], left: [1.5, .8125, 0, 1.5, 8, 21], right: [1.5, -.8125, 0, 1.5, 32, 34] };
+  const M = { top: [1.625, -.8125, 1.625, .8125, 6, 19], left: [1.625, .8125, 0, 1.75, 6, 19], right: [1.625, -.8125, 0, 1.75, 32, 32] };
   const face = (img, m, dark) => {
     x.setTransform(m[0] * 2, m[1] * 2, m[2] * 2, m[3] * 2, m[4] * 2, m[5] * 2);
     x.globalCompositeOperation = 'source-over'; x.drawImage(img, 0, 0, 16, 16);
@@ -1264,7 +1264,7 @@ function iconPickBind(root, st, onChange) {
     if (b) { st.icon = b.dataset.ic; st.iconUrl = null; redraw(); return onChange(st); }
     const a = e.target.closest('[data-ipa]')?.dataset.ipa; if (!a) return;
     if (a === 'all') { st.open = !st.open; return redraw(); }
-    if (a === 'rnd') { let k; do k = ICONS[Math.floor(Math.random() * ICONS.length)]; while (k === st.icon && ICONS.length > 1); st.icon = k; st.iconUrl = null; redraw(); root.querySelector('.ip-cur')?.classList.add('pop'); return onChange(st); }
+    if (a === 'rnd') { let k; do k = ICONS[Math.floor(Math.random() * ICONS.length)]; while (k === st.icon && ICONS.length > 1); st.icon = k; st.iconUrl = null; redraw(); root.querySelector('.ip-cur')?.classList.add('popin'); return onChange(st); }
     if (a === 'clr') { st.iconUrl = null; redraw(); return onChange(st); }
     if (a === 'up') {
       const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/webp,image/gif';
@@ -1322,7 +1322,7 @@ async function niRender() {
     <label class="fl">Symbol</label><div id="niIcon"></div>
     <label class="fl">Mod-Loader</label><div class="ldcards" id="niLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === N.loader ? 'on' : ''}" data-ld="${k}" style="--lc:${LCOL[k]}">${ldIcon(k)}<b>${n}</b><small>${LDESC[k]}</small></button>`).join('')}</div>
     <div class="vhead"><label class="fl">Spielversion</label><span class="sp"></span>
-      <div class="seg sm" id="niVf">${[['release', 'Releases'], ['snapshot', 'Snapshots'], ...(N.loader === 'vanilla' ? [['old', 'Uralt']] : [])].map(([k, n]) => `<button data-vf="${k}" class="${N.vf === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <select class="sel" id="niVf">${[['release', 'Releases'], ['snapshot', 'Snapshots'], ...(N.loader === 'vanilla' ? [['old', 'Uralt (Beta/Alpha)']] : [])].map(([k, n]) => `<option value="${k}" ${N.vf === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <div class="srch sm">${ico('search')}<input class="in" id="niVq" placeholder="Suchen…" value="${esc(N.vq)}"></div></div>
     <div class="vlist" id="niVl">${shown.length ? shown.slice(0, 120).map(v => `<button data-mc="${esc(v)}" class="${v === N.mc ? 'on' : ''}">${esc(v)}${v === latest && !q ? '<i>Neu</i>' : ''}</button>`).join('') : '<div class="muted" style="padding:10px">Keine passende Version.</div>'}</div>
     ${PERF[N.loader] ? `<div class="srow"><div><b>${ico('zap')}Performance-Mods dazu</b><p>${PERF[N.loader].map(p => p[1]).join(', ')}. Mehr FPS, weniger RAM. Nur was zur Version passt.</p></div><div class="tg sm ${N.perf ? 'on' : ''}" id="niPerf"></div></div>` : ''}
@@ -1336,7 +1336,7 @@ async function niRender() {
   $('#niName').oninput = e => { N.name = e.target.value; niPrev(); };
   $('#niGroup').oninput = e => { N.group = e.target.value; niPrev(); };
   $('#niLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; N.loader = b.dataset.ld; N.lv = ''; if (N.loader !== 'vanilla' && N.vf === 'old') N.vf = 'release'; niPrev(); niRender(); };
-  $('#niVf').onclick = e => { const b = e.target.closest('[data-vf]'); if (!b) return; N.vf = b.dataset.vf; niRender(); };
+  $('#niVf').onchange = e => { N.vf = e.target.value; niRender(); };
   let t = 0; $('#niVq').oninput = e => { N.vq = e.target.value; clearTimeout(t); t = setTimeout(async () => { await niRender(); const i = $('#niVq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 200); };
   $('#niVl').onclick = e => { const b = e.target.closest('[data-mc]'); if (!b) return; N.mc = b.dataset.mc; N.lv = ''; $$('#niVl button').forEach(x => x.classList.toggle('on', x === b)); $('#niName').placeholder = niDefName(); niPrev(); niLoaderVersions(); };
   $('#niPerf') && ($('#niPerf').onclick = e => { N.perf = !N.perf; e.target.classList.toggle('on', N.perf); niPrev(); });
