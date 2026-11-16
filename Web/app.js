@@ -2066,26 +2066,33 @@ function bufToB64u(buf) {
 }
 function pkFail(e) {
   if (!window.isSecureContext || !navigator.credentials?.create) return 'Passkeys gehen nur im Launcher, mit Windows Hello oder einem Sicherheitsschlüssel.';
-  if (e?.name === 'NotAllowedError') return 'Passkey abgebrochen.';
+  if (e?.name === 'NotAllowedError') return 'Der Passkey wurde nicht gespeichert. Entweder wurde das Windows-Fenster abgebrochen, oder Windows Hello ist auf diesem PC nicht eingerichtet (Windows-Einstellungen → Konten → Anmeldeoptionen: PIN oder Gesichtserkennung).';
+  if (e?.name === 'InvalidStateError') return 'Auf diesem Gerät gibt es schon einen Passkey für dein Konto.';
+  if (e?.name === 'SecurityError') return 'Windows hat den Passkey für diese App abgelehnt (' + (e.message || 'SecurityError') + ').';
   return e?.message || 'Passkey fehlgeschlagen.';
 }
 function orbitFactor(ticket, name) {
   modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>
     <aside class="auth-side"><span class="auth-mark">${blockSvg('orbit')}</span><h2>Zweiter Schritt.</h2><p>Dein Konto ist mit einem Code geschützt. Den zeigt die Authenticator-App, oder du nimmst einen Wiederherstellungscode.</p></aside>
     <div class="auth-main"><h1>Code eingeben</h1><p class="auth-lead">${esc(name)}, das Passwort stimmt. Jetzt der Code.</p>
-      <input class="in auth-code" id="olCode" inputmode="numeric" autocomplete="one-time-code" placeholder="000 000" maxlength="14">
+      <div id="olBox">${otpHtml('olOtp')}</div>
+      <input class="in auth-code hidden" id="olRec" placeholder="XXXX-XXXX" maxlength="14" autocomplete="off">
       <div class="g-err" id="olErr"></div>
-      <button class="btn p lg auth-go" id="olGo">${ico('shield')}Bestätigen</button></div>`, 'auth');
+      <button class="btn p lg auth-go" id="olGo">${ico('shield')}Bestätigen</button>
+      <button class="g-skip" id="olRecSw" style="margin-top:12px">Handy nicht da? Wiederherstellungscode benutzen</button></div>`, 'auth');
+  let rec = false;
+  const otp = otpBind('olOtp', () => go());
+  $('#olRecSw').onclick = () => { rec = !rec; $('#olBox').classList.toggle('hidden', rec); $('#olRec').classList.toggle('hidden', !rec); $('#olRecSw').textContent = rec ? 'Doch lieber den Code aus der App' : 'Handy nicht da? Wiederherstellungscode benutzen'; (rec ? $('#olRec') : $('#olOtp input')).focus(); };
   const go = async () => {
-    const code = $('#olCode').value.trim();
-    if (code.length < 6) return $('#olErr').textContent = 'Der Code hat 6 Ziffern.';
+    const code = rec ? $('#olRec').value.trim() : otp.value();
+    if (!rec && code.length < 6) return $('#olErr').textContent = 'Der Code hat 6 Ziffern.';
+    if (rec && code.replace(/[^A-Za-z0-9]/g, '').length < 8) return $('#olErr').textContent = 'Der Wiederherstellungscode hat 8 Zeichen.';
     const b = $('#olGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…';
     try { const r = await api('cloud.totp', { ticket, code }); orbitDone(r.name || name, false); }
-    catch (e) { b.disabled = false; b.innerHTML = ico('shield') + 'Bestätigen'; $('#olErr').textContent = e.message; }
+    catch (e) { b.disabled = false; b.innerHTML = ico('shield') + 'Bestätigen'; $('#olErr').textContent = e.message; if (!rec) otp.clear(); }
   };
   $('#olGo').onclick = go;
-  $('#olCode').onkeydown = e => { if (e.key === 'Enter') go(); };
-  setTimeout(() => $('#olCode').focus(), 50);
+  $('#olRec').onkeydown = e => { if (e.key === 'Enter') go(); };
 }
 async function orbitPasskey(name) {
   const err = $('#olErr');
@@ -2100,13 +2107,16 @@ async function orbitPasskey(name) {
 }
 async function cloudPasskeyAdd() {
   if (!window.isSecureContext || !navigator.credentials?.create) return fail('Passkey', { message: pkFail() });
+  let hello = false;
+  try { hello = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { }
+  if (!hello && !await confirmBox('Windows Hello fehlt', 'Auf diesem PC ist keine Windows-Hello-PIN oder Gesichtserkennung eingerichtet. Richte sie in den Windows-Einstellungen unter Konten → Anmeldeoptionen ein, oder nimm einen Sicherheitsschlüssel (USB) bzw. dein Handy.', 'Trotzdem fortfahren')) return;
   try {
     const o = await api('cloud.passkey.add.begin');
     const cred = await navigator.credentials.create({ publicKey: {
       challenge: b64uToBuf(o.challenge), rp: { name: 'Orbit', id: o.rpId },
       user: { id: b64uToBuf(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: o.pubKeyCredParams, timeout: o.timeout, attestation: 'none',
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred', ...(hello ? { authenticatorAttachment: 'platform' } : {}) },
       excludeCredentials: (o.excludeCredentials || []).map(c => ({ type: 'public-key', id: b64uToBuf(c.id) })),
     } });
     await api('cloud.passkey.add.finish', { clientDataJSON: bufToB64u(cred.response.clientDataJSON), attestationObject: bufToB64u(cred.response.attestationObject), name: 'Dieser PC' });
@@ -2119,30 +2129,185 @@ window.cloudPasskeyDel = async id => {
   if (!await confirmBox('Passkey entfernen?', 'Auf diesem Gerät kannst du dich damit nicht mehr anmelden.', 'Entfernen', true)) return;
   try { await api('cloud.passkey.remove', { id }); if (S.page === 'settings') setBody(); } catch (e) { fail('Passkey', e); }
 };
+
+/* ======================= QR CODE (own small encoder: byte mode, error level M, versions 1–10) ======================= */
+function qrMatrix(text) {
+  const data = [...new TextEncoder().encode(text)];
+  const ECC = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26], BLOCKS = [1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const rawModules = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+  const dataCap = v => Math.floor(rawModules(v) / 8) - ECC[v - 1] * BLOCKS[v - 1];
+  let ver = 1;
+  for (; ver <= 10; ver++) if (4 + (ver < 10 ? 8 : 16) + data.length * 8 <= dataCap(ver) * 8) break;
+  if (ver > 10) throw new Error('QR zu lang');
+  // bit stream
+  const bits = [];
+  const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(4, 4); put(data.length, ver < 10 ? 8 : 16); data.forEach(b => put(b, 8));
+  const capBits = dataCap(ver) * 8;
+  put(0, Math.min(4, capBits - bits.length));
+  put(0, (8 - bits.length % 8) % 8);
+  for (let pad = 0xEC; bits.length < capBits; pad ^= 0xEC ^ 0x11) put(pad, 8);
+  const cw = []; for (let i = 0; i < bits.length; i += 8) cw.push(bits.slice(i, i + 8).reduce((a, b) => a << 1 | b, 0));
+  // Reed–Solomon over GF(256), poly 0x11D
+  const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z; };
+  const deg = ECC[ver - 1], div = new Array(deg).fill(0); div[deg - 1] = 1;
+  for (let i = 0, root = 1; i < deg; i++) { for (let j = 0; j < deg; j++) { div[j] = mul(div[j], root); if (j + 1 < deg) div[j] ^= div[j + 1]; } root = mul(root, 2); }
+  const rem = d => { const r = new Array(deg).fill(0); for (const b of d) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => r[i] ^= mul(c, f)); } return r; };
+  const nb = BLOCKS[ver - 1], raw = Math.floor(rawModules(ver) / 8), nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+  const blocks = [];
+  for (let i = 0, k = 0; i < nb; i++) {
+    const d = cw.slice(k, k + shortLen - deg + (i < nShort ? 0 : 1)); k += d.length;
+    const e = rem(d); if (i < nShort) d.push(0); blocks.push(d.concat(e));
+  }
+  const all = [];
+  for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - deg || j >= nShort) all.push(b[i]); });
+  // matrix
+  const size = ver * 4 + 17, M = [...Array(size)].map(() => new Array(size).fill(false)), F = [...Array(size)].map(() => new Array(size).fill(false));
+  const set = (x, y, dark) => { M[y][x] = dark; F[y][x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  const finder = (cx, cy) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy; if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4); } };
+  finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+  if (ver > 1) {
+    const n = Math.floor(ver / 7) + 2, step = Math.ceil((ver * 4 + 4) / (n * 2 - 2)) * 2, pos = [6];
+    for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+    pos.forEach((a, i) => pos.forEach((b, j) => { if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+  }
+  const format = mask => {
+    const d = (0 << 3) | mask; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+    const b = ((d << 10) | r) ^ 0x5412, g = i => ((b >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) set(8, i, g(i));
+    set(8, 7, g(6)); set(8, 8, g(7)); set(7, 8, g(8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, g(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, g(i));
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, g(i));
+    set(8, size - 8, true);
+  };
+  format(0);
+  if (ver >= 7) {
+    let r = ver; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25);
+    const b = (ver << 12) | r;
+    for (let i = 0; i < 18; i++) { const bit = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, bit); set(c, a, bit); }
+  }
+  let k = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let v = 0; v < size; v++) for (let j = 0; j < 2; j++) {
+      const x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - v : v;
+      if (!F[y][x] && k < all.length * 8) { M[y][x] = ((all[k >>> 3] >>> (7 - (k & 7))) & 1) === 1; k++; }
+    }
+  }
+  const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+  const apply = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!F[y][x] && MASKS[m](x, y)) M[y][x] = !M[y][x]; };
+  const penalty = () => {
+    let p = 0;
+    for (let y = 0; y < size; y++) for (let run = 1, x = 1; x <= size; x++) { if (x < size && M[y][x] === M[y][x - 1]) run++; else { if (run >= 5) p += run - 2; run = 1; } }
+    for (let x = 0; x < size; x++) for (let run = 1, y = 1; y <= size; y++) { if (y < size && M[y][x] === M[y - 1][x]) run++; else { if (run >= 5) p += run - 2; run = 1; } }
+    for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3; }
+    let dark = 0; M.forEach(r => r.forEach(c => dark += c)); p += Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10;
+    return p;
+  };
+  let best = 0, bestP = Infinity;
+  for (let m = 0; m < 8; m++) { apply(m); format(m); const p = penalty(); if (p < bestP) { bestP = p; best = m; } apply(m); }
+  apply(best); format(best);
+  return M;
+}
+function qrSvg(text, px = 6) {
+  const M = qrMatrix(text), n = M.length, q = 3, s = (n + q * 2);
+  let d = '';
+  M.forEach((row, y) => row.forEach((c, x) => { if (c) d += `M${x + q} ${y + q}h1v1h-1z`; }));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${s} ${s}" width="${s * px}" height="${s * px}" shape-rendering="crispEdges"><rect width="${s}" height="${s}" fill="#fff"/><path d="${d}" fill="#111"/></svg>`;
+}
+
+/* ---------- 6-digit code boxes (auto-advance, paste, backspace) ---------- */
+const otpHtml = id => `<div class="otp" id="${id}">${[0, 1, 2, 3, 4, 5].map(i => `<input inputmode="numeric" maxlength="1" autocomplete="${i ? 'off' : 'one-time-code'}" aria-label="Ziffer ${i + 1}">${i === 2 ? '<span class="otp-gap"></span>' : ''}`).join('')}</div>`;
+function otpBind(id, done) {
+  const box = $('#' + id), ins = [...box.querySelectorAll('input')];
+  const val = () => ins.map(i => i.value).join('');
+  const fill = s => { const d = s.replace(/\D/g, '').slice(0, 6); ins.forEach((i, k) => i.value = d[k] || ''); (ins[Math.min(d.length, 5)]).focus(); box.classList.toggle('full', d.length === 6); if (d.length === 6) done(d); };
+  ins.forEach((inp, k) => {
+    inp.oninput = () => {
+      const v = inp.value.replace(/\D/g, '');
+      if (v.length > 1) return fill(val().slice(0, k) + v);
+      inp.value = v; box.classList.remove('bad');
+      if (v && k < 5) ins[k + 1].focus();
+      box.classList.toggle('full', val().length === 6);
+      if (val().length === 6) done(val());
+    };
+    inp.onkeydown = e => {
+      if (e.key === 'Backspace' && !inp.value && k > 0) { ins[k - 1].value = ''; ins[k - 1].focus(); e.preventDefault(); }
+      if (e.key === 'ArrowLeft' && k > 0) ins[k - 1].focus();
+      if (e.key === 'ArrowRight' && k < 5) ins[k + 1].focus();
+    };
+    inp.onpaste = e => { e.preventDefault(); fill((e.clipboardData || window.clipboardData).getData('text')); };
+    inp.onfocus = () => inp.select();
+  });
+  setTimeout(() => ins[0].focus(), 60);
+  return { value: val, clear: () => { ins.forEach(i => i.value = ''); box.classList.remove('full'); box.classList.add('bad'); ins[0].focus(); } };
+}
+const secretGroups = s => esc(s).replace(/(.{4})/g, '$1 ').trim();
+
+/* ---------- two-factor setup: 1) scan, 2) confirm, 3) recovery codes ---------- */
 function cloudTotpOn() {
   api('cloud.totp.start').then(s => {
-    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Zwei-Faktor</div><h1>Authenticator einrichten</h1>
-      <p>Trag den Schlüssel in deine Authenticator-App ein. Danach den 6-stelligen Code.</p>
-      <div class="auth-secret"><code id="olSec">${esc(s.secret)}</code><button class="ib sm" id="olCopy" title="Kopieren">${ico('copy')}</button></div>
-      <label class="fl" for="olCode">Code</label><input class="in auth-code" id="olCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
-      <div class="g-err" id="olErr"></div>
-      <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="olGo">${ico('shield')}Aktivieren</button></div>`, 'form');
-    $('#olCopy').onclick = () => navigator.clipboard?.writeText(s.secret).then(() => toast('Schlüssel kopiert')).catch(() => { });
-    $('#olGo').onclick = async () => {
-      try {
-        const r = await api('cloud.totp.confirm', { code: $('#olCode').value.trim() });
-        modal(`<div class="kicker">Zwei-Faktor</div><h1>Codes weglegen</h1><p>Jeder Code gilt einmal, falls du die App nicht dabei hast. Orbit zeigt sie kein zweites Mal.</p><div class="rec-grid">${(r.recovery || []).map(c => `<code>${esc(c)}</code>`).join('')}</div><div class="act" style="justify-content:flex-end"><button class="btn p" id="olOk">Ich habe sie gespeichert</button></div>`, 'form');
-        $('#olOk').onclick = () => { closeModal(); toast('Zwei-Faktor aktiv'); if (S.page === 'settings') setBody(); };
-      } catch (e) { $('#olErr').textContent = e.message; }
+    const uri = s.otpauth || `otpauth://totp/Orbit:${encodeURIComponent(S.cloud?.name || '')}?secret=${s.secret}&issuer=Orbit`;
+    let qr = ''; try { qr = qrSvg(uri, 5); } catch { }
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>
+      <div class="tfa-head"><span class="tfa-ic">${ico('shield')}</span><div><div class="kicker">Orbit-Konto schützen</div><h1>Zwei-Faktor einrichten</h1></div></div>
+      <div class="tfa-steps"><span class="on">1 · Scannen</span><i></i><span>2 · Codes sichern</span></div>
+      <div class="tfa-body">
+        <div class="tfa-qr">${qr || '<div class="muted">QR-Code nicht verfügbar</div>'}</div>
+        <div class="tfa-side">
+          <ol class="tfa-list">
+            <li><b>Authenticator-App öffnen</b><span>z. B. Microsoft Authenticator, Google Authenticator, Authy oder 2FAS</span></li>
+            <li><b>QR-Code scannen</b><span>Klappt das nicht, gib den Schlüssel von Hand ein:</span>
+              <button class="tfa-secret" id="tfSec" title="Kopieren"><code>${secretGroups(s.secret)}</code>${ico('copy')}</button></li>
+            <li><b>Code aus der App eingeben</b><span>Die App zeigt alle 30 Sekunden einen neuen.</span></li>
+          </ol>
+          ${otpHtml('tfOtp')}
+          <div class="g-err" id="tfErr"></div>
+        </div>
+      </div>
+      <div class="act" style="justify-content:space-between"><span class="muted" style="font-size:12px">Ab dann fragt Orbit beim Anmelden nach dem Code.</span><button class="btn p" id="tfGo" disabled>${ico('shield')}Aktivieren</button></div>`, 'form tfa');
+    $('#tfSec').onclick = () => navigator.clipboard?.writeText(s.secret).then(() => toast('Schlüssel kopiert')).catch(() => { });
+    let busy = false;
+    const go = async code => {
+      if (busy || !code || code.length !== 6) return; busy = true;
+      const b = $('#tfGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Prüfe…'; $('#tfErr').textContent = '';
+      try { const r = await api('cloud.totp.confirm', { code }); tfaCodes(r.recovery || []); }
+      catch (e) { busy = false; b.innerHTML = ico('shield') + 'Aktivieren'; $('#tfErr').textContent = e.message === 'Code falsch.' ? 'Der Code stimmt nicht. Nimm den aktuellen aus der App.' : e.message; otp.clear(); }
     };
+    const otp = otpBind('tfOtp', code => { $('#tfGo').disabled = false; go(code); });
+    $('#tfGo').onclick = () => go(otp.value());
   }).catch(e => fail('Zwei-Faktor', e));
 }
 window.cloudTotpOn = cloudTotpOn;
+function tfaCodes(codes) {
+  const text = 'OrbitLauncher – Wiederherstellungscodes\nJeder Code gilt einmal.\n\n' + codes.join('\n') + '\n';
+  modal(`<div class="tfa-head"><span class="tfa-ic ok">${ico('check')}</span><div><div class="kicker">Zwei-Faktor ist aktiv</div><h1>Wiederherstellungscodes</h1></div></div>
+    <div class="tfa-steps"><span class="done">1 · Scannen</span><i class="on"></i><span class="on">2 · Codes sichern</span></div>
+    <p class="tfa-p">Falls du dein Handy verlierst, kommst du mit einem dieser Codes trotzdem rein. Jeder gilt nur einmal. Orbit zeigt sie dir <b>kein zweites Mal</b>.</p>
+    <div class="rec-grid">${codes.map((c, i) => `<code><i>${i + 1}</i>${esc(c)}</code>`).join('')}</div>
+    <div class="row" style="gap:8px;margin-top:12px"><button class="btn sm" id="rcCopy">${ico('copy')}Kopieren</button><button class="btn sm" id="rcSave">${ico('download')}Als Datei speichern</button></div>
+    <label class="tfa-check"><span class="cb" id="rcOk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Ich habe die Codes sicher aufbewahrt</label>
+    <div class="act" style="justify-content:flex-end"><button class="btn p" id="rcDone" disabled>${ico('check')}Fertig</button></div>`, 'form tfa');
+  S.modalClose = () => { if (S.page === 'settings') setBody(); };
+  $('#rcCopy').onclick = () => navigator.clipboard?.writeText(text).then(() => toast('Codes kopiert')).catch(() => { });
+  $('#rcSave').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); a.download = 'orbit-wiederherstellungscodes.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  $('.tfa-check').onclick = () => { const on = !$('#rcOk').classList.contains('on'); $('#rcOk').classList.toggle('on', on); $('#rcDone').disabled = !on; };
+  $('#rcDone').onclick = () => { closeModal(); toast('Zwei-Faktor aktiv', 'Dein Orbit-Konto ist jetzt doppelt geschützt.'); };
+}
 window.cloudTotpOff = async () => {
-  modal(`<h1>Zwei-Faktor aus</h1><p>Passwort und ein aktueller Code aus der App.</p><label class="fl">Passwort</label><input class="in" id="tfPw" type="password"><label class="fl">Code</label><input class="in" id="tfCode" inputmode="numeric" maxlength="6"><div class="g-err" id="tfErr"></div><div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn d" id="tfGo">Ausschalten</button></div>`, 'form');
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="tfa-head"><span class="tfa-ic warn">${ico('shield')}</span><div><div class="kicker">Orbit-Konto</div><h1>Zwei-Faktor ausschalten</h1></div></div>
+    <p class="tfa-p">Bestätige mit deinem Passwort und dem aktuellen Code aus der App.</p>
+    <label class="fl">Passwort</label><input class="in" id="tfPw" type="password" autocomplete="current-password">
+    <label class="fl">Code aus der App</label>${otpHtml('tfOff')}
+    <div class="g-err" id="tfErr"></div>
+    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn d" id="tfGo">Ausschalten</button></div>`, 'form tfa');
+  const otp = otpBind('tfOff', () => { });
+  setTimeout(() => $('#tfPw').focus(), 80);
   $('#tfGo').onclick = async () => {
-    try { await api('cloud.totp.disable', { password: $('#tfPw').value, code: $('#tfCode').value.trim() }); closeModal(); toast('Zwei-Faktor aus'); if (S.page === 'settings') setBody(); }
-    catch (e) { $('#tfErr').textContent = e.message; }
+    try { await api('cloud.totp.disable', { password: $('#tfPw').value, code: otp.value() }); closeModal(); toast('Zwei-Faktor aus'); if (S.page === 'settings') setBody(); }
+    catch (e) { $('#tfErr').textContent = e.message; otp.clear(); }
   };
 };
 async function cloudSyncNow(btn) {
