@@ -1765,3 +1765,13 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .skc-sites em svg.i{width:11px;height:11px}
 @media (max-width:1300px){.skc-sites em{display:none}}
 .skc-sites em{display:none!important}.skc-sites small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.skc-sites span:not(.sl){min-width:0}
+
+.skc-sites.big button{padding:16px;gap:14px}
+.skc-sites.big .sl{width:44px;height:44px;border-radius:13px}
+.skc-sites.big .sl svg.i{width:21px;height:21px}
+.skc-sites.big b{font-size:15px}
+.skc-sites.big i{display:block;font-style:normal;font-size:10.5px;color:var(--sc);margin-top:3px;opacity:.85}
+.skc-sites.big>button>svg.i{margin-left:auto;width:15px;height:15px;color:var(--mute);flex:none}
+.skc-how{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub);margin:-2px 0 14px}
+.skc-how svg.i{width:15px;height:15px;color:var(--a);flex:none}
+.skc-how b{color:var(--text)}

@@ -2011,7 +2011,7 @@ PAGES.skins = async el => {
   crumbs([['Skins']]);
   const acc = activeAcc();
   S.skTab = S.skTab || 'lib';
-  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder aus über ${skCollection().length} fertigen Skins wählen.</p></div>
+  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder Skins von Skindex, LabyMod und NameMC holen.</p></div>
     <div class="ph-r"><div class="seg sktabs" id="skTabs">${[['lib', 'Meine Skins', 'library'], ['editor', 'Editor', 'edit'], ['col', 'Sammlung', 'grid']].map(([k, n, ic]) => `<button data-k="${k}" class="${S.skTab === k ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div></div></div><div id="skBody"></div>`;
   $('#skTabs').onclick = e => { const b = e.target.closest('[data-k]'); if (!b || b.dataset.k === S.skTab) return; S.skTab = b.dataset.k; go('skins', {}, false); };
   if (S.skTab === 'editor') return skEditorPage($('#skBody'));
@@ -2234,7 +2234,8 @@ function skThumb(url) {
   });
 }
 let SKCOL = null;
-function skCollection() {
+function skCollection() { return []; }
+function skCollectionOld() {
   if (SKCOL) return SKCOL;
   SKCOL = [];
   THEMES_SK.forEach(([k, n]) => { for (let i = 0; i < 12; i++) SKCOL.push({ id: `${k}-${i}`, theme: k, name: `${n} ${i + 1}`, variant: (k === 'wizard' || i % 4 === 3) && k !== 'knight' ? 'slim' : 'classic', seed: i }); });
@@ -2398,7 +2399,13 @@ const SEPAL = ['#F3D2B3', '#E8B894', '#D49A73', '#B97A55', '#8D5A3F', '#5E3B28',
 function seTools() { $$('#seTools [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === SE.tool)); const st = $('#seStage'); if (st) st.dataset.tool = SE.tool; const c = $('#se2d'); if (c) c.dataset.tool = SE.tool; }
 async function skEditorPage(body) {
   seCanvas();
-  if (!SE.loaded) { SE.loaded = true; await seLoad(genSkin(Math.floor(Math.random() * 99), 'casual'), 'Mein Skin', 'classic'); }
+  if (!SE.loaded) {
+    SE.loaded = true;
+    await skcDefaults(true);
+    const st = (S.skDefaults || []).find(x => x.name === 'Steve') || S.skDefaults?.[0];
+    if (st) await seLoad(st.url, 'Mein Skin', 'classic');
+    else { await seLoad('', 'Mein Skin', 'classic'); Object.keys(SKP).forEach(k => SE.P.box(SKP[k][0], '#9CA3AF')); SE.orig = SE.P.x.getImageData(0, 0, 64, 64); }
+  }
   body.innerHTML = `<div class="sed">
     <div class="se-tools" id="seTools">${SETOOLS.map(([k, ic, n, key]) => `<button data-t="${k}" data-tip="${n}" data-key="${key}">${ico(ic)}</button>`).join('')}
       <hr><button data-sz="1" data-tip="Pinsel 1 Pixel" class="sz">1</button><button data-sz="2" data-tip="Pinsel 2×2 Pixel" class="sz">2</button><button data-sz="3" data-tip="Pinsel 3×3 Pixel" class="sz">3</button>
@@ -2421,7 +2428,7 @@ async function skEditorPage(body) {
         <div class="se-pal" id="sePal">${SEPAL.map(c => `<button style="background:${c}" data-c="${c}"></button>`).join('')}</div>
         <div class="se-sub">Zuletzt</div><div class="se-pal small" id="seRecent"></div></div>
       <div class="fbox"><div class="fh">${ico('sparkle')}Schnellstart</div><div class="se-quick">
-        <button data-q="rnd">${ico('rotate')}Zufälliger Skin</button><button data-q="blank">${ico('square')}Leere Vorlage</button><button data-q="skin">${ico('user')}Nur Haut</button>
+        <button data-q="rnd">${ico('rotate')}Zufälliger Standard-Skin</button><button data-q="blank">${ico('square')}Leere Vorlage</button><button data-q="skin">${ico('user')}Nur Haut</button>
         <button data-q="m2l">${ico('dup')}Rechts → Links kopieren</button><button data-q="reset">${ico('refresh')}Zurücksetzen</button><button data-q="clrov">${ico('layers')}Überzug leeren</button><button data-q="open">${ico('upload')}PNG öffnen</button></div></div>
       <div class="fbox"><div class="fh">${ico('check')}Speichern</div><div style="padding:0 6px 6px">
         <input class="in" id="seName" value="${esc(SE.name)}" placeholder="Name">
@@ -2454,7 +2461,7 @@ async function skEditorPage(body) {
     if (q === 'reset') return seReset();
     if (q === 'open') { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png'; inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; const url = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(f); }); sePush(); await seLoad(url, f.name.replace(/\.png$/i, ''), SE.variant); seStage(); seRefresh(); $('#seName').value = SE.name; }; inp.click(); return; }
     sePush();
-    if (q === 'rnd') { const th = THEMES_SK[Math.floor(Math.random() * THEMES_SK.length)][0]; const im = new Image(); im.onload = () => { SE.P.x.clearRect(0, 0, 64, 64); SE.P.x.drawImage(im, 0, 0); seRefresh(); }; im.src = genSkin(Math.floor(Math.random() * 1e6), th); return; }
+    if (q === 'rnd') { await skcDefaults(true); const l = S.skDefaults || []; if (!l.length) return; const d = l[Math.floor(Math.random() * l.length)]; const im = new Image(); im.onload = () => { SE.P.x.clearRect(0, 0, 64, 64); SE.P.x.drawImage(im, 0, 0); seRefresh(); }; im.src = d.url; SE.variant = d.variant; seLayout(); seStage(); return; }
     if (q === 'blank') SE.P.x.clearRect(0, 0, 64, 64), Object.keys(SKP).forEach(k => SE.P.box(SKP[k][0], '#9CA3AF'));
     if (q === 'skin') { SE.P.x.clearRect(0, 0, 64, 64); Object.keys(SKP).forEach(k => SE.P.box(SKP[k][0], SE.color)); }
     if (q === 'clrov') Object.keys(SKP).forEach(k => { const [u, v, w, h, d] = SKP[k][1]; SE.P.clear(u, v, 2 * (d + w), d + h); });
@@ -2521,14 +2528,18 @@ function seBindPaint() {
 /* ---------- collection page ---------- */
 const SKC = { theme: '', q: '', sel: null, page: 1 };
 async function skCollectionPage(body) {
-  const all = skCollection();
   body.innerHTML = `<div class="skcol"><div class="skc-main">
-      <div class="skc-sites">${[['Skindex', 'minecraftskins.com', 'Riesige Community-Sammlung', '#3DB8F5'], ['LabyMod', 'laby.net', 'Trends und beliebte Skins', '#2E7DF6'], ['NameMC', 'namemc.com', 'Skins von Spielern', '#9CA3AF']].map(([n, h, d, c], i) => `<button data-site="${i}" style="--sc:${c}"><span class="sl">${ico('globe')}</span><span><b>${n}</b><small>${d}</small></span><em>${h}${ico('ext')}</em></button>`).join('')}</div>
+      <div class="skc-sites big">${[['Skindex', 'minecraftskins.com', 'Die größte Community-Sammlung', '#3DB8F5'], ['LabyMod', 'laby.net', 'Trends, Tops und neue Skins', '#2E7DF6'], ['NameMC', 'namemc.com', 'Beliebte Skins von Spielern', '#A1A1AA']].map(([n, h, d, c], i) => `<button data-site="${i}" style="--sc:${c}"><span class="sl">${ico('globe')}</span><span><b>${n}</b><small>${d}</small><i>${h}</i></span>${ico('ext')}</button>`).join('')}</div>
+      <p class="skc-how">${ico('info')}<span>Die Seite öffnet sich im Launcher. Drück dort bei einem Skin auf <b>Download</b>, dann landet er sofort in <b>Meine Skins</b>.</span></p>
       <div class="skc-find"><div class="srch">${ico('search')}<input class="in" id="skcQ" placeholder="Spielername oder Link zu einer Skin-PNG…"></div><button class="btn p" id="skcGo">${ico('download')}Laden</button></div>
-      <div class="skc-bar"><div class="fchips" id="skcTh"><button class="fchip ${!SKC.theme ? 'on' : ''}" data-th="">Alle <em>${all.length}</em></button><button class="fchip std ${SKC.theme === 'std' ? 'on' : ''}" data-th="std">${ico('cube')}Minecraft-Standard</button>${THEMES_SK.map(([k, n]) => `<button class="fchip ${SKC.theme === k ? 'on' : ''}" data-th="${k}">${n}</button>`).join('')}</div></div>
-      <div class="skc-grid" id="skcGrid"></div><div id="skcMore"></div></div>
+      <div class="sec" style="margin-top:6px"><h2>Minecraft-Standard</h2><span class="muted" id="skcN"></span></div>
+      <div class="skc-grid" id="skcGrid"><div class="spinner"></div></div></div>
     <div class="skc-side" id="skcSide"></div></div>`;
-  $('#skcTh').onclick = async e => { const b = e.target.closest('[data-th]'); if (!b) return; SKC.theme = b.dataset.th; SKC.page = 1; $$('#skcTh .fchip').forEach(x => x.classList.toggle('on', x === b)); if (SKC.theme === 'std') await skcDefaults(); skcGrid(); };
+  $('.skc-sites').onclick = async e => {
+    const b = e.target.closest('[data-site]'); if (!b) return;
+    if (!HOST) return toast('Nur in der App', 'Die Skin-Seiten öffnen sich in einem eigenen Fenster');
+    try { await api('skins.browse', { site: +b.dataset.site }); } catch (er) { fail('Öffnen', er); }
+  };
   const find = async () => {
     const q = $('#skcQ').value.trim(); if (!q) return;
     const b = $('#skcGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
@@ -2538,28 +2549,23 @@ async function skCollectionPage(body) {
     } catch (er) { fail('Laden', er); }
     b.disabled = false; b.innerHTML = ico('download') + 'Laden';
   };
-  $('.skc-sites').onclick = async e => {
-    const b = e.target.closest('[data-site]'); if (!b) return;
-    if (!HOST) return toast('Nur in der App', 'Die Skin-Seiten öffnen sich in einem eigenen Fenster');
-    try { await api('skins.browse', { site: +b.dataset.site }); toast('Skin-Seite geöffnet', 'Auf „Download“ drücken, dann ist der Skin hier'); } catch (er) { fail('Öffnen', er); }
-  };
   $('#skcGo').onclick = find; $('#skcQ').onkeydown = e => { if (e.key === 'Enter') find(); };
-  if (SKC.theme === 'std') await skcDefaults();
+  await skcDefaults();
   skcGrid(); skcSide();
 }
-async function skcDefaults() {
-  if (S.skDefaults) return;
-  try { S.skDefaults = (await api('skins.defaults')).map((d, i) => ({ id: 'std-' + i, theme: 'std', name: d.name + (d.variant === 'slim' ? ' (schlank)' : ''), variant: d.variant, url: d.data })); }
-  catch (e) { S.skDefaults = []; fail('Standard-Skins', e); }
+async function skcDefaults(quiet) {
+  if (S.skDefaults?.length) return;
+  try { S.skDefaults = (await api('skins.defaults')).map((d, i) => ({ id: 'std-' + i, theme: 'std', name: d.name, variant: d.variant, url: d.data })); }
+  catch (e) { S.skDefaults = []; if (!quiet) fail('Standard-Skins', e); }
 }
 const skcAll = () => [...(SKC.imp ? [SKC.imp] : []), ...(S.skDefaults || []), ...skCollection()];
-function skcList() { return skcAll().filter(s => s.theme !== 'imp' && (!SKC.theme || s.theme === SKC.theme)); }
+function skcList() { return skcAll().filter(s => s.theme === 'std'); }
 async function skcGrid() {
   const g = $('#skcGrid'); if (!g) return;
-  const l = skcList(), shown = l.slice(0, SKC.page * 48);
+  const l = skcList(), shown = l;
+  if ($('#skcN')) $('#skcN').textContent = l.length || '';
+  if (!l.length) { g.innerHTML = `<div class="empty" style="grid-column:1/-1">Die Standard-Skins kommen aus deiner Minecraft-Installation und werden beim ersten Mal geladen.</div>`; return; }
   g.innerHTML = shown.map(s => `<button class="skt ${SKC.sel === s.id ? 'on' : ''}" data-id="${s.id}"><span class="skt-img"><img alt="" data-u="${s.id}"></span><b>${esc(s.name)}</b><small>${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></button>`).join('');
-  $('#skcMore').innerHTML = l.length > shown.length ? `<button class="btn" style="margin:16px auto;display:flex" id="skcMoreB">${ico('chevd')}Mehr laden (${l.length - shown.length})</button>` : '';
-  if ($('#skcMoreB')) $('#skcMoreB').onclick = () => { SKC.page++; skcGrid(); };
   g.onclick = e => { const b = e.target.closest('[data-id]'); if (!b) return; SKC.sel = b.dataset.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x === b)); skcSide(); };
   // thumbnails are generated in small batches so the page stays smooth
   const imgs = [...g.querySelectorAll('img[data-u]')];
@@ -2576,7 +2582,7 @@ async function skcSide() {
   SKC.sel = s.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x.dataset.id === s.id));
   const url = skColUrl(s);
   el.innerHTML = `<div class="skc-view"><div class="stage3" id="skcStage"><span class="floor"></span>${skinModel(url, s.variant === 'slim', 8, false, s.cape || null)}</div></div>
-    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(s.theme === 'std' ? 'Minecraft-Standard' : s.theme === 'imp' ? 'Geladen' + (s.cape ? ' · mit Umhang' : '') : THEMES_SK.find(t => t[0] === s.theme)[1])} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
+    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(s.theme === 'std' ? 'Minecraft-Standard' : 'Geladen' + (s.cape ? ' · mit Umhang' : ''))} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
     <div class="col" style="gap:8px;margin-top:14px">
       ${S.accounts.length ? `<button class="btn p" id="skcApply" style="justify-content:center">${ico('check')}Übernehmen</button>` : ''}
       <button class="btn" id="skcEdit" style="justify-content:center">${ico('edit')}Im Editor bearbeiten</button>
