@@ -97,6 +97,8 @@ function blockSvg(key) {
     <path d="M32 8 56 21 32 34 8 21Z" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1"/></svg>`;
 }
 const instIcon = (i, cls = 'iic') => i?.iconUrl ? `<span class="${cls} img"><img src="${esc(i.iconUrl)}" alt="" loading="lazy"></span>` : `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
+// projects without screenshots: blurred icon in the project colour instead of an empty area
+const coverFb = h => { const c = typeof h.color === 'number' ? '#' + h.color.toString(16).padStart(6, '0') : ''; return `<i class="cfb" style="${c ? `--c:${c};` : ''}${h.icon_url ? `background-image:url('${esc(h.icon_url)}')` : ''}"></i>`; };
 const picHtml = (url, cls = 'pic', icon = 'box') => url ? `<span class="${cls}" style="background-image:url('${esc(url)}')"></span>` : `<span class="${cls}">${ico(icon)}</span>`;
 
 /* ======================= BANNER (original voxel landscape) ======================= */
@@ -446,7 +448,7 @@ PAGES.home = async (el, a, soft) => {
     S.recentWorlds = w;
     if ($('#hWorlds')) $('#hWorlds').innerHTML = w?.length ? `<div class="sec"><h2>Zurück in die Welt</h2></div><div class="wgrid">${w.slice(0, 6).map(x => worldCard(x, x.id, true)).join('')}</div>` : '';
   }).catch(() => { });
-  const tile = h => `<button class="ptile tilt" onclick="go('project',{id:'${jsq(h.project_id)}'})"><span class="gimg" style="${h.featured_gallery || h.gallery?.[0] ? `background-image:url('${esc(h.featured_gallery || h.gallery[0])}')` : ''}">${picHtml(h.icon_url)}</span>
+  const tile = h => `<button class="ptile tilt" onclick="go('project',{id:'${jsq(h.project_id)}'})"><span class="gimg ${h.featured_gallery || h.gallery?.[0] ? '' : 'nocov'}" style="${h.featured_gallery || h.gallery?.[0] ? `background-image:url('${esc(h.featured_gallery || h.gallery[0])}')` : ''}">${h.featured_gallery || h.gallery?.[0] ? '' : coverFb(h)}${picHtml(h.icon_url)}</span>
     <span class="bd"><b>${esc(h.title)}</b><p>${esc(h.description)}</p><span class="row" style="gap:12px"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico('heart')}<b>${num(h.follows)}</b></span></span></span></button>`;
   const fill = (id, path, f) => mr(path).then(r => { if ($(id)) { $(id).innerHTML = r.hits.map(tile).join(''); f?.(r.hits); } }).catch(() => { if ($(id)) $(id).innerHTML = '<div class="empty">Der Mod-Katalog ist gerade nicht erreichbar.</div>'; });
   const fac = t => encodeURIComponent(`[["project_type:${t}"]]`);
@@ -1509,11 +1511,11 @@ function pcard(h) {
   const cats = (h.display_categories || h.categories || []).filter(c => !lds.includes(c)).slice(0, 3);
   const cover = h.featured_gallery || h.gallery?.[0];
   return `<div class="pcard tilt" onclick="go('project',{id:'${jsq(h.project_id)}'${D.target ? `,target:'${jsq(D.target)}'` : ''}})">
-    <span class="pcov" style="${cover ? `background-image:url('${esc(cover)}')` : ''}"></span>${picHtml(h.icon_url)}
+    <span class="pcov ${cover ? '' : 'nocov'}" style="${cover ? `background-image:url('${esc(cover)}')` : ''}">${cover ? '' : coverFb(h)}</span>${picHtml(h.icon_url)}
     <div class="tx"><h3>${esc(h.title)}<small>von ${esc(h.author)}</small></h3><p>${esc(h.description)}</p>
       <div class="tags">${cats.map(c => `<span class="chip m">${ico('tag')}${esc(h.cfcats ? c : catName(c))}</span>`).join('')}${lds.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}</div></div>
     <div class="rs"><div class="stats"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico(h.src === 'cf' ? 'star' : 'heart')}<b>${num(h.follows)}</b></span><span class="stat">${ico('refresh')}${esc(ago(h.date_modified))}</span></div>
-      ${inst ? `<button class="btn sm ok">${ico('check')}Installiert</button>` : `<button class="btn sm p" onclick="event.stopPropagation();installProject('${jsq(h.project_id)}',this)">${ico('download')}Installieren</button>`}</div></div>`;
+      ${inst ? `<button class="btn sm ok" title="Installiert">${ico('check')}Installiert</button>` : `<button class="btn sm p" title="Installieren" onclick="event.stopPropagation();installProject('${jsq(h.project_id)}',this)">${ico('download')}Installieren</button>`}</div></div>`;
 }
 
 /* ---------- install flow ---------- */
