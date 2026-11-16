@@ -47,11 +47,11 @@ public sealed class LoginWindow : Window
         // header: where you are signing in (trust), like an address bar
         _host.Text = "login.microsoftonline.com";
         var lockIcon = new TextBlock { Text = "\uE72E", FontFamily = new FontFamily("Segoe MDL2 Assets"), Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 154)), FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 8, 0) };
-        var bar = new DockPanel { Background = new SolidColorBrush(Color.FromRgb(22, 22, 26)), Height = 44, LastChildFill = true };
+        var bar = new Grid { Background = new SolidColorBrush(Color.FromRgb(22, 22, 26)), Height = 44 };
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0) };
         left.Children.Add(new TextBlock { Text = "Orbit", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 14 });
         left.Children.Add(new TextBlock { Text = "Launcher", Foreground = new SolidColorBrush(Color.FromRgb(255, 140, 80)), FontWeight = FontWeights.SemiBold, FontSize = 14 });
-        DockPanel.SetDock(left, Dock.Left);
+        left.HorizontalAlignment = HorizontalAlignment.Left;
         var pill = new Border { CornerRadius = new CornerRadius(14), Background = new SolidColorBrush(Color.FromRgb(30, 30, 36)), BorderBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)), BorderThickness = new Thickness(1), Padding = new Thickness(12, 5, 14, 5), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var pillRow = new StackPanel { Orientation = Orientation.Horizontal };
         pillRow.Children.Add(lockIcon); pillRow.Children.Add(_host);
