@@ -1462,7 +1462,7 @@ PAGES.project = async (el, a) => {
       <div class="meta"><span class="stat">${ico('download')}<b>${num(p.downloads)}</b> Downloads</span><span class="stat">${ico(p.src === 'cf' ? 'star' : 'heart')}<b>${num(p.followers)}</b> ${p.src === 'cf' ? 'Daumen hoch' : 'Follower'}</span><span class="stat">${ico('refresh')}Aktualisiert ${esc(ago(p.updated).replace('Vor', 'vor'))}</span>
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
     <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p glow" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
-      ${web ? `<button class="ib" title="Im Browser öffnen" onclick="openUrl('${jsq(web)}')">${ico('ext')}</button>` : ''}</div></div></div>
+</div></div></div>
     ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur über seine eigene Website. OrbitLauncher öffnet dann die Download-Seite, statt die Datei selbst zu laden.</div>' : ''}
     <div class="itabs" id="pTabs" style="margin-top:18px"></div>
     <div class="pgrid"><div id="pBody"></div><div class="pside" id="pSide"></div></div>`;

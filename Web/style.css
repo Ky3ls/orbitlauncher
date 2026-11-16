@@ -1412,3 +1412,12 @@ select.sel-native{display:none !important}
 .upill:hover{background:rgba(var(--a-rgb),.28)}
 .upill svg.i{width:12px;height:12px;stroke-width:2.4}
 .ctile small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* instance header: banner stays behind the title, everything on it gets a solid glass backing */
+.ih-bg{height:250px}
+.ihero::after{height:250px;background:linear-gradient(180deg,rgba(10,10,11,.25) 0%,rgba(10,10,11,.45) 45%,rgba(10,10,11,.92) 82%,#0a0a0b 100%)}
+.istats div{background:rgba(14,14,17,.78);backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 24px -16px rgba(0,0,0,.9)}
+.istats small{color:var(--sub)}
+.ihero .acts .ib{background:rgba(14,14,17,.72);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.12);color:var(--text)}
+.ihero .acts .ib:hover{background:rgba(30,30,36,.85)}
+.ihero h1,.ihero .kicker{text-shadow:0 2px 16px rgba(0,0,0,.6)}
