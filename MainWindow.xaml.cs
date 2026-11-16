@@ -343,6 +343,8 @@ public partial class MainWindow : Window
                 var inst = Instances.Create(Str(a, "name"), Str(a, "mc"), StrN(a, "loader") ?? "vanilla", StrN(a, "loaderVersion"));
                 inst.Icon = StrN(a, "icon") ?? "grass";
                 inst.RamMb = Int(a, "ramMb");
+                inst.IconUrl = StrN(a, "iconUrl");
+                inst.Group = StrN(a, "group");
                 Instances.Save(inst);
                 // download everything in the background so the first start is instant
                 _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch (Exception e) { Emit("log", new { id = inst.Id, line = "[OrbitLauncher] Vorbereitung fehlgeschlagen: " + e.Message }); } return 0; });
@@ -356,6 +358,7 @@ public partial class MainWindow : Window
                     if (pt["name"] != null) inst.Name = (string?)pt["name"] ?? inst.Name;
                     if (pt["icon"] != null) inst.Icon = (string?)pt["icon"] ?? inst.Icon;
                     if (pt["bannerUrl"] != null) inst.BannerUrl = StrN(pt, "bannerUrl");
+                    if (pt.ContainsKey("iconUrl")) { var iu = StrN(pt, "iconUrl"); if (iu == null || iu.StartsWith("data:image/") || iu.StartsWith("https://")) inst.IconUrl = iu; }
                     if (pt.ContainsKey("ramMb")) inst.RamMb = Int(pt, "ramMb");
                     if (pt.ContainsKey("javaPath")) inst.JavaPath = StrN(pt, "javaPath");
                     if (pt.ContainsKey("jvmArgs")) inst.JvmArgs = StrN(pt, "jvmArgs");
@@ -382,6 +385,24 @@ public partial class MainWindow : Window
                 Instances.Save(inst);
                 return Dto(inst);
             }
+            case "library.stats":
+                return await Task.Run(() =>
+                {
+                    long size = 0; int worlds = 0, shots = 0, shaders = 0, rps = 0;
+                    foreach (var inst in Instances.All())
+                    {
+                        try
+                        {
+                            size += DirSize(inst.Dir);
+                            int Dirs(string sub) { var d = Path.Combine(inst.Dir, sub); return Directory.Exists(d) ? Directory.EnumerateDirectories(d).Count() : 0; }
+                            int Files(string sub, string pat) { var d = Path.Combine(inst.Dir, sub); return Directory.Exists(d) ? Directory.EnumerateFiles(d, pat).Count() : 0; }
+                            worlds += Dirs("saves"); shots += Files("screenshots", "*.png");
+                            shaders += Files("shaderpacks", "*.zip") + Dirs("shaderpacks"); rps += Files("resourcepacks", "*.zip") + Dirs("resourcepacks");
+                        }
+                        catch { }
+                    }
+                    return new { size, worlds, screenshots = shots, shaders, resourcepacks = rps };
+                });
             case "instance.stats":
             {
                 var inst = Inst(a);
@@ -823,6 +844,20 @@ public partial class MainWindow : Window
                     png = await File.ReadAllBytesAsync(dlg.FileName); name = Path.GetFileNameWithoutExtension(dlg.FileName);
                 }
                 var e = Skins.Add(png, name, Str(a, "variant"));
+                return new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) };
+            }
+            case "skins.save":
+            {
+                // editor: overwrite an existing skin or add a new one
+                var b64 = Str(a, "data"); var png = Convert.FromBase64String(b64[(b64.IndexOf(',') + 1)..]);
+                var id = StrN(a, "id"); var name = StrN(a, "name") ?? "Skin"; var variant = StrN(a, "variant") ?? "classic";
+                Skins.Entry e;
+                if (id != null && Skins.All().FirstOrDefault(x => x.Id == id) is { } old)
+                {
+                    Skins.Validate(png); File.WriteAllBytes(Skins.FileOf(id), png); Skins.Update(id, name, variant);
+                    e = Skins.All().First(x => x.Id == id);
+                }
+                else e = Skins.Add(png, name, variant);
                 return new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) };
             }
             case "skins.update": Skins.Update(Str(a, "id"), StrN(a, "name"), StrN(a, "variant")); return new { };

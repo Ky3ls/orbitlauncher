@@ -206,7 +206,8 @@ public static class News
         var j = await Net.Json("https://launchercontent.mojang.com/v2/javaPatchNotes.json", ct);
         return j["entries"]!.AsArray().Take(n).Select(e => (object)new
         {
-            title = (string?)e!["title"],
+            id = (string?)e!["id"],
+            title = (string?)e["title"],
             version = (string?)e["version"],
             type = (string?)e["type"],
             date = (string?)e["date"],

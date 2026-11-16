@@ -62,6 +62,8 @@ const LOADERS = { vanilla: ['Vanilla', 'van'], fabric: ['Fabric', 'fab'], quilt:
 const LCOL = { vanilla: '#4ADE9A', fabric: '#DBB67C', quilt: '#C48CFF', forge: '#78A0FF', neoforge: '#FF8C50' };
 const loaderChip = l => `<span class="chip ${LOADERS[l]?.[1] || 'm'}">${LOADERS[l]?.[0] || esc(cap(l))}</span>`;
 const cap = s => String(s || '').replace(/^./, c => c.toUpperCase());
+/** Orbit Client is switched off for now (no new instances, no menu entries). */
+const ORBIT_ON = false;
 const KIND = { custom: 'Eigene', modpack: 'Modpack', orbit: 'Orbit Client' };
 
 /* ======================= THEMES ======================= */
@@ -80,21 +82,86 @@ function applyTheme(k) {
 }
 
 /* ======================= BLOCK ICONS (original, generic) ======================= */
+// [top, left side, right side, pattern, detail colour] – drawn as original pixel art on an isometric cube
 const BLOCKS = {
-  grass: ['#6DBE45', '#8A5A35', '#6E4529', 1], stone: ['#9A9A9F', '#7C7C82', '#636369'], sand: ['#E8D9A0', '#D2C07E', '#B9A866'],
-  diamond: ['#7FF3E8', '#3CC9C0', '#2A9E97'], ruby: ['#FF6B6B', '#D94444', '#B03030'], nether: ['#B5463F', '#8E3530', '#6E2622'],
-  wood: ['#C79A5B', '#9C6E3A', '#7F582C'], snow: ['#F4F8FF', '#C9D6E6', '#AEBDD1'], end: ['#EDEBB5', '#C9C68C', '#A9A66D'],
-  amethyst: ['#B98CFF', '#8E5FE0', '#6F45B8'],
+  grass: ['#6DBE45', '#8A5A35', '#6E4529', 'grass'], dirt: ['#9B6B43', '#86593A', '#6E4529', 'spots', '#5E3B22'],
+  mycelium: ['#8E7A98', '#8A5A35', '#6E4529', 'grass'], podzol: ['#6B4A26', '#8A5A35', '#6E4529', 'grass'],
+  stone: ['#9A9A9F', '#7C7C82', '#636369', 'spots', '#55555b'], cobble: ['#8E8E93', '#77777C', '#5F5F64', 'cobble', '#4a4a4f'],
+  mossy: ['#7C9A55', '#6F7670', '#585e5a', 'cobble', '#6C9A44'], deepslate: ['#4E4E55', '#404046', '#323238', 'stripes', '#2a2a30'],
+  sand: ['#E8D9A0', '#D2C07E', '#B9A866', 'spots', '#c9b678'], gravel: ['#9A938E', '#837C77', '#6B6560', 'spots', '#5a524c'],
+  wood: ['#C79A5B', '#9C6E3A', '#7F582C', 'planks', '#6f4c22'], log: ['#C9A46A', '#6B4F2F', '#5A4127', 'log', '#8a6a3c'],
+  birch: ['#E6D7A8', '#E8E4DA', '#CFCAC0', 'birch', '#3a3a3a'], bricks: ['#B5543F', '#9A4535', '#7E382B', 'bricks', '#d9c7b5'],
+  tnt: ['#D9473A', '#C23A2F', '#A32F26', 'tnt', '#EDE6D6'], bookshelf: ['#C49A5C', '#7A5531', '#644427', 'books', '#B23A3A'],
+  crafting: ['#B07A44', '#9C6E3A', '#7F582C', 'craft', '#5a3e20'], furnace: ['#8E8E93', '#6A6A70', '#55555A', 'furnace', '#26262a'],
+  pumpkin: ['#E8902E', '#D47A1E', '#B86615', 'pumpkin', '#2b1d08'], melon: ['#9BC23A', '#6E9A22', '#5A8019', 'stripes', '#C9E06A'],
+  cactus: ['#5BA83A', '#3F8A28', '#2F6E1E', 'stripes', '#8FD46A'], hay: ['#D9B53A', '#C49E2A', '#A8851F', 'stripes', '#8a6a12'],
+  coalore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#1E1E22'], ironore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#E8C4A8'],
+  goldore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#FFD447'], diamondore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#5FF3E6'],
+  emeraldore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#3BE07A'], redstoneore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#FF3030'],
+  lapisore: ['#8E8E93', '#77777C', '#5F5F64', 'ore', '#3D63E0'], diamond: ['#7FF3E8', '#3CC9C0', '#2A9E97', 'shine'],
+  gold: ['#FFE36B', '#E8C341', '#C9A52E', 'shine'], emerald: ['#4BE58A', '#2EBE6A', '#219A54', 'shine'],
+  lapis: ['#4B72E8', '#3557C4', '#28449E', 'shine'], iron: ['#F0F0F0', '#D4D4D4', '#B4B4B4', 'shine'],
+  copper: ['#E08A5E', '#C06F46', '#9E5837', 'shine'], netherite: ['#4A4448', '#3A3538', '#2C282B', 'shine'],
+  ruby: ['#FF6B6B', '#D94444', '#B03030', 'shine'], amethyst: ['#B98CFF', '#8E5FE0', '#6F45B8', 'shine'],
+  quartz: ['#EFE9E1', '#D9D1C6', '#C2B9AC', 'shine'], obsidian: ['#3A2A55', '#2A1E40', '#1E1530', 'spots', '#6B4FA0'],
+  nether: ['#B5463F', '#8E3530', '#6E2622', 'spots', '#6a1f1b'], glowstone: ['#F8D27A', '#E0B35A', '#C49640', 'glow', '#FFF6CF'],
+  sculk: ['#0E3A47', '#0A2A35', '#071F28', 'glow', '#3DE0E8'], prismarine: ['#6CC2B0', '#4FA392', '#3D8676', 'spots', '#9BE3D3'],
+  purpur: ['#B98AC9', '#9A6DAA', '#7E558C', 'bricks', '#d6b3e2'], end: ['#EDEBB5', '#C9C68C', '#A9A66D', 'spots', '#b9b67a'],
+  snow: ['#F4F8FF', '#C9D6E6', '#AEBDD1', 'spots', '#e2eaf5'], ice: ['#A8D4FF', '#8BBDF0', '#6FA3DB', 'shine'],
+  slime: ['#8BE07A', '#6CC25B', '#55A346', 'shine'], honey: ['#F5B63A', '#DE9A22', '#C08218', 'shine'],
+  sponge: ['#D9CF4E', '#C2B83E', '#A69D31', 'spots', '#a59a2a'], wool: ['#F2F2F2', '#D8D8D8', '#BDBDBD', 'spots', '#cfcfcf'],
 };
+const BLOCK_NAMES = { grass: 'Gras', dirt: 'Erde', mycelium: 'Myzel', podzol: 'Podsol', stone: 'Stein', cobble: 'Bruchstein', mossy: 'Moosstein', deepslate: 'Tiefenschiefer', sand: 'Sand', gravel: 'Kies', wood: 'Bretter', log: 'Stamm', birch: 'Birke', bricks: 'Ziegel', tnt: 'TNT', bookshelf: 'Bücherregal', crafting: 'Werkbank', furnace: 'Ofen', pumpkin: 'Kürbis', melon: 'Melone', cactus: 'Kaktus', hay: 'Heu', coalore: 'Kohleerz', ironore: 'Eisenerz', goldore: 'Golderz', diamondore: 'Diamanterz', emeraldore: 'Smaragderz', redstoneore: 'Redstone-Erz', lapisore: 'Lapiserz', diamond: 'Diamant', gold: 'Gold', emerald: 'Smaragd', lapis: 'Lapis', iron: 'Eisen', copper: 'Kupfer', netherite: 'Netherit', ruby: 'Rubin', amethyst: 'Amethyst', quartz: 'Quarz', obsidian: 'Obsidian', nether: 'Netherrack', glowstone: 'Leuchtstein', sculk: 'Sculk', prismarine: 'Prismarin', purpur: 'Purpur', end: 'Endstein', snow: 'Schnee', ice: 'Eis', slime: 'Schleim', honey: 'Honig', sponge: 'Schwamm', wool: 'Wolle' };
+// tiny deterministic random so every block always looks the same
+const seedRand = s => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 4294967296; };
+function blockFace(kind, face, x, key) {
+  const r = seedRand(key + face), px = (a, b, w = 1, h = 1, c = x, o = 1) => `<rect x="${a}" y="${b}" width="${w}" height="${h}" fill="${c}" opacity="${o}"/>`;
+  let s = '';
+  const spots = (n, c, o = .8) => { for (let i = 0; i < n; i++) s += px(Math.floor(r() * 15), Math.floor(r() * 15), 1 + (r() > .7), 1, c, o); };
+  switch (kind) {
+    case 'grass':
+      if (face === 'top') spots(14, '#000', .12);
+      else { s += px(0, 0, 16, 3, null); s = s.replace('fill="null"', `fill="var(--gt)"`); for (let i = 0; i < 16; i++) if (r() > .45) s += `<rect x="${i}" y="3" width="1" height="${1 + Math.floor(r() * 3)}" fill="var(--gt)"/>`; spots(6, '#000', .18); }
+      break;
+    case 'spots': spots(face === 'top' ? 12 : 10, x, .9); break;
+    case 'ore': spots(6, '#000', .15); for (let i = 0; i < 4; i++) { const a = 1 + Math.floor(r() * 12), b = 1 + Math.floor(r() * 12); s += px(a, b, 2, 2) + px(a + 1, b + 2, 1, 1) + px(a + 2, b + 1, 1, 1, '#fff', .5); } break;
+    case 'cobble': for (let i = 0; i < 7; i++) { const a = Math.floor(r() * 13), b = Math.floor(r() * 13); s += px(a, b, 3 + Math.floor(r() * 2), 1) + px(a, b, 1, 3); } spots(5, x, .9); break;
+    case 'planks': [4, 8, 12].forEach(y => s += px(0, y, 16, 1)); [[5, 0], [11, 4], [3, 8], [9, 12]].forEach(([a, b]) => s += px(a, b, 1, 4)); break;
+    case 'log': if (face === 'top') { s += px(2, 2, 12, 12, x) + px(4, 4, 8, 8, null).replace('fill="null"', 'fill="var(--t)"') + px(6, 6, 4, 4, x); } else for (let i = 0; i < 16; i += 3) s += px(i, 0, 1, 16, '#000', .2) + px(i + 1, Math.floor(r() * 12), 1, 4, x, .8); break;
+    case 'birch': if (face === 'top') s += px(3, 3, 10, 10, '#C9B27A'); else for (let i = 0; i < 6; i++) s += px(Math.floor(r() * 13), Math.floor(r() * 15), 2 + Math.floor(r() * 2), 1); break;
+    case 'bricks': for (let y = 0; y < 16; y += 4) { s += px(0, y, 16, 1); const off = (y / 4) % 2 ? 0 : 4; for (let xx = off; xx < 16; xx += 8) s += px(xx, y, 1, 4); } break;
+    case 'tnt': if (face === 'top') s += px(4, 4, 8, 8, '#000', .5) + px(7, 7, 2, 2, '#fff', .6); else s += px(0, 5, 16, 6) + px(3, 7, 3, 1, '#222') + px(4, 7, 1, 3, '#222') + px(7, 7, 1, 3, '#222') + px(8, 7, 1, 1, '#222') + px(9, 8, 1, 2, '#222') + px(11, 7, 3, 1, '#222') + px(12, 7, 1, 3, '#222'); break;
+    case 'books': if (face !== 'top') { s += px(0, 0, 16, 2, '#C49A5C') + px(0, 7, 16, 2, '#C49A5C') + px(0, 14, 16, 2, '#C49A5C'); const cols = ['#B23A3A', '#3A6BB2', '#3AA05A', '#C9A13A', '#7A3AB2', '#B26A3A']; for (let i = 0; i < 6; i++) s += px(1 + i * 2.5, 2, 2, 5, cols[i]) + px(1 + i * 2.5, 9, 2, 5, cols[(i + 3) % 6]); } break;
+    case 'craft': if (face === 'top') { s += px(1, 1, 14, 14, x, .5); [5, 10].forEach(v => s += px(v, 1, 1, 14, '#000', .3) + px(1, v, 14, 1, '#000', .3)); } else s += px(0, 0, 16, 3, '#C49A5C') + px(3, 6, 2, 6, '#888') + px(2, 5, 4, 2, '#aaa') + px(10, 6, 1, 7, '#7a5a2e') + px(9, 5, 4, 2, '#888'); break;
+    case 'furnace': if (face === 'left') s += px(4, 8, 8, 6, x) + px(5, 11, 6, 2, '#FF8A2A') + px(6, 10, 4, 1, '#FFD447') + px(3, 3, 10, 2, '#000', .25); else spots(8, '#000', .2); break;
+    case 'pumpkin': if (face === 'top') s += px(7, 7, 2, 2, '#3F8A28'); else { for (let i = 1; i < 16; i += 3) s += px(i, 0, 1, 16, '#000', .18); if (face === 'left') s += px(3, 5, 3, 3) + px(10, 5, 3, 3) + px(3, 10, 10, 2) + px(5, 12, 2, 1) + px(9, 12, 2, 1); } break;
+    case 'stripes': for (let i = 1; i < 16; i += 3) s += px(i, 0, 1, 16, x, .9); if (face === 'top') s += px(5, 5, 6, 6, '#000', .12); break;
+    case 'shine': s += px(0, 0, 16, 1, '#fff', .35) + px(0, 0, 1, 16, '#fff', .3) + px(2, 2, 3, 1, '#fff', .5) + px(2, 2, 1, 3, '#fff', .5) + px(10, 11, 3, 1, '#000', .15) + px(15, 0, 1, 16, '#000', .15); break;
+    case 'glow': spots(4, '#000', .2); for (let i = 0; i < 7; i++) s += px(Math.floor(r() * 14), Math.floor(r() * 14), 2, 2, x, .95); break;
+  }
+  return s;
+}
 function blockSvg(key) {
   if (key === 'orbit') return `<svg viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg>`;
   if (key === 'box') key = 'wood';
-  const [t, l, r, grass] = BLOCKS[key] || BLOCKS.grass;
-  const px = (pts, c) => pts.map(([x, y]) => `<rect x="${x}" y="${y}" width="3" height="3" fill="${c}" opacity=".35"/>`).join('');
-  return `<svg viewBox="0 0 64 64"><path d="M32 8 56 21 32 34 8 21Z" fill="${t}"/><path d="M8 21 32 34v24L8 45Z" fill="${l}"/><path d="M56 21 32 34v24l24-13Z" fill="${r}"/>
-    ${grass ? `<path d="M8 21 32 34v6L8 27Z" fill="${t}" opacity=".9"/><path d="M56 21 32 34v6l24-13Z" fill="${t}" opacity=".75"/>` : ''}
-    ${px([[14, 34], [22, 44], [16, 41], [26, 38]], '#000')}${px([[40, 40], [48, 32], [44, 46], [36, 48]], '#000')}
-    <path d="M32 8 56 21 32 34 8 21Z" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1"/></svg>`;
+  if (!BLOCKS[key]) key = 'grass';
+  const [t, l, r, kind, x] = BLOCKS[key];
+  const M = { top: 'matrix(1.5 -.8125 1.5 .8125 8 21)', left: 'matrix(1.5 .8125 0 1.5 8 21)', right: 'matrix(1.5 -.8125 0 1.5 32 34)' };
+  const face = (f, c) => `<g transform="${M[f]}"><rect width="16" height="16" fill="${c}"/>${blockFace(kind, f, x, key)}</g>`;
+  return `<svg viewBox="0 0 64 64" style="--gt:${t};--t:${t}" shape-rendering="crispEdges">${face('top', t)}${face('left', l)}${face('right', r)}
+    <path d="M8 21 32 34 56 21" fill="none" stroke="rgba(255,255,255,.18)" stroke-width=".8"/><path d="M32 34v24" stroke="rgba(0,0,0,.25)" stroke-width=".8"/></svg>`;
+}
+// own simple loader marks (not the projects' logos)
+function ldIcon(k) {
+  const c = LCOL[k] || '#888';
+  const svg = {
+    vanilla: blockSvg('grass'),
+    fabric: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="${c}" opacity=".18"/><path d="M5 15 15 5M9 19 19 9M5 9l4-4M15 19l4-4" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/><path d="M5 5h14v14H5z" fill="none" stroke="${c}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".8"/></svg>`,
+    quilt: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2" fill="${c}"/><rect x="13" y="3" width="8" height="8" rx="2" fill="${c}" opacity=".55"/><rect x="3" y="13" width="8" height="8" rx="2" fill="${c}" opacity=".55"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="${c}" stroke-width="1.6" stroke-dasharray="1.6 1.4" transform="rotate(12 17 17)"/></svg>`,
+    forge: `<svg viewBox="0 0 24 24"><path d="M2 7h14c0 3 2 4 5 4v2h-6l2 4H7l2-4H6C4 13 2 11 2 7Z" fill="${c}"/><path d="M6 19h12v2H6z" fill="${c}" opacity=".7"/></svg>`,
+    neoforge: `<svg viewBox="0 0 24 24"><path d="M2 9h12c0 2.6 1.8 3.6 4.5 3.6v1.8h-5l1.6 3.4H6.6l1.6-3.4H5.6C3.6 14.4 2 12.8 2 9Z" fill="${c}"/><path d="M5 19.5h11v1.8H5z" fill="${c}" opacity=".7"/><path d="m19 2 .9 2.3L22 5l-2.1.8L19 8l-.9-2.2L16 5l2.1-.7Z" fill="${c}"/></svg>`,
+  }[k] || '';
+  return `<span class="ldi ${k}">${svg}</span>`;
 }
 const instIcon = (i, cls = 'iic') => i?.iconUrl ? `<span class="${cls} img"><img src="${esc(i.iconUrl)}" alt="" loading="lazy"></span>` : `<span class="${cls}">${blockSvg(i?.icon || 'grass')}</span>`;
 // projects without screenshots: blurred icon in the project colour instead of an empty area
@@ -439,7 +506,7 @@ PAGES.home = async (el, a, soft) => {
       <div class="sec"><h2>Mods, die alle haben</h2><span class="sp"></span><button class="lnk" onclick="go('discover',{type:'mod'})">Alle ansehen${ico('right')}</button></div><div class="prow" id="hMods">${'<div class="skel" style="height:230px"></div>'.repeat(4)}</div>
       <div class="sec"><h2>Shader für bessere Optik</h2><span class="sp"></span><button class="lnk" onclick="go('discover',{type:'shader'})">Alle ansehen${ico('right')}</button></div><div class="prow" id="hShaders">${'<div class="skel" style="height:230px"></div>'.repeat(4)}</div>
     </div><div>
-      <button class="orbitcta tilt" onclick="newInstance('orbit')"><span class="oc-glow"></span><span class="iic">${blockSvg('orbit')}</span><span><b>Orbit Client</b><small>Eigener PvP-Client: Keystrokes, CPS, Zoom, Freelook, HUD-Editor und FPS-Boost in einer Instanz.</small></span>${ico('right')}</button>
+      ${ORBIT_ON ? '' : '<!--'}<button class="orbitcta tilt" onclick="newInstance('orbit')"><span class="oc-glow"></span><span class="iic">${blockSvg('orbit')}</span><span><b>Orbit Client</b><small>Eigener PvP-Client: Keystrokes, CPS, Zoom, Freelook, HUD-Editor und FPS-Boost in einer Instanz.</small></span>${ico('right')}</button>${ORBIT_ON ? '' : '-->'}
       <div class="sec"><h2>Minecraft-News</h2></div><div class="newsl" id="hNews">${'<div class="skel" style="height:190px"></div>'.repeat(2)}</div>
     </div></div>`;
   countUp(el);
@@ -457,7 +524,7 @@ PAGES.home = async (el, a, soft) => {
   fill('#hShaders', `/search?limit=12&index=follows&facets=${fac('shader')}`);
   (S.news ? Promise.resolve(S.news) : api('news')).then(n => {
     S.news = n;
-    if ($('#hNews')) $('#hNews').innerHTML = (n || []).slice(0, 4).map(x => `<button class="nwi tilt" onclick="openUrl('https://www.minecraft.net/de-de/article/minecraft-java-edition-${esc((x.version || '').replace(/\./g, '-'))}')">${x.image ? `<i style="background-image:url('${esc(x.image)}')"></i>` : ''}<div><b>${esc(x.title)}</b><small>${esc(dateDe(x.date))}</small><p>${esc(x.text || '')}</p></div></button>`).join('');
+    if ($('#hNews')) $('#hNews').innerHTML = (n || []).slice(0, 4).map(x => `<button class="nwi tilt" onclick="newsOpen('${jsq(x.id || '')}')">${x.image ? `<i style="background-image:url('${esc(x.image)}')"></i>` : ''}<div><b>${esc(x.title)}</b><small>${esc(dateDe(x.date))}</small><p>${esc(x.text || '')}</p></div></button>`).join('');
   }).catch(() => { if ($('#hNews')) $('#hNews').innerHTML = ''; });
 };
 function countUp(root) {
@@ -552,19 +619,34 @@ function instCard(i, mini) {
     <div class="bd"><b>${esc(i.name)}</b><small>${esc(instSub(i))}${mini ? '' : ' · ' + esc(ago(i.lastPlayed))}</small>${mini ? '' : `<div class="chips">${loaderChip(i.loader)}${i.kind !== 'custom' ? `<span class="chip ${i.kind === 'orbit' ? 'a' : 'm'}">${KIND[i.kind]}</span>` : ''}${i.mods ? `<span class="chip m">${i.mods} Mods</span>` : ''}</div>`}</div></div>`;
 }
 
+/* full patch notes inside the launcher (minecraft.net has no stable article links for these) */
+async function newsOpen(id) {
+  const x = (S.news || []).find(n => n.id === id) || {};
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button>${x.image ? `<div class="nwhead" style="background-image:url('${esc(x.image)}')"></div>` : ''}
+    <div class="kicker">${esc(x.type === 'release' ? 'Release' : 'Snapshot')} · ${esc(dateDe(x.date))}</div><h2>${esc(x.title || 'Patch Notes')}</h2><div class="md nwbody" id="nwBody"><div class="spinner"></div></div>`, 'form wide news');
+  try {
+    const j = await (await fetch(`https://launchercontent.mojang.com/v2/javaPatchNotes/${encodeURIComponent(id)}.json`)).json();
+    const b = $('#nwBody'); if (!b) return;
+    b.innerHTML = sanitize((j.body || '').replace(/(src|href)="\//g, '$1="https://launchercontent.mojang.com/')); mdBind(b);
+  } catch { const b = $('#nwBody'); if (b) b.innerHTML = `<p>${esc(x.text || 'Konnte die Patch Notes nicht laden.')}</p>`; }
+}
+window.newsOpen = newsOpen;
+
 /* ======================= LIBRARY ======================= */
 S.lib = { tab: 'all', q: '', sort: 'played', group: 'none' };
 try { Object.assign(S.lib, JSON.parse(localStorage.getItem('orbit.lib') || '{}'), { q: '', group: 'none' }); } catch { }
+if (!ORBIT_ON && S.lib.tab === 'orbit') S.lib.tab = 'all';
 PAGES.library = el => {
   crumbs([['Bibliothek']]);
   const L = S.lib;
   el.innerHTML = `<div class="ph"><div><div class="kicker">Deine Instanzen</div><h1>Bibliothek</h1></div><div class="ph-r"><button class="btn" data-pop onclick="importMenu(event)">${ico('upload')}Importieren${ico('chevd')}</button><button class="btn p" onclick="newInstance()">${ico('plus')}Instanz erstellen</button></div></div>
     <div class="dgrid lgrid"><aside class="filters">${libStats()}</aside><div>
-    <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ['orbit', 'Orbit Client']].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+    <div class="lbar"><div class="seg" id="libTabs">${[['all', 'Alle'], ['modpack', 'Modpacks'], ['custom', 'Eigene'], ...(ORBIT_ON ? [['orbit', 'Orbit Client']] : [])].map(([k, n]) => `<button data-k="${k}" class="${L.tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="srch">${ico('search')}<input class="in" id="libQ" placeholder="Instanzen durchsuchen…" value="${esc(L.q)}"></div><span class="sp"></span>
       <select class="sel" id="libSort">${[['played', 'Zuletzt gespielt'], ['name', 'Name'], ['created', 'Neueste zuerst'], ['time', 'Meiste Spielzeit'], ['version', 'Spielversion']].map(([k, n]) => `<option value="${k}" ${L.sort === k ? 'selected' : ''}>Sortieren: ${n}</option>`).join('')}</select></div>
     <div id="libGrid"></div></div></div>`;
   countUp(el);
+  api('library.stats').then(st => { const v = [bytes(st.size), st.worlds, st.screenshots, st.shaders]; $$('#libMore b').forEach((b, k) => b.textContent = v[k] ?? '—'); }).catch(() => $$('#libMore b').forEach(b => b.textContent = '—'));
   const save = () => { try { localStorage.setItem('orbit.lib', JSON.stringify(L)); } catch { } renderLibGrid(); };
   $('#libTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; L.tab = b.dataset.k; $$('#libTabs button').forEach(x => x.classList.toggle('on', x === b)); save(); };
   $('#libQ').oninput = e => { L.q = e.target.value; renderLibGrid(); };
@@ -587,7 +669,9 @@ function libStats() {
     ${last ? card('play', last.name, 'Zuletzt gespielt', esc(ago(last.lastPlayed)) + ' · ' + esc(instSub(last)), `go('inst',{id:'${jsq(last.id)}'})`) : card('play', '—', 'Zuletzt gespielt', 'Starte eine Instanz')}
   </div></div>
   <div class="fbox lside"><div class="fh">${ico('layers')}Mod-Loader</div><div class="lmix"><div class="lmb">${mix.map(([k, n]) => `<i style="flex:${n};background:${LCOL[k] || '#888'}" title="${esc(LOADERS[k]?.[0] || k)}: ${n}"></i>`).join('')}</div>
-    <div class="lml">${mix.map(([k, n]) => `<span><i style="background:${LCOL[k] || '#888'}"></i>${esc(LOADERS[k]?.[0] || k)}<b>${n}</b></span>`).join('')}</div></div></div>`;
+    <div class="lml">${mix.map(([k, n]) => `<span><i style="background:${LCOL[k] || '#888'}"></i>${esc(LOADERS[k]?.[0] || k)}<b>${n}</b></span>`).join('')}</div></div></div>
+  <div class="fbox lside"><div class="fh">${ico('hdd')}Speicher &amp; Inhalte</div><div class="lgrid2" id="libMore">${[['hdd', 'Belegt'], ['earth', 'Welten'], ['image', 'Screenshots'], ['sun', 'Shader']].map(([ic, l]) => `<div>${ico(ic)}<b>…</b><small>${l}</small></div>`).join('')}</div></div>
+  ${(() => { const t = [...I].sort((a, b) => (b.playSeconds || 0) - (a.playSeconds || 0)).filter(i => i.playSeconds).slice(0, 3); return t.length ? `<div class="fbox lside"><div class="fh">${ico('star')}Meistgespielt</div><div class="ltop">${t.map((i, n) => `<button onclick="go('inst',{id:'${jsq(i.id)}'})"><em>${n + 1}</em>${instIcon(i)}<span class="ell"><b class="ell">${esc(i.name)}</b><small>${ptime(i.playSeconds)}</small></span></button>`).join('')}</div></div>` : ''; })()}`;
 }
 const vkey = v => (v || '').split(/[.\-]/).map(x => /^\d+$/.test(x) ? x.padStart(4, '0') : x).join('.');
 function renderLibGrid() {
@@ -636,7 +720,7 @@ PAGES.inst = (el, a) => {
   };
   instTabs(i);
 };
-const hasOrbitMod = i => i.kind === 'orbit' && i.loader === 'fabric' && (S.orbitSupported || ['26.3']).includes(i.mcVersion);
+const hasOrbitMod = i => ORBIT_ON && i.kind === 'orbit' && i.loader === 'fabric' && (S.orbitSupported || ['26.3']).includes(i.mcVersion);
 function instHead(i) {
   const run = S.running.has(i.id), el = $('#iHead'); if (!el) return;
   const loader = `${LOADERS[i.loader]?.[0] || i.loader}${i.loaderVersion ? ' ' + i.loaderVersion : ''}`;
@@ -1071,73 +1155,134 @@ window.copyLog = () => { navigator.clipboard?.writeText((S.logText || []).join('
 
 /* ======================= CREATE INSTANCE ======================= */
 async function ensureVersions() { if (!S.versions.length) { const r = await api('versions.list', {}); S.versions = r.versions; S.latest = r.latest; } }
-const ICONS = ['grass', 'stone', 'sand', 'wood', 'diamond', 'ruby', 'amethyst', 'nether', 'snow', 'end'];
+const ICONS = Object.keys(BLOCKS);
+const LDESC = { vanilla: 'Original-Minecraft', fabric: 'Schnell, die meisten Mods', quilt: 'Fabric-kompatibel', forge: 'Klassisch, große Modpacks', neoforge: 'Moderner Forge-Nachfolger' };
+// performance mods offered when creating a modded instance (Modrinth project ids)
+const PERF = { fabric: [['AANobbMI', 'Sodium'], ['gvQqBUqZ', 'Lithium'], ['uXXizFIs', 'FerriteCore'], ['mOgUt4GM', 'Mod Menu']], quilt: [['AANobbMI', 'Sodium'], ['gvQqBUqZ', 'Lithium'], ['uXXizFIs', 'FerriteCore'], ['mOgUt4GM', 'Mod Menu']], neoforge: [['AANobbMI', 'Sodium'], ['gvQqBUqZ', 'Lithium'], ['uXXizFIs', 'FerriteCore']], forge: [['uXXizFIs', 'FerriteCore']] };
 function msShell(title, iconHtml, tabs, cur) {
   return `<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="mside"><h3>${iconHtml}<span class="ell">${esc(title)}</span></h3>${tabs.map(([k, n, ic]) => `<button data-mt="${k}" class="${k === cur ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div><div class="mmain" id="mMain"></div>`;
 }
+/* ---------- icon picker (blocks, random, own image) ---------- */
+function iconPickHtml(icon, iconUrl, open) {
+  return `<div class="ipick">
+    <div class="ip-row"><span class="ip-cur">${iconUrl ? `<img src="${esc(iconUrl)}" alt="">` : blockSvg(icon)}</span>
+      <div class="ip-quick">${ICONS.slice(0, 9).map(k => `<button class="${!iconUrl && k === icon ? 'on' : ''}" data-ic="${k}" title="${esc(BLOCK_NAMES[k] || k)}">${blockSvg(k)}</button>`).join('')}</div></div>
+    <div class="ip-acts"><button class="btn sm" data-ipa="all">${ico('grid')}${open ? 'Weniger' : `Alle ${ICONS.length} Blöcke`}</button><button class="btn sm" data-ipa="rnd">${ico('rotate')}Zufall</button><button class="btn sm" data-ipa="up">${ico('upload')}Eigenes Bild</button>${iconUrl ? `<button class="btn sm ghost" data-ipa="clr">${ico('x')}Bild entfernen</button>` : ''}</div>
+    ${open ? `<div class="ip-all">${ICONS.map(k => `<button class="${!iconUrl && k === icon ? 'on' : ''}" data-ic="${k}" title="${esc(BLOCK_NAMES[k] || k)}">${blockSvg(k)}<small>${esc(BLOCK_NAMES[k] || k)}</small></button>`).join('')}</div>` : ''}
+  </div>`;
+}
+// image → 128px square PNG data URL (kept small, stored with the instance)
+function imageToIcon(file) {
+  return new Promise((res, rej) => {
+    const rd = new FileReader();
+    rd.onerror = rej;
+    rd.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.width, im.height); x.imageSmoothingEnabled = s > 128; x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 128, 128); res(c.toDataURL('image/png')); }; im.src = rd.result; };
+    rd.readAsDataURL(file);
+  });
+}
+function iconPickBind(root, st, onChange) {
+  const redraw = () => { root.innerHTML = iconPickHtml(st.icon, st.iconUrl, st.open); };
+  redraw();
+  root.onclick = async e => {
+    const b = e.target.closest('[data-ic]');
+    if (b) { st.icon = b.dataset.ic; st.iconUrl = null; redraw(); return onChange(st); }
+    const a = e.target.closest('[data-ipa]')?.dataset.ipa; if (!a) return;
+    if (a === 'all') { st.open = !st.open; return redraw(); }
+    if (a === 'rnd') { let k; do k = ICONS[Math.floor(Math.random() * ICONS.length)]; while (k === st.icon && ICONS.length > 1); st.icon = k; st.iconUrl = null; redraw(); root.querySelector('.ip-cur')?.classList.add('pop'); return onChange(st); }
+    if (a === 'clr') { st.iconUrl = null; redraw(); return onChange(st); }
+    if (a === 'up') {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png,image/jpeg,image/webp,image/gif';
+      inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; try { st.iconUrl = await imageToIcon(f); redraw(); onChange(st); } catch { toast('Bild konnte nicht geladen werden'); } };
+      inp.click();
+    }
+  };
+}
+/* ---------- new instance ---------- */
 async function newInstance(tab = 'custom', pre = {}) {
-  const N = S.newInst = { tab, name: pre.name || '', icon: pre.icon || 'grass', loader: pre.loader || 'vanilla', mc: pre.mc || '', lv: '', snaps: false, games: {}, orbitVer: null, packs: new Set((S.settings.orbitPacks || 'perf,shaders,qol').split(',').filter(Boolean)), then: pre.then };
-  modal(msShell('Neue Instanz', `<span class="iic">${blockSvg('grass')}</span>`, [['custom', 'Eigene Instanz', 'cube'], ['file', 'Aus Datei', 'file'], ['orbit', 'Orbit Client', 'orbit']], tab), 'ms');
+  if (tab === 'orbit' && !ORBIT_ON) tab = 'custom';
+  const N = S.newInst = { tab, name: pre.name || '', icon: pre.icon || ICONS[Math.floor(Math.random() * 12)], iconUrl: null, open: false, loader: pre.loader || 'fabric', mc: pre.mc || '', lv: '', vf: 'release', vq: '', games: {}, group: '', ram: 0, perf: true, discover: false, adv: false, orbitVer: null, packs: new Set((S.settings.orbitPacks || 'perf,shaders,qol').split(',').filter(Boolean)), then: pre.then };
+  const tabs = [['custom', 'Eigene Instanz', 'cube'], ['file', 'Importieren', 'upload'], ...(ORBIT_ON ? [['orbit', 'Orbit Client', 'orbit']] : [])];
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="mside niside"><div class="niprev" id="niPrev"></div>${tabs.map(([k, n, ic]) => `<button data-mt="${k}" class="${k === tab ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div><div class="mmain" id="mMain"></div>`, 'ms ni');
   $('.mside').onclick = e => { const b = e.target.closest('[data-mt]'); if (!b) return; N.tab = b.dataset.mt; $$('.mside [data-mt]').forEach(x => x.classList.toggle('on', x === b)); niRender(); };
+  niPrev();
   try { await ensureVersions(); } catch (e) { fail('Versionen', e); }
   if (!N.mc) N.mc = S.latest.release;
   niRender();
 }
 window.newInstance = newInstance;
+function niPrev() {
+  const N = S.newInst, el = $('#niPrev'); if (!el) return;
+  el.innerHTML = `<div class="np-glow" style="--lc:${LCOL[N.loader]}"></div><span class="np-ic">${N.iconUrl ? `<img src="${esc(N.iconUrl)}" alt="">` : blockSvg(N.icon)}</span>
+    <b class="ell">${esc(N.name.trim() || niDefName())}</b><small>${esc(LOADERS[N.loader][0])} · ${esc(N.mc || '…')}</small>
+    <div class="np-chips">${loaderChip(N.loader)}${N.group ? `<span class="chip m">${esc(N.group)}</span>` : ''}${N.perf && PERF[N.loader] ? `<span class="chip m">${ico('zap')}Performance</span>` : ''}</div>`;
+}
 async function niGames(loader) {
   const N = S.newInst;
-  if (loader === 'vanilla') return S.versions.filter(v => N.snaps ? v.type === 'release' || v.type === 'snapshot' : v.type === 'release').map(v => v.id);
+  const want = v => N.vf === 'release' ? v.type === 'release' : N.vf === 'snapshot' ? v.type === 'snapshot' : v.type === 'old_beta' || v.type === 'old_alpha';
+  if (loader === 'vanilla') return S.versions.filter(want).map(v => v.id);
   if (!N.games[loader]) { try { N.games[loader] = await api('loader.games', { loader }); } catch { N.games[loader] = []; } }
-  const rel = new Set(S.versions.filter(v => v.type === 'release').map(v => v.id));
-  return N.games[loader].filter(v => N.snaps || rel.has(v));
+  const type = new Map(S.versions.map(v => [v.id, v.type]));
+  return N.games[loader].filter(v => N.vf === 'release' ? type.get(v) === 'release' : N.vf === 'snapshot' ? type.get(v) !== 'release' : false);
 }
 async function niRender() {
   const N = S.newInst, m = $('#mMain'); if (!m) return;
+  m.onclick = null;
   if (N.tab === 'file') {
     m.innerHTML = `<h2>Importieren</h2><p class="sub">Modpacks (.mrpack oder .zip) oder Instanzen aus anderen Launchern werden als neue Instanz angelegt. Alle Dateien kommen direkt von ihren Quellen und werden per Hash geprüft.</p>
-      <button class="mtile" style="margin-top:18px" onclick="closeModal();importPack()"><span class="iic">${ico('upload')}</span><span><b>Modpack-Datei auswählen</b><small>.mrpack oder .zip</small></span></button>
-      <button class="mtile" style="margin-top:10px" onclick="closeModal();importLaunchers()"><span class="iic">${ico('dup')}</span><span><b>Aus anderem Launcher</b><small>Prism, MultiMC, PolyMC und weitere</small></span></button>
-      <button class="mtile" style="margin-top:10px" onclick="closeModal();go('discover',{type:'modpack'})"><span class="iic">${ico('compass')}</span><span><b>Modpack aus dem Katalog</b><small>Tausende Modpacks durchsuchen</small></span></button>`;
+      <div class="nitiles">
+      <button class="mtile" onclick="closeModal();importPack()"><span class="iic">${ico('upload')}</span><span><b>Modpack-Datei</b><small>.mrpack oder .zip auswählen</small></span></button>
+      <button class="mtile" onclick="closeModal();importLaunchers()"><span class="iic">${ico('dup')}</span><span><b>Aus anderem Launcher</b><small>Prism, MultiMC, PolyMC und weitere</small></span></button>
+      <button class="mtile" onclick="closeModal();go('discover',{type:'modpack'})"><span class="iic">${ico('compass')}</span><span><b>Modpack aus dem Katalog</b><small>Tausende Modpacks durchsuchen</small></span></button></div>`;
     return;
   }
-  if (N.tab === 'orbit') {
-    const sup = S.orbitInfo?.supported || ['26.3'];
-    N.orbitVer = N.orbitVer || sup[0];
-    m.innerHTML = `<h2>Orbit Client</h2><p class="sub">Eigener Client mit 21 Modulen: Keystrokes, CPS, Koordinaten, Rüstung, Zoom, Freelook, Fullbright, Fadenkreuz, Toggle Sprint, HUD-Editor. Plus Performance-Pakete.</p>
-      <label class="fl">Version</label><div class="seg">${sup.map(v => `<button class="${v === N.orbitVer ? 'on' : ''}" data-ov="${esc(v)}">Minecraft ${esc(v)}</button>`).join('')}</div>
-      <label class="fl">Pakete</label><div class="col" style="gap:8px" id="niPacks">${(S.orbitInfo?.packs || [{ id: 'perf', name: 'FPS-Boost', desc: 'Sodium, Lithium, FerriteCore …', icon: 'zap' }, { id: 'shaders', name: 'Shader-Support', desc: 'Iris', icon: 'sun' }, { id: 'qol', name: 'Komfort', desc: 'AppleSkin, Mouse Tweaks …', icon: 'sparkle' }, { id: 'visual', name: 'Optik', desc: 'Dynamische Lichter …', icon: 'layers' }])
-        .map(p => `<button class="mtile ${N.packs.has(p.id) ? 'on' : ''}" data-pk="${p.id}"><span class="iic">${ico(p.icon)}</span><span style="flex:1"><b>${esc(p.name)}</b><small>${esc(p.desc)}</small></span><span class="cb ${N.packs.has(p.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></button>`).join('')}</div>
-      <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Orbit Client einrichten</button></div>`;
-    m.onclick = e => {
-      const v = e.target.closest('[data-ov]'); if (v) { N.orbitVer = v.dataset.ov; niRender(); return; }
-      const p = e.target.closest('[data-pk]'); if (p) { N.packs.has(p.dataset.pk) ? N.packs.delete(p.dataset.pk) : N.packs.add(p.dataset.pk); p.classList.toggle('on'); p.querySelector('.cb').classList.toggle('on'); }
-    };
-    $('#niGo').onclick = async () => {
-      const b = $('#niGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird eingerichtet…';
-      api('settings.set', { key: 'orbitPacks', value: [...N.packs].join(',') });
-      try { const r = await api('orbit.create', { mc: N.orbitVer, packs: [...N.packs], ramMb: 3072 }); closeModal(); toast('Orbit Client bereit', `${r.installed.length} Teile installiert`); await refreshInstances(); go('inst', { id: r.id }); }
-      catch (e) { b.disabled = false; b.innerHTML = ico('plus') + 'Orbit Client einrichten'; fail('Einrichten fehlgeschlagen', e); }
-    };
-    return;
-  }
+  if (N.tab === 'orbit') return niOrbit(m);
   const games = await niGames(N.loader);
   if (!games.includes(N.mc)) N.mc = games[0] || N.mc;
-  m.innerHTML = `<h2>Eigene Instanz</h2><p class="sub">Wähle Version und Mod-Loader. Alles Nötige wird im Hintergrund geladen, du kannst sofort weitermachen.</p>
-    <label class="fl">Name</label><input class="in" id="niName" placeholder="${esc(niDefName())}" value="${esc(N.name)}">
-    <label class="fl">Symbol</label><div class="icons" id="niIcons">${ICONS.map(k => `<button class="${k === N.icon ? 'on' : ''}" data-ic="${k}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div>
-    <label class="fl">Mod-Loader</label><div class="ldsel" id="niLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === N.loader ? 'on' : ''}" data-ld="${k}"><i style="background:${LCOL[k]}"></i>${n}</button>`).join('')}</div>
-    <div class="vrow2"><div><label class="fl">Spielversion</label><select class="sel wide" id="niMc" style="height:42px">${games.map(v => `<option ${v === N.mc ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
-      <div><label class="fl">Loader-Version</label><select class="sel wide" id="niLv" style="height:42px" ${N.loader === 'vanilla' ? 'disabled' : ''}><option value="">${N.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div></div>
-    <div class="fsw" style="padding:12px 0 0"><span>Snapshots anzeigen</span><div class="tg sm ${N.snaps ? 'on' : ''}" id="niSnap"></div></div>
-    <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Erstellen</button></div>`;
-  $('#niName').oninput = e => N.name = e.target.value;
-  $('#niIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; N.icon = b.dataset.ic; $$('#niIcons button').forEach(x => x.classList.toggle('on', x === b)); $('.mside h3 .iic').innerHTML = blockSvg(N.icon); };
-  $('#niLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; N.loader = b.dataset.ld; N.lv = ''; niRender(); };
-  $('#niMc').onchange = e => { N.mc = e.target.value; N.lv = ''; $('#niName').placeholder = niDefName(); niLoaderVersions(); };
-  $('#niSnap').onclick = () => { N.snaps = !N.snaps; niRender(); };
+  const q = N.vq.trim().toLowerCase(), shown = games.filter(v => !q || v.toLowerCase().includes(q));
+  const latest = games[0];
+  m.innerHTML = `<h2>Eigene Instanz</h2><p class="sub">Version und Mod-Loader wählen. Alles Nötige wird im Hintergrund geladen, du kannst sofort weitermachen.</p>
+    <div class="vrow2"><div><label class="fl">Name</label><input class="in" id="niName" placeholder="${esc(niDefName())}" value="${esc(N.name)}"></div>
+      <div><label class="fl">Gruppe <span class="muted">(optional)</span></label><input class="in" id="niGroup" list="niGroups" placeholder="z. B. Survival" value="${esc(N.group)}"><datalist id="niGroups">${[...new Set(S.instances.map(x => x.group).filter(Boolean))].map(g => `<option>${esc(g)}</option>`).join('')}</datalist></div></div>
+    <label class="fl">Symbol</label><div id="niIcon"></div>
+    <label class="fl">Mod-Loader</label><div class="ldcards" id="niLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === N.loader ? 'on' : ''}" data-ld="${k}" style="--lc:${LCOL[k]}">${ldIcon(k)}<b>${n}</b><small>${LDESC[k]}</small></button>`).join('')}</div>
+    <div class="vhead"><label class="fl">Spielversion</label><span class="sp"></span>
+      <div class="seg sm" id="niVf">${[['release', 'Releases'], ['snapshot', 'Snapshots'], ...(N.loader === 'vanilla' ? [['old', 'Uralt']] : [])].map(([k, n]) => `<button data-vf="${k}" class="${N.vf === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="srch sm">${ico('search')}<input class="in" id="niVq" placeholder="Suchen…" value="${esc(N.vq)}"></div></div>
+    <div class="vlist" id="niVl">${shown.length ? shown.slice(0, 120).map(v => `<button data-mc="${esc(v)}" class="${v === N.mc ? 'on' : ''}">${esc(v)}${v === latest && !q ? '<i>Neu</i>' : ''}</button>`).join('') : '<div class="muted" style="padding:10px">Keine passende Version.</div>'}</div>
+    ${PERF[N.loader] ? `<div class="srow"><div><b>${ico('zap')}Performance-Mods dazu</b><p>${PERF[N.loader].map(p => p[1]).join(', ')}. Mehr FPS, weniger RAM. Nur was zur Version passt.</p></div><div class="tg sm ${N.perf ? 'on' : ''}" id="niPerf"></div></div>` : ''}
+    <div class="srow"><div><b>${ico('compass')}Danach Mods aussuchen</b><p>Öffnet Entdecken direkt mit der neuen Instanz als Ziel.</p></div><div class="tg sm ${N.discover ? 'on' : ''}" id="niDisc"></div></div>
+    <button class="lnk niadv" id="niAdv">${ico(N.adv ? 'chevd' : 'right')}Erweitert</button>
+    <div class="${N.adv ? '' : 'hidden'}" id="niAdvBox">
+      <div class="vrow2"><div><label class="fl">Loader-Version</label><select class="sel wide" id="niLv" style="height:42px" ${N.loader === 'vanilla' ? 'disabled' : ''}><option value="">${N.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div>
+      <div><label class="fl">Arbeitsspeicher</label><div class="seg sm" id="niRam">${[[0, 'Auto'], [2048, '2 GB'], [4096, '4 GB'], [6144, '6 GB'], [8192, '8 GB']].map(([v, n]) => `<button data-ram="${v}" class="${N.ram === v ? 'on' : ''}">${n}</button>`).join('')}</div></div></div></div>
+    <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Instanz erstellen</button></div>`;
+  iconPickBind($('#niIcon'), N, () => niPrev());
+  $('#niName').oninput = e => { N.name = e.target.value; niPrev(); };
+  $('#niGroup').oninput = e => { N.group = e.target.value; niPrev(); };
+  $('#niLd').onclick = e => { const b = e.target.closest('[data-ld]'); if (!b) return; N.loader = b.dataset.ld; N.lv = ''; if (N.loader !== 'vanilla' && N.vf === 'old') N.vf = 'release'; niPrev(); niRender(); };
+  $('#niVf').onclick = e => { const b = e.target.closest('[data-vf]'); if (!b) return; N.vf = b.dataset.vf; niRender(); };
+  let t = 0; $('#niVq').oninput = e => { N.vq = e.target.value; clearTimeout(t); t = setTimeout(async () => { await niRender(); const i = $('#niVq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 200); };
+  $('#niVl').onclick = e => { const b = e.target.closest('[data-mc]'); if (!b) return; N.mc = b.dataset.mc; N.lv = ''; $$('#niVl button').forEach(x => x.classList.toggle('on', x === b)); $('#niName').placeholder = niDefName(); niPrev(); niLoaderVersions(); };
+  $('#niPerf') && ($('#niPerf').onclick = e => { N.perf = !N.perf; e.target.classList.toggle('on', N.perf); niPrev(); });
+  $('#niDisc').onclick = e => { N.discover = !N.discover; e.target.classList.toggle('on', N.discover); };
+  $('#niAdv').onclick = () => { N.adv = !N.adv; $('#niAdvBox').classList.toggle('hidden', !N.adv); $('#niAdv').innerHTML = ico(N.adv ? 'chevd' : 'right') + 'Erweitert'; };
+  $('#niRam').onclick = e => { const b = e.target.closest('[data-ram]'); if (!b) return; N.ram = +b.dataset.ram; $$('#niRam button').forEach(x => x.classList.toggle('on', x === b)); };
   $('#niLv').onchange = e => N.lv = e.target.value;
   $('#niGo').onclick = niCreate;
-  niLoaderVersions();
+  niPrev(); niLoaderVersions();
+}
+function niOrbit(m) {
+  const N = S.newInst, sup = S.orbitInfo?.supported || ['26.3'];
+  N.orbitVer = N.orbitVer || sup[0];
+  m.innerHTML = `<h2>Orbit Client</h2><p class="sub">Eigener Client mit HUD-Modulen und Performance-Paketen.</p>
+    <label class="fl">Version</label><div class="seg">${sup.map(v => `<button class="${v === N.orbitVer ? 'on' : ''}" data-ov="${esc(v)}">Minecraft ${esc(v)}</button>`).join('')}</div>
+    <div class="mfoot"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="niGo">${ico('plus')}Orbit Client einrichten</button></div>`;
+  m.onclick = e => { const v = e.target.closest('[data-ov]'); if (v) { N.orbitVer = v.dataset.ov; niRender(); } };
+  $('#niGo').onclick = async () => {
+    const b = $('#niGo'); b.disabled = true;
+    try { const r = await api('orbit.create', { mc: N.orbitVer, packs: [...N.packs], ramMb: 3072 }); closeModal(); await refreshInstances(); go('inst', { id: r.id }); }
+    catch (e) { b.disabled = false; fail('Einrichten fehlgeschlagen', e); }
+  };
 }
 const niDefName = () => { const N = S.newInst; return `${N.loader === 'vanilla' ? 'Minecraft' : LOADERS[N.loader][0]} ${N.mc}`; };
 async function niLoaderVersions() {
@@ -1145,19 +1290,26 @@ async function niLoaderVersions() {
   sel.innerHTML = '<option value="">Lädt…</option>';
   try {
     const l = await api('loader.versions', { loader: N.loader, mc: N.mc });
-    if (S.newInst !== N) return;
-    sel.innerHTML = `<option value="">Empfohlen${l.find(x => x.recommended) ? ' (' + esc(l.find(x => x.recommended).version) + ')' : l[0] ? ' (' + esc(l.find(x => x.stable)?.version || l[0].version) + ')' : ''}</option>` + l.slice(0, 60).map(x => `<option value="${esc(x.version)}">${esc(x.version)}${x.stable ? '' : ' (Beta)'}</option>`).join('');
+    if (S.newInst !== N || !$('#niLv')) return;
+    sel.innerHTML = `<option value="">Empfohlen${l.find(x => x.recommended) ? ' (' + esc(l.find(x => x.recommended).version) + ')' : l[0] ? ' (' + esc(l.find(x => x.stable)?.version || l[0].version) + ')' : ''}</option>` + l.slice(0, 60).map(x => `<option value="${esc(x.version)}" ${x.version === N.lv ? 'selected' : ''}>${esc(x.version)}${x.stable ? '' : ' (Beta)'}</option>`).join('');
   } catch { sel.innerHTML = '<option value="">Empfohlen</option>'; }
 }
 async function niCreate() {
   const N = S.newInst, b = $('#niGo');
   b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Erstelle…';
   try {
-    const inst = await api('instance.create', { name: N.name.trim() || niDefName(), mc: N.mc, loader: N.loader, loaderVersion: N.lv || null, icon: N.icon, ramMb: 0 });
+    const inst = await api('instance.create', { name: N.name.trim() || niDefName(), mc: N.mc, loader: N.loader, loaderVersion: N.lv || null, icon: N.icon, iconUrl: N.iconUrl, ramMb: N.ram, group: N.group.trim() || null });
     closeModal(); toast('Instanz erstellt', `${inst.name} · Dateien werden im Hintergrund geladen`);
     await refreshInstances();
-    if (N.then) N.then(inst); else go('inst', { id: inst.id });
-  } catch (e) { b.disabled = false; b.innerHTML = ico('plus') + 'Erstellen'; fail('Erstellen fehlgeschlagen', e); }
+    if (N.perf && PERF[N.loader]) {
+      (async () => {
+        let ok = 0;
+        for (const [id] of PERF[N.loader]) { try { await api('mr.install', { id: inst.id, project: id, type: 'mod', version: null }); ok++; } catch { } }
+        if (ok) { toast('Performance-Mods installiert', `${ok} Mods in ${inst.name}`); refreshInstances(); }
+      })();
+    }
+    if (N.then) N.then(inst); else if (N.discover && N.loader !== 'vanilla') go('discover', { type: 'mod', target: inst.id }); else go('inst', { id: inst.id });
+  } catch (e) { b.disabled = false; b.innerHTML = ico('plus') + 'Instanz erstellen'; fail('Erstellen fehlgeschlagen', e); }
 }
 
 /* ======================= INSTANCE SETTINGS ======================= */
@@ -1186,7 +1338,7 @@ async function isRender() {
       <div class="isst" id="isSt">${[['hdd', 'Größe'], ['puzzle', 'Mods'], ['image', 'Ressourcen'], ['sun', 'Shader'], ['earth', 'Welten'], ['clock', 'Spielzeit']].map(([ic, l]) => `<div>${ico(ic)}<b>…</b><small>${l}</small></div>`).join('')}</div>
       <div class="vrow2"><div><label class="fl">Name</label><input class="in" id="isName" value="${esc(i.name)}"></div>
       <div><label class="fl">Gruppe</label><input class="in" id="isGroup" list="isGroups" placeholder="z. B. PvP, Survival" value="${esc(i.group || '')}"><datalist id="isGroups">${groups.map(g => `<option>${esc(g)}</option>`).join('')}</datalist></div></div>
-      ${i.iconUrl ? '' : `<label class="fl">Symbol</label><div class="icons" id="isIcons">${ICONS.concat(i.kind === 'orbit' ? ['orbit'] : []).map(k => `<button class="${k === i.icon ? 'on' : ''}" data-ic="${k}"><span class="iic">${blockSvg(k)}</span></button>`).join('')}</div>`}
+      <label class="fl">Symbol</label><div id="isIcon"></div>
       <label class="fl">Notizen</label><textarea class="in ta" id="isNotes" rows="3" placeholder="Server-IPs, Seeds, To-dos …">${esc(i.notes || '')}</textarea>
       <div class="sec"><h2>Aktionen</h2></div>
       <div class="isact">
@@ -1204,7 +1356,7 @@ async function isRender() {
     $('#isName').oninput = e => isDeb(() => { const v = e.target.value.trim(); if (v) { isPatch({ name: v }); $('.mside h3 span.ell').textContent = v; $('.isov b').textContent = v; } });
     $('#isGroup').oninput = e => isDeb(() => isPatch({ group: e.target.value.trim() || null }));
     $('#isNotes').oninput = e => isDeb(() => isPatch({ notes: e.target.value.trim() || null }));
-    $('#isIcons') && ($('#isIcons').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; $$('#isIcons button').forEach(x => x.classList.toggle('on', x === b)); isPatch({ icon: b.dataset.ic }); $('.mside h3 .iic').innerHTML = blockSvg(b.dataset.ic); });
+    iconPickBind($('#isIcon'), { icon: i.icon, iconUrl: i.iconUrl, open: false }, st => { isPatch({ icon: st.icon, iconUrl: st.iconUrl }); const h = instIcon({ icon: st.icon, iconUrl: st.iconUrl }); $('.mside h3 .iic')?.replaceWith(document.createRange().createContextualFragment(h)); $('.isov>.iic')?.replaceWith(document.createRange().createContextualFragment(h)); });
     $('.isact').onclick = async e => {
       const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a;
       if (a === 'folder') return api('folder.open', { id: i.id, what: '' });
@@ -1227,7 +1379,7 @@ async function isRender() {
     m.innerHTML = `<h2>Installation</h2><p class="sub">Version oder Mod-Loader wechseln. Mods, die nicht zur neuen Version passen, musst du danach eventuell aktualisieren.</p>
       <div class="isov sm"><span class="iic">${ico('cube')}</span><div class="tx"><small>Aktuell installiert</small><b>Minecraft ${esc(i.mcVersion)} · ${esc(LOADERS[i.loader]?.[0] || i.loader)}${i.loaderVersion ? ' ' + esc(i.loaderVersion) : ''}</b></div></div>
       ${locked ? `<div class="note w">Diese Instanz ist ${i.kind === 'modpack' ? 'ein Modpack' : 'der Orbit Client'}. Version und Loader zu ändern kann sie kaputt machen.</div>` : ''}
-      <label class="fl">Mod-Loader</label><div class="ldsel" id="isLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === E.loader ? 'on' : ''}" data-ld="${k}"><i style="background:${LCOL[k]}"></i>${n}</button>`).join('')}</div>
+      <label class="fl">Mod-Loader</label><div class="ldsel" id="isLd">${Object.entries(LOADERS).map(([k, [n]]) => `<button class="${k === E.loader ? 'on' : ''}" data-ld="${k}">${ldIcon(k)}${n}</button>`).join('')}</div>
       <div class="vrow2"><div><label class="fl">Spielversion</label><select class="sel wide" id="isMc" style="height:42px">${games.map(v => `<option ${v === E.mc ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
       <div><label class="fl">Loader-Version</label><select class="sel wide" id="isLv" style="height:42px" ${E.loader === 'vanilla' ? 'disabled' : ''}><option value="">${E.loader === 'vanilla' ? '—' : 'Empfohlen'}</option></select></div></div>
       <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn p" id="isApply">${ico('check')}Übernehmen</button></div>
@@ -1796,7 +1948,7 @@ function cuboid(w, h, d, u, v, U, tex, ox, oy, oz, inflate = 0) {
   const k = inflate ? 1 + inflate / Math.min(w, h, d) : 1;
   const W = w * U * (inflate ? (w + inflate) / w : 1), H = h * U * (inflate ? (h + inflate) / h : 1), Dp = d * U * (inflate ? (d + inflate) / d : 1);
   const sx = inflate ? (w + inflate) / w : 1, sy = inflate ? (h + inflate) / h : 1, sz = inflate ? (d + inflate) / d : 1;
-  const face = (fw, fh, fu, fv, tr, ssx, ssy) => `<div class="f" style="width:${fw * U}px;height:${fh * U}px;margin:${-fh * U / 2}px 0 0 ${-fw * U / 2}px;background-image:url('${tex.url}');background-size:${64 * U}px ${tex.h * U}px;background-position:${-fu * U}px ${-fv * U}px;transform:translate3d(${ox}px,${oy}px,${oz}px) ${tr} scale(${ssx},${ssy})"></div>`;
+  const face = (fw, fh, fu, fv, tr, ssx, ssy) => `<div class="f" style="width:${fw * U}px;height:${fh * U}px;margin:${-fh * U / 2}px 0 0 ${-fw * U / 2}px;background-image:${tex.url === '@var' ? 'var(--skt)' : `url('${tex.url}')`};background-size:${64 * U}px ${tex.h * U}px;background-position:${-fu * U}px ${-fv * U}px;transform:translate3d(${ox}px,${oy}px,${oz}px) ${tr} scale(${ssx},${ssy})"${tex.url === '@var' ? ` data-u="${fu}" data-v="${fv}" data-w="${fw}" data-h="${fh}"` : ''}></div>`;
   return face(w, h, u + d, v + d, `translateZ(${Dp / 2}px)`, sx, sy)
     + face(w, h, u + 2 * d + w, v + d, `rotateY(180deg) translateZ(${Dp / 2}px)`, sx, sy)
     + face(d, h, u, v + d, `rotateY(-90deg) translateZ(${W / 2}px)`, sz, sy)
@@ -1836,7 +1988,13 @@ function viewerLoop() {
 PAGES.skins = async el => {
   crumbs([['Skins']]);
   const acc = activeAcc();
-  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammle Skins, schau sie dir in 3D an und übernimm sie mit einem Klick für dein Konto.</p></div></div>
+  S.skTab = S.skTab || 'lib';
+  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder aus über ${skCollection().length} fertigen Skins wählen.</p></div>
+    <div class="ph-r"><div class="seg sktabs" id="skTabs">${[['lib', 'Meine Skins', 'library'], ['editor', 'Editor', 'edit'], ['col', 'Sammlung', 'grid']].map(([k, n, ic]) => `<button data-k="${k}" class="${S.skTab === k ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div></div></div><div id="skBody"></div>`;
+  $('#skTabs').onclick = e => { const b = e.target.closest('[data-k]'); if (!b || b.dataset.k === S.skTab) return; S.skTab = b.dataset.k; go('skins', {}, false); };
+  if (S.skTab === 'editor') return skEditorPage($('#skBody'));
+  if (S.skTab === 'col') { if (!S.skins) S.skins = { lib: await api('skins.list').catch(() => []), prof: null }; return skCollectionPage($('#skBody')); }
+  $('#skBody').innerHTML = `
     <div class="skwrap"><div class="skview"><div class="stage3" id="skStage"><span class="floor"></span></div><div class="sbar" id="skBar"></div></div><div id="skSide"><div class="spinner"></div></div></div>`;
   const [lib, prof] = await Promise.all([api('skins.list').catch(() => []), acc ? api('skin.profile').catch(e => ({ error: e.message })) : Promise.resolve(null)]);
   if (S.page !== 'skins') return;
@@ -1884,12 +2042,13 @@ function skinSide() {
     <div class="sec" ${capes.length ? '' : 'style="margin-top:0"'}><h2>Deine Skins</h2><span class="muted">${K.lib.length}</span></div>
     <div class="sklib" id="skLib"><button class="skc add" id="skAdd"><span>${ico('plus')}<b>Skin hinzufügen</b><small>PNG, 64×64</small></span></button>
       ${active ? card('__cur', 'Aktueller Skin', active.url.replace('http://', 'https://'), active.variant === 'SLIM' ? 'slim' : 'classic', '<span class="badge">AKTIV</span>') : ''}
-      ${K.lib.map(x => card(x.id, x.name, x.url, x.variant, `<span class="act"><button class="ib sm" data-ren="${esc(x.id)}" title="Umbenennen">${ico('edit')}</button><button class="ib sm d" data-del="${esc(x.id)}" title="Löschen">${ico('trash')}</button></span>`)).join('')}
+      ${K.lib.map(x => card(x.id, x.name, x.url, x.variant, `<span class="act"><button class="ib sm" data-edit="${esc(x.id)}" title="Im Editor öffnen">${ico('palette')}</button><button class="ib sm" data-ren="${esc(x.id)}" title="Umbenennen">${ico('edit')}</button><button class="ib sm d" data-del="${esc(x.id)}" title="Löschen">${ico('trash')}</button></span>`)).join('')}
       ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>
     <p class="fine">Skins werden nur lokal gespeichert, bis du sie übernimmst. Übernehmen geht direkt über Mojangs offizielle Schnittstelle mit deinem Konto.</p>`;
   $('#skLib').onclick = async e => {
     if (e.target.closest('#skAdd')) { try { const x = await api('skins.add', { variant: 'classic' }); if (x) { K.lib.unshift(x); K.sel = x.id; skinSide(); skinShow(); } } catch (er) { fail('Skin', er); } return; }
     const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); if (!await confirmBox('Skin löschen?', 'Er wird aus deiner Bibliothek entfernt.', 'Löschen', true)) return; await api('skins.remove', { id: del.dataset.del }); K.lib = K.lib.filter(x => x.id !== del.dataset.del); if (K.sel === del.dataset.del) K.sel = null; skinSide(); skinShow(); return; }
+    const ed = e.target.closest('[data-edit]'); if (ed) { e.stopPropagation(); const x = K.lib.find(y => y.id === ed.dataset.edit); await seLoad(x.url, x.name, x.variant, x.id); SE.loaded = true; S.skTab = 'editor'; return go('skins', {}, false); }
     const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); const x = K.lib.find(y => y.id === ren.dataset.ren); const n = await promptBox('Umbenennen', 'Name', x.name); if (n) { x.name = n; api('skins.update', { id: x.id, name: n }); skinSide(); skinShow(); } return; }
     const c = e.target.closest('[data-sk]'); if (c) { K.sel = c.dataset.sk; $$('#skLib .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow(); }
   };
@@ -1899,6 +2058,434 @@ function skinSide() {
     catch (er) { fail('Umhang', er); }
   };
 }
+/* ======================= SKIN EDITOR + COLLECTION (original generator, no third-party skins) ======================= */
+const SKP = { // [u, v, w, h, d] of every part, base layer and overlay layer
+  head: [[0, 0, 8, 8, 8], [32, 0, 8, 8, 8]], body: [[16, 16, 8, 12, 4], [16, 32, 8, 12, 4]],
+  rarm: [[40, 16, 4, 12, 4], [40, 32, 4, 12, 4]], larm: [[32, 48, 4, 12, 4], [48, 48, 4, 12, 4]],
+  rleg: [[0, 16, 4, 12, 4], [0, 32, 4, 12, 4]], lleg: [[16, 48, 4, 12, 4], [0, 48, 4, 12, 4]],
+};
+const SKPN = { head: 'Kopf', body: 'Körper', rarm: 'Rechter Arm', larm: 'Linker Arm', rleg: 'Rechtes Bein', lleg: 'Linkes Bein' };
+const hex2 = h => { h = h.replace('#', ''); if (h.length === 3) h = [...h].map(c => c + c).join(''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; };
+const rgbHex = (r, g, b) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+const shade = (h, f) => { const [r, g, b] = hex2(h); return f >= 0 ? rgbHex(r + (255 - r) * f, g + (255 - g) * f, b + (255 - b) * f) : rgbHex(r * (1 + f), g * (1 + f), b * (1 + f)); };
+// small painter on a 64x64 canvas
+function skPainter(cv) {
+  const x = cv.getContext('2d', { willReadFrequently: true });
+  const P = {
+    x, fill(u, v, w, h, c) { x.fillStyle = c; x.fillRect(u, v, w, h); },
+    clear(u, v, w, h) { x.clearRect(u, v, w, h); },
+    box([u, v, w, h, d], c) { P.fill(u + d, v, w, d, c); P.fill(u + d + w, v, w, d, shade(c, -.15)); P.fill(u, v + d, d, h, shade(c, -.08)); P.fill(u + d, v + d, w, h, c); P.fill(u + d + w, v + d, d, h, shade(c, -.08)); P.fill(u + 2 * d + w, v + d, w, h, shade(c, -.12)); },
+    // horizontal band around a limb/body (rows y0..y1 of the side faces)
+    band([u, v, w, h, d], y0, y1, c) { P.fill(u, v + d + y0, 2 * (d + w), y1 - y0, c); },
+    front([u, v, w, h, d], fx, fy, fw, fh, c) { P.fill(u + d + fx, v + d + fy, fw, fh, c); },
+    back([u, v, w, h, d], fx, fy, fw, fh, c) { P.fill(u + 2 * d + w + fx, v + d + fy, fw, fh, c); },
+    top([u, v, w, h, d], c) { P.fill(u + d, v, w, d, c); },
+    noise(rnd, amt = .07) {
+      const im = x.getImageData(0, 0, 64, 64), d = im.data;
+      for (let i = 0; i < d.length; i += 4) { if (!d[i + 3]) continue; const f = 1 + (rnd() - .5) * 2 * amt; d[i] *= f; d[i + 1] *= f; d[i + 2] *= f; }
+      x.putImageData(im, 0, 0);
+    },
+  };
+  return P;
+}
+const SKIN_TONES = ['#F3D2B3', '#E8B894', '#D49A73', '#B97A55', '#8D5A3F', '#5E3B28', '#F6DCC6', '#C68863'];
+const HAIR = ['#2B1D14', '#4A2F1E', '#7A4B26', '#B07A3C', '#E3C16F', '#F2E2B0', '#111114', '#8A2E1E', '#C9C9CF', '#6B5BD6', '#2DD4A0', '#FF5C8A'];
+const CLOTH = ['#E5484D', '#3D9BFF', '#2DD4A0', '#F5B53D', '#8B7BFF', '#FF7A3D', '#1F2937', '#F1F1F4', '#14B8A6', '#E040FB', '#84CC16', '#6B7280', '#7C2D12', '#0EA5E9'];
+const THEMES_SK = [
+  ['casual', 'Alltag'], ['hoodie', 'Hoodie'], ['suit', 'Anzug'], ['knight', 'Ritter'], ['ninja', 'Ninja'], ['astro', 'Astronaut'], ['wizard', 'Zauberer'],
+  ['pirate', 'Pirat'], ['gamer', 'Gamer'], ['chef', 'Koch'], ['zombie', 'Untot'], ['robot', 'Roboter'], ['sport', 'Sport'], ['farmer', 'Farmer'],
+];
+function skFace(P, s, eye, rnd, o = {}) {
+  const H = SKP.head[0];
+  P.box(H, s);
+  if (!o.noEyes) { P.front(H, 1, 4, 2, 1, '#fff'); P.front(H, 5, 4, 2, 1, '#fff'); P.front(H, o.lookL ? 1 : 2, 4, 1, 1, eye); P.front(H, o.lookL ? 5 : 6, 4, 1, 1, eye); }
+  P.front(H, 3, 6, 2, 1, shade(s, -.25)); // nose shadow / mouth
+  if (rnd() > .5) P.front(H, 2, 7, 4, 1, shade(s, -.18));
+}
+function skHair(P, c, style) {
+  const H = SKP.head[0];
+  if (style === 'bald') return;
+  P.top(H, c); P.band(H, 0, style === 'long' ? 3 : 2, c); P.back(H, 0, 0, 8, style === 'short' ? 4 : 8, c);
+  P.front(H, 0, 2, 1, style === 'long' ? 6 : 2, c); P.front(H, 7, 2, 1, style === 'long' ? 6 : 2, c);
+  if (style === 'fringe') P.front(H, 0, 2, 5, 1, c);
+  if (style === 'long') { P.fill(0, 8 + 2, 8, 6, c); P.fill(16, 8 + 2, 8, 6, c); }
+}
+function genSkin(seed, theme) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const P = skPainter(cv), rnd = seedRand('sk' + seed + theme), pick = a => a[Math.floor(rnd() * a.length)];
+  let s = pick(SKIN_TONES), hair = pick(HAIR), c1 = pick(CLOTH), c2 = pick(CLOTH), pants = pick(['#1E3A8A', '#273449', '#3F3F46', '#1F2937', '#57534E', '#0F172A', c2]), shoe = pick(['#18181B', '#F4F4F5', '#78350F', '#3F3F46']);
+  const eye = pick(['#3D7BFF', '#2E8B57', '#6B4226', '#1A1A1A', '#8B7BFF']);
+  if (theme === 'zombie') { s = pick(['#5E9E5A', '#6FAF62', '#4F8A57']); }
+  if (theme === 'robot') s = pick(['#9CA3AF', '#B8BEC8', '#6B7280']);
+  skFace(P, s, theme === 'robot' ? '#FF3B4E' : theme === 'zombie' ? '#111' : eye, rnd);
+  ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(k => P.box(SKP[k][0], k.endsWith('leg') ? pants : c1));
+  const B = SKP.body[0], RA = SKP.rarm[0], LA = SKP.larm[0], RL = SKP.rleg[0], LL = SKP.lleg[0];
+  const sleeves = (n, col = s) => { P.band(RA, n, 12, col); P.band(LA, n, 12, col); };
+  const shoes = (col = shoe, n = 2) => { P.band(RL, 12 - n, 12, col); P.band(LL, 12 - n, 12, col); };
+  const O = k => SKP[k][1];
+  switch (theme) {
+    case 'casual': sleeves(4); shoes(); skHair(P, hair, pick(['short', 'fringe', 'long', 'short'])); P.front(B, 2, 3, 4, 3, shade(c1, .35)); P.band(B, 11, 12, '#3F2A14'); break;
+    case 'hoodie': sleeves(10); shoes(); skHair(P, hair, 'fringe'); P.front(B, 1, 7, 6, 3, shade(c1, -.18)); P.front(B, 3, 0, 1, 4, '#ddd'); P.front(B, 4, 0, 1, 4, '#ddd');
+      P.box(O('head'), 'rgba(0,0,0,0)'); P.top(O('head'), c1); P.band(O('head'), 0, 3, c1); P.back(O('head'), 0, 0, 8, 8, c1); break;
+    case 'suit': { const k = pick(['#18181B', '#1E293B', '#3F3F46']); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], k)); sleeves(11); shoes('#0a0a0a'); skHair(P, hair, 'short');
+      P.front(B, 2, 0, 4, 12, '#F4F4F5'); P.front(B, 3, 0, 2, 9, pick(['#B91C1C', '#1D4ED8', '#111', '#047857'])); P.front(B, 1, 0, 1, 6, shade(k, .1)); P.front(B, 6, 0, 1, 6, shade(k, .1)); break; }
+    case 'knight': { const m = pick(['#A1A1AA', '#C0C4CC', '#8A8F98']); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], m)); P.front(B, 2, 2, 4, 5, pick(['#B91C1C', '#1D4ED8', '#F5B53D'])); P.band(B, 8, 9, shade(m, -.35));
+      P.box(O('head'), shade(m, .05)); P.front(O('head'), 1, 3, 6, 1, '#111'); P.front(O('head'), 3, 4, 2, 3, '#111'); P.top(O('head'), shade(m, .2)); break; }
+    case 'ninja': { const k = pick(['#111114', '#1E1B4B', '#1F2937']); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], k)); P.band(B, 6, 7, pick(['#DC2626', '#F5B53D', '#7C3AED']));
+      P.box(O('head'), k); P.clear(32 + 8 + 1, 8 + 3, 6, 2); break; }
+    case 'astro': ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], '#E5E7EB')); P.front(B, 1, 1, 6, 4, '#9CA3AF'); P.front(B, 2, 2, 1, 1, '#EF4444'); P.front(B, 4, 2, 1, 1, '#22C55E'); P.band(B, 11, 12, '#6B7280'); shoes('#6B7280', 3);
+      P.box(O('head'), '#E5E7EB'); P.front(O('head'), 1, 2, 6, 5, pick(['#38BDF8', '#F59E0B', '#8B7BFF'])); P.front(O('head'), 2, 3, 2, 1, '#fff'); break;
+    case 'wizard': { const r = pick(['#4C1D95', '#1E3A8A', '#7F1D1D', '#14532D']); ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], r)); P.band(B, 5, 6, '#F5B53D'); skHair(P, '#E5E7EB', 'long');
+      P.front(SKP.head[0], 1, 6, 6, 2, '#E5E7EB'); P.front(B, 2, 0, 4, 4, '#E5E7EB'); P.top(O('head'), r); P.band(O('head'), 0, 2, r); break; }
+    case 'pirate': for (let i = 0; i < 12; i += 2) P.band(B, i, i + 1, '#F4F4F5'); sleeves(6); shoes('#3F2A14', 3); P.band(SKP.head[0], 0, 2, '#B91C1C'); P.top(SKP.head[0], '#B91C1C'); P.front(SKP.head[0], 1, 3, 3, 2, '#111'); P.front(SKP.head[0], 0, 3, 8, 1, '#111'); skHair(P, hair, 'bald'); break;
+    case 'gamer': { const n = pick(['#22D3EE', '#A3E635', '#F472B6', '#FF7A3D']); sleeves(10); shoes('#F4F4F5'); skHair(P, hair, 'fringe'); P.front(B, 2, 3, 4, 1, n); P.front(B, 3, 2, 2, 3, n);
+      P.box(O('head'), 'rgba(0,0,0,0)'); P.top(O('head'), '#18181B'); P.fill(32, 8 + 2, 8, 3, '#18181B'); P.fill(48, 8 + 2, 8, 3, '#18181B'); P.fill(32 + 2, 8 + 3, 3, 3, n); P.fill(48 + 3, 8 + 3, 3, 3, n); break; }
+    case 'chef': ['body', 'rarm', 'larm'].forEach(x => P.box(SKP[x][0], '#F8FAFC')); sleeves(7); P.front(B, 3, 1, 1, 1, '#111'); P.front(B, 3, 4, 1, 1, '#111'); P.front(B, 3, 7, 1, 1, '#111'); P.box(RL, '#1F2937'); P.box(LL, '#1F2937'); shoes();
+      P.top(O('head'), '#fff'); P.band(O('head'), 0, 3, '#fff'); P.front(SKP.head[0], 2, 6, 4, 1, hair); break;
+    case 'zombie': sleeves(5); P.front(B, 5, 7, 3, 5, shade(c1, -.35)); P.band(RL, 9, 12, s); skHair(P, shade(hair, -.3), 'short'); P.front(SKP.head[0], 2, 7, 4, 1, '#3B0D0D'); break;
+    case 'robot': ['body', 'rarm', 'larm', 'rleg', 'lleg'].forEach(x => P.box(SKP[x][0], shade(s, -.1))); P.front(B, 2, 3, 4, 4, '#111827'); P.front(B, 3, 4, 2, 2, pick(['#22D3EE', '#EF4444', '#A3E635'])); P.top(SKP.head[0], shade(s, -.3)); P.front(SKP.head[0], 0, 6, 8, 1, '#111827');
+      for (let i = 0; i < 12; i += 4) { P.band(RA, i, i + 1, shade(s, -.4)); P.band(LA, i, i + 1, shade(s, -.4)); } break;
+    case 'sport': { sleeves(3); P.front(B, 3, 3, 2, 4, '#fff'); P.back(B, 3, 3, 2, 4, '#fff'); P.box(RL, '#F4F4F5'); P.box(LL, '#F4F4F5'); P.band(RL, 0, 4, c2); P.band(LL, 0, 4, c2); P.band(RL, 4, 10, s); P.band(LL, 4, 10, s); shoes(pick(['#F4F4F5', '#EF4444', '#111'])); skHair(P, hair, pick(['short', 'bald', 'fringe'])); break; }
+    case 'farmer': sleeves(5); P.box(SKP.body[0], '#E5E7EB'); P.front(B, 1, 3, 6, 9, '#2563EB'); P.front(B, 1, 0, 1, 3, '#2563EB'); P.front(B, 6, 0, 1, 3, '#2563EB'); P.box(RL, '#2563EB'); P.box(LL, '#2563EB'); shoes('#78350F'); skHair(P, hair, 'short');
+      P.top(O('head'), '#E3C16F'); P.band(O('head'), 0, 2, '#E3C16F'); P.band(O('head'), 2, 3, '#B45309'); break;
+  }
+  P.noise(rnd, .06);
+  return cv.toDataURL('image/png');
+}
+// flat front picture of a skin (for fast thumbnails)
+const skThumbCache = {};
+function skThumb(url) {
+  if (skThumbCache[url]) return Promise.resolve(skThumbCache[url]);
+  return new Promise(res => {
+    const im = new Image(); im.onload = () => {
+      const c = document.createElement('canvas'); c.width = 16 * 6; c.height = 32 * 6; const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+      const legacy = im.naturalHeight === 32, d = (sx, sy, w, h, dx, dy) => x.drawImage(im, sx, sy, w, h, dx * 6, dy * 6, w * 6, h * 6);
+      d(8, 8, 8, 8, 4, 0); d(20, 20, 8, 12, 4, 8); d(44, 20, 4, 12, 0, 8); d(4, 20, 4, 12, 4, 20);
+      if (legacy) { d(44, 20, 4, 12, 12, 8); d(4, 20, 4, 12, 8, 20); } else { d(36, 52, 4, 12, 12, 8); d(20, 52, 4, 12, 8, 20); d(20, 36, 8, 12, 4, 8); d(44, 36, 4, 12, 0, 8); d(52, 52, 4, 12, 12, 8); d(4, 36, 4, 12, 4, 20); d(4, 52, 4, 12, 8, 20); }
+      d(40, 8, 8, 8, 4, 0);
+      res(skThumbCache[url] = c.toDataURL());
+    }; im.onerror = () => res(''); im.src = url;
+  });
+}
+let SKCOL = null;
+function skCollection() {
+  if (SKCOL) return SKCOL;
+  SKCOL = [];
+  THEMES_SK.forEach(([k, n]) => { for (let i = 0; i < 12; i++) SKCOL.push({ id: `${k}-${i}`, theme: k, name: `${n} ${i + 1}`, variant: (k === 'wizard' || i % 4 === 3) && k !== 'knight' ? 'slim' : 'classic', seed: i }); });
+  return SKCOL;
+}
+const skColUrl = s => s.url || (s.url = genSkin(s.seed, s.theme));
+
+/* ---------- editor state ---------- */
+const SE = { tool: 'pen', color: '#FF7A3D', size: 1, mirror: false, layer: 'base', recent: [], undo: [], redo: [], view: '3d', grid: true, hide: {}, variant: 'classic', name: 'Mein Skin', id: null, dirty: false };
+function seCanvas() {
+  if (!SE.cv) { SE.cv = document.createElement('canvas'); SE.cv.width = SE.cv.height = 64; SE.P = skPainter(SE.cv); }
+  return SE.cv;
+}
+async function seLoad(url, name, variant, id) {
+  seCanvas();
+  const im = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = url; });
+  const x = SE.P.x; x.clearRect(0, 0, 64, 64);
+  if (im) {
+    if (im.naturalHeight === 32) { x.drawImage(im, 0, 0); x.save(); x.translate(64, 0); x.scale(-1, 1); x.restore(); x.drawImage(im, 0, 16, 16, 16, 16, 48, 16, 16); x.drawImage(im, 40, 16, 16, 16, 32, 48, 16, 16); }
+    else x.drawImage(im, 0, 0);
+  }
+  SE.name = name || 'Mein Skin'; SE.variant = variant || 'classic'; SE.id = id || null; SE.undo = []; SE.redo = []; SE.dirty = false;
+}
+const seUrl = () => SE.cv.toDataURL('image/png');
+function sePush() { SE.undo.push(SE.P.x.getImageData(0, 0, 64, 64)); if (SE.undo.length > 80) SE.undo.shift(); SE.redo = []; SE.dirty = true; }
+function seUndo(redo) {
+  const from = redo ? SE.redo : SE.undo, to = redo ? SE.undo : SE.redo; if (!from.length) return;
+  to.push(SE.P.x.getImageData(0, 0, 64, 64)); SE.P.x.putImageData(from.pop(), 0, 0); seRefresh();
+}
+// which part / face a texture pixel belongs to, to mirror strokes between left and right limbs
+function seMirrorPx(u, v) {
+  const pairs = [['rarm', 'larm'], ['rleg', 'lleg']];
+  for (const L of [0, 1]) for (const [a, b] of pairs) for (const [src, dst] of [[a, b], [b, a]]) {
+    const [su, sv, w, h, d] = SKP[src][L], [du, dv] = SKP[dst][L];
+    if (u >= su && u < su + 2 * (d + w) && v >= sv && v < sv + d + h) {
+      const lu = u - su, lv = v - sv;
+      // mirror across the limb: swap right/left side faces and flip x on front/back
+      let mu = lu;
+      if (lv >= d) { if (lu < d) mu = d + w + (d - 1 - lu); else if (lu < d + w) mu = d + (w - 1 - (lu - d)); else if (lu < 2 * d + w) mu = d - 1 - (lu - d - w); else mu = 2 * d + w + (w - 1 - (lu - 2 * d - w)); }
+      else if (lu >= d && lu < d + 2 * w) mu = lu < d + w ? d + (w - 1 - (lu - d)) : d + w + (w - 1 - (lu - d - w));
+      return [du + mu, dv + lv];
+    }
+  }
+  // head / body: mirror within the part
+  for (const L of [0, 1]) for (const k of ['head', 'body']) {
+    const [su, sv, w, h, d] = SKP[k][L];
+    if (u >= su && u < su + 2 * (d + w) && v >= sv && v < sv + d + h) {
+      const lu = u - su, lv = v - sv;
+      let mu = lu;
+      if (lv >= d) { if (lu < d) mu = d + w + (d - 1 - lu); else if (lu < d + w) mu = d + (w - 1 - (lu - d)); else if (lu < 2 * d + w) mu = d - 1 - (lu - d - w); else mu = 2 * d + w + (w - 1 - (lu - 2 * d - w)); }
+      else if (lu >= d && lu < d + 2 * w) mu = lu < d + w ? d + (w - 1 - (lu - d)) : d + w + (w - 1 - (lu - d - w));
+      return [su + mu, sv + lv];
+    }
+  }
+  return null;
+}
+function sePixel(u, v, erase) {
+  const x = SE.P.x, put = (a, b) => {
+    if (a < 0 || b < 0 || a > 63 || b > 63) return;
+    if (erase) x.clearRect(a, b, 1, 1);
+    else if (SE.tool === 'shade' || SE.tool === 'light') {
+      const p = x.getImageData(a, b, 1, 1).data; if (!p[3]) return;
+      const f = SE.tool === 'shade' ? -.1 : .1; x.fillStyle = shade(rgbHex(p[0], p[1], p[2]), f); x.fillRect(a, b, 1, 1);
+    } else if (SE.tool === 'noise') { x.fillStyle = shade(SE.color, (Math.random() - .5) * .25); x.fillRect(a, b, 1, 1); }
+    else { x.fillStyle = SE.color; x.fillRect(a, b, 1, 1); }
+  };
+  for (let i = 0; i < SE.size; i++) for (let j = 0; j < SE.size; j++) {
+    put(u + i, v + j);
+    if (SE.mirror) { const m = seMirrorPx(u + i, v + j); if (m) put(m[0], m[1]); }
+  }
+}
+function seFill(u, v) {
+  const x = SE.P.x, im = x.getImageData(0, 0, 64, 64), d = im.data, at = (a, b) => (b * 64 + a) * 4;
+  const t = d.slice(at(u, v), at(u, v) + 4), [r, g, b] = hex2(SE.color);
+  // fill stays inside the clicked face so it never bleeds into other body parts
+  const reg = seRegion(u, v);
+  if (t[0] === r && t[1] === g && t[2] === b && t[3] === 255) return;
+  const st = [[u, v]], seen = new Set();
+  while (st.length) {
+    const [a, c] = st.pop(), k = c * 64 + a; if (seen.has(k)) continue; seen.add(k);
+    if (a < reg[0] || c < reg[1] || a >= reg[0] + reg[2] || c >= reg[1] + reg[3]) continue;
+    const i = at(a, c); if (Math.abs(d[i] - t[0]) + Math.abs(d[i + 1] - t[1]) + Math.abs(d[i + 2] - t[2]) + Math.abs(d[i + 3] - t[3]) > 24) continue;
+    d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+    st.push([a + 1, c], [a - 1, c], [a, c + 1], [a, c - 1]);
+  }
+  x.putImageData(im, 0, 0);
+}
+// rectangle of the face that contains a texture pixel
+function seRegion(u, v) {
+  for (const L of [0, 1]) for (const k in SKP) {
+    const [su, sv, w, h, d] = SKP[k][L];
+    const faces = [[su + d, sv, w, d], [su + d + w, sv, w, d], [su, sv + d, d, h], [su + d, sv + d, w, h], [su + d + w, sv + d, d, h], [su + 2 * d + w, sv + d, w, h]];
+    for (const f of faces) if (u >= f[0] && u < f[0] + f[2] && v >= f[1] && v < f[1] + f[3]) return f;
+  }
+  return [0, 0, 64, 64];
+}
+function seApplyAt(u, v, e) {
+  u = Math.floor(u); v = Math.floor(v);
+  if (SE.tool === 'pick') { const p = SE.P.x.getImageData(u, v, 1, 1).data; if (p[3]) { seColor(rgbHex(p[0], p[1], p[2])); SE.tool = SE.lastTool || 'pen'; seTools(); } return; }
+  if (SE.tool === 'fill') { seFill(u, v); if (SE.mirror) { const m = seMirrorPx(u, v); if (m) seFill(m[0], m[1]); } }
+  else sePixel(u, v, SE.tool === 'erase' || e?.button === 2);
+  seRefresh();
+}
+let seRaf = 0;
+function seRefresh() {
+  cancelAnimationFrame(seRaf);
+  seRaf = requestAnimationFrame(() => {
+    const url = seUrl(), m = $('#seStage .mcm'); if (m) m.style.setProperty('--skt', `url('${url}')`);
+    seDraw2d();
+  });
+}
+function seColor(c) {
+  SE.color = c; SE.recent = [c, ...SE.recent.filter(x => x !== c)].slice(0, 12);
+  if ($('#seCol')) { $('#seCol').value = c; $('#seHex').value = c.toUpperCase(); $('#seSw').style.background = c; $('#seRecent').innerHTML = SE.recent.map(x => `<button style="background:${x}" data-c="${x}"></button>`).join(''); }
+}
+/* ---------- 3D model that paints ---------- */
+function seModel() {
+  const U = 12, slim = SE.variant === 'slim';
+  return skinModel('@var', slim, U, false).replace('class="mcm"', `class="mcm edit" style="--skt:url('${seUrl()}')"`);
+}
+function seStage() {
+  const st = $('#seStage'); if (!st) return;
+  st.innerHTML = '<span class="floor"></span>' + seModel();
+  st.classList.toggle('noov', SE.layer === 'base');
+  Object.entries(SE.hide).forEach(([k, v]) => st.querySelector('.mcm .' + ({ head: 'hd', body: 'bd', rarm: 'ra', larm: 'la', rleg: 'rl', lleg: 'll' })[k])?.classList.toggle('hid', v));
+  seView();
+}
+function seView() { const m = $('#seStage .mcm'); if (m) m.style.transform = `rotateX(${SE.tilt ?? -10}deg) rotateY(${SE.rot ?? -28}deg)`; }
+function seFaceUV(el, e) {
+  const fu = +el.dataset.u, fv = +el.dataset.v, fw = +el.dataset.w, fh = +el.dataset.h;
+  const r = el.getBoundingClientRect(), ox = e.offsetX, oy = e.offsetY, W = el.offsetWidth, H = el.offsetHeight;
+  if (!W || !H) return null;
+  return [fu + Math.min(fw - 1, Math.max(0, Math.floor(ox / W * fw))), fv + Math.min(fh - 1, Math.max(0, Math.floor(oy / H * fh)))];
+}
+/* ---------- 2D texture view ---------- */
+function seDraw2d() {
+  const c = $('#se2d'); if (!c) return;
+  const x = c.getContext('2d'), S2 = c.width / 64; x.imageSmoothingEnabled = false;
+  x.clearRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 64; i += 2) for (let j = 0; j < 64; j += 2) { x.fillStyle = (i + j) % 4 ? '#1a1a1f' : '#141418'; x.fillRect(i * S2, j * S2, 2 * S2, 2 * S2); }
+  // used areas slightly lighter so you see where to paint
+  for (const L of [0, 1]) for (const k in SKP) { const [u, v, w, h, d] = SKP[k][L]; x.fillStyle = L ? 'rgba(139,123,255,.06)' : 'rgba(255,255,255,.05)'; x.fillRect((u + d) * S2, v * S2, 2 * w * S2, d * S2); x.fillRect(u * S2, (v + d) * S2, 2 * (d + w) * S2, h * S2); }
+  x.drawImage(SE.cv, 0, 0, c.width, c.height);
+  if (SE.grid) { x.strokeStyle = 'rgba(255,255,255,.06)'; x.lineWidth = 1; x.beginPath(); for (let i = 0; i <= 64; i++) { x.moveTo(i * S2 + .5, 0); x.lineTo(i * S2 + .5, c.height); x.moveTo(0, i * S2 + .5); x.lineTo(c.width, i * S2 + .5); } x.stroke(); }
+  x.strokeStyle = 'rgba(255,255,255,.28)'; x.lineWidth = 1;
+  for (const L of [0, 1]) for (const k in SKP) { const [u, v, w, h, d] = SKP[k][L]; x.strokeRect((u + d) * S2 + .5, v * S2 + .5, 2 * w * S2, d * S2); x.strokeRect(u * S2 + .5, (v + d) * S2 + .5, 2 * (d + w) * S2, h * S2); }
+  if (SE.hover) { x.strokeStyle = '#fff'; x.lineWidth = 2; x.strokeRect(SE.hover[0] * S2 + 1, SE.hover[1] * S2 + 1, SE.size * S2 - 2, SE.size * S2 - 2); }
+}
+/* ---------- editor page ---------- */
+const SETOOLS = [['pen', 'edit', 'Stift', 'B'], ['erase', 'x', 'Radierer', 'E'], ['fill', 'box', 'Füllen', 'G'], ['pick', 'target', 'Pipette', 'I'], ['shade', 'minus', 'Abdunkeln', 'D'], ['light', 'sun', 'Aufhellen', 'L'], ['noise', 'sparkle', 'Struktur-Pinsel', 'N']];
+const SEPAL = ['#F3D2B3', '#E8B894', '#D49A73', '#B97A55', '#8D5A3F', '#5E3B28', '#2B1D14', '#7A4B26', '#E3C16F', '#111114', '#F4F4F5', '#9CA3AF', '#E5484D', '#FF7A3D', '#F5B53D', '#84CC16', '#2DD4A0', '#14B8A6', '#3D9BFF', '#1E3A8A', '#8B7BFF', '#E040FB', '#FF5C8A', '#7C2D12'];
+function seTools() { $$('#seTools [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === SE.tool)); const st = $('#seStage'); if (st) st.dataset.tool = SE.tool; const c = $('#se2d'); if (c) c.dataset.tool = SE.tool; }
+async function skEditorPage(body) {
+  seCanvas();
+  if (!SE.loaded) { SE.loaded = true; await seLoad(genSkin(Math.floor(Math.random() * 99), 'casual'), 'Mein Skin', 'classic'); }
+  body.innerHTML = `<div class="sed">
+    <div class="se-tools" id="seTools">${SETOOLS.map(([k, ic, n, key]) => `<button data-t="${k}" title="${n} (${key})">${ico(ic)}</button>`).join('')}
+      <hr><button data-sz="1" title="Pinsel 1px" class="sz">1</button><button data-sz="2" title="Pinsel 2px" class="sz">2</button><button data-sz="3" title="Pinsel 3px" class="sz">3</button>
+      <hr><button id="seMir" title="Spiegeln (M): links und rechts gleichzeitig malen">${ico('dup')}</button><button id="seUndo" title="Rückgängig (Strg+Z)">${ico('back')}</button><button id="seRedo" title="Wiederholen (Strg+Y)" style="transform:scaleX(-1)">${ico('back')}</button></div>
+    <div class="se-main">
+      <div class="se-top"><div class="seg sm" id="seViewSw"><button data-vw="3d">3D malen</button><button data-vw="2d">Textur</button><button data-vw="split">Beides</button></div>
+        <div class="seg sm" id="seLayer"><button data-l="base">Basis</button><button data-l="over">Überzug</button></div>
+        <span class="sp"></span><div class="seg sm" id="seVar"><button data-v="classic">Klassisch</button><button data-v="slim">Schlank</button></div></div>
+      <div class="se-canvas" id="seCv">
+        <div class="se-3d"><div class="stage3 sestage" id="seStage"></div>
+          <div class="se-orbit"><button data-rv="0">Vorne</button><button data-rv="180">Hinten</button><button data-rv="-90">Links</button><button data-rv="90">Rechts</button></div>
+          <div class="se-parts" id="seParts">${Object.entries(SKPN).map(([k, n]) => `<button data-p="${k}" class="on" title="${n} ein/aus">${n}</button>`).join('')}</div></div>
+        <div class="se-2d"><canvas id="se2d" width="512" height="512"></canvas></div>
+      </div>
+      <div class="se-hint">${ico('info')}<span>Linke Maustaste malt, rechte radiert. Ziehen neben dem Modell, mit <b>Leertaste</b> oder mittlerer Maustaste dreht es. Mausrad zoomt.</span></div>
+    </div>
+    <div class="se-side">
+      <div class="fbox"><div class="fh">${ico('palette')}Farbe</div><div class="se-color"><label class="se-sw" id="seSw" style="background:${SE.color}"><input type="color" id="seCol" value="${SE.color}"></label><input class="in" id="seHex" value="${SE.color.toUpperCase()}" maxlength="7"></div>
+        <div class="se-pal" id="sePal">${SEPAL.map(c => `<button style="background:${c}" data-c="${c}"></button>`).join('')}</div>
+        <div class="se-sub">Zuletzt</div><div class="se-pal small" id="seRecent"></div></div>
+      <div class="fbox"><div class="fh">${ico('sparkle')}Schnellstart</div><div class="se-quick">
+        <button data-q="rnd">${ico('rotate')}Zufälliger Skin</button><button data-q="blank">${ico('square')}Leere Vorlage</button><button data-q="skin">${ico('user')}Nur Haut</button>
+        <button data-q="m2l">${ico('dup')}Rechts → Links kopieren</button><button data-q="clrov">${ico('layers')}Überzug leeren</button><button data-q="open">${ico('upload')}PNG öffnen</button></div></div>
+      <div class="fbox"><div class="fh">${ico('check')}Speichern</div><div style="padding:0 6px 6px">
+        <input class="in" id="seName" value="${esc(SE.name)}" placeholder="Name">
+        <div class="se-save"><button class="btn" id="seLib">${ico('library')}In Bibliothek</button><button class="btn" id="seExp">${ico('download')}PNG</button></div>
+        ${S.accounts.length ? `<button class="btn p" id="seApply" style="width:100%;justify-content:center;margin-top:8px">${ico('check')}Als Skin übernehmen</button>` : `<p class="fine" style="margin-top:8px">Zum Übernehmen mit Microsoft anmelden.</p>`}</div></div>
+    </div></div>`;
+  seStage(); seColor(SE.color); seTools(); seLayout();
+  $$('#seTools .sz').forEach(b => b.classList.toggle('on', +b.dataset.sz === SE.size));
+  $('#seMir').classList.toggle('on', SE.mirror);
+  $('#seTools').onclick = e => {
+    const t = e.target.closest('[data-t]'); if (t) { if (t.dataset.t === 'pick') SE.lastTool = SE.tool; SE.tool = t.dataset.t; seTools(); return; }
+    const z = e.target.closest('[data-sz]'); if (z) { SE.size = +z.dataset.sz; $$('#seTools .sz').forEach(b => b.classList.toggle('on', b === z)); return; }
+    if (e.target.closest('#seMir')) { SE.mirror = !SE.mirror; $('#seMir').classList.toggle('on', SE.mirror); toast(SE.mirror ? 'Spiegeln an' : 'Spiegeln aus'); }
+    if (e.target.closest('#seUndo')) seUndo(false);
+    if (e.target.closest('#seRedo')) seUndo(true);
+  };
+  $('#seViewSw').onclick = e => { const b = e.target.closest('[data-vw]'); if (!b) return; SE.view = b.dataset.vw; seLayout(); };
+  $('#seLayer').onclick = e => { const b = e.target.closest('[data-l]'); if (!b) return; SE.layer = b.dataset.l; seLayout(); $('#seStage').classList.toggle('noov', SE.layer === 'base'); };
+  $('#seVar').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; SE.variant = b.dataset.v; seLayout(); seStage(); };
+  $('#seParts').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; SE.hide[b.dataset.p] = !SE.hide[b.dataset.p]; b.classList.toggle('on', !SE.hide[b.dataset.p]); seStage(); };
+  $('#seCv').querySelector('.se-orbit').onclick = e => { const b = e.target.closest('[data-rv]'); if (!b) return; SE.rot = +b.dataset.rv; SE.tilt = -8; seView(); };
+  $('#seCol').oninput = e => seColor(e.target.value);
+  $('#seHex').onchange = e => { const v = e.target.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) seColor((v[0] === '#' ? v : '#' + v).toLowerCase()); };
+  const palClick = e => { const b = e.target.closest('[data-c]'); if (b) { seColor(b.dataset.c); if (SE.tool === 'erase' || SE.tool === 'pick') { SE.tool = 'pen'; seTools(); } } };
+  $('#sePal').onclick = palClick; $('#seRecent').onclick = palClick;
+  $('#seName').oninput = e => SE.name = e.target.value;
+  $('.se-quick').onclick = async e => {
+    const q = e.target.closest('[data-q]')?.dataset.q; if (!q) return;
+    if (q === 'open') { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/png'; inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; const url = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.readAsDataURL(f); }); sePush(); await seLoad(url, f.name.replace(/\.png$/i, ''), SE.variant); seStage(); seRefresh(); $('#seName').value = SE.name; }; inp.click(); return; }
+    sePush();
+    if (q === 'rnd') { const th = THEMES_SK[Math.floor(Math.random() * THEMES_SK.length)][0]; const im = new Image(); im.onload = () => { SE.P.x.clearRect(0, 0, 64, 64); SE.P.x.drawImage(im, 0, 0); seRefresh(); }; im.src = genSkin(Math.floor(Math.random() * 1e6), th); return; }
+    if (q === 'blank') SE.P.x.clearRect(0, 0, 64, 64), Object.keys(SKP).forEach(k => SE.P.box(SKP[k][0], '#9CA3AF'));
+    if (q === 'skin') { SE.P.x.clearRect(0, 0, 64, 64); Object.keys(SKP).forEach(k => SE.P.box(SKP[k][0], SE.color)); }
+    if (q === 'clrov') Object.keys(SKP).forEach(k => { const [u, v, w, h, d] = SKP[k][1]; SE.P.clear(u, v, 2 * (d + w), d + h); });
+    if (q === 'm2l') for (const L of [0, 1]) for (const [a, b] of [['rarm', 'larm'], ['rleg', 'lleg']]) { const [su, sv, w, h, d] = SKP[a][L]; for (let u = su; u < su + 2 * (d + w); u++) for (let v = sv; v < sv + d + h; v++) { const p = SE.P.x.getImageData(u, v, 1, 1).data, m = seMirrorPx(u, v); if (!m) continue; if (p[3]) { SE.P.x.fillStyle = `rgba(${p[0]},${p[1]},${p[2]},${p[3] / 255})`; SE.P.x.clearRect(m[0], m[1], 1, 1); SE.P.x.fillRect(m[0], m[1], 1, 1); } else SE.P.x.clearRect(m[0], m[1], 1, 1); } }
+    seRefresh();
+  };
+  $('#seExp').onclick = () => { const a = document.createElement('a'); a.href = seUrl(); a.download = (SE.name || 'skin') + '.png'; a.click(); };
+  const save = async () => {
+    const r = await api('skins.save', { id: SE.id, data: seUrl(), name: SE.name || 'Mein Skin', variant: SE.variant });
+    SE.id = r.id; SE.dirty = false;
+    if (S.skins?.lib) { S.skins.lib = S.skins.lib.filter(x => x.id !== r.id); S.skins.lib.unshift(r); }
+    return r;
+  };
+  $('#seLib').onclick = async () => { try { await save(); toast('Gespeichert', SE.name); } catch (e) { fail('Speichern', e); } };
+  if ($('#seApply')) $('#seApply').onclick = async () => {
+    const b = $('#seApply'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird übernommen…';
+    try { const r = await save(); await api('skin.apply', { id: r.id, variant: SE.variant }); toast('Skin übernommen', 'Im Spiel nach dem nächsten Start sichtbar'); }
+    catch (e) { fail('Skin', e); }
+    b.disabled = false; b.innerHTML = ico('check') + 'Als Skin übernehmen';
+  };
+  seBindPaint();
+}
+function seLayout() {
+  $$('#seViewSw button').forEach(b => b.classList.toggle('on', b.dataset.vw === SE.view));
+  $$('#seLayer button').forEach(b => b.classList.toggle('on', b.dataset.l === SE.layer));
+  $$('#seVar button').forEach(b => b.classList.toggle('on', b.dataset.v === SE.variant));
+  const c = $('#seCv'); if (c) c.dataset.view = SE.view;
+  seDraw2d();
+}
+function seBindPaint() {
+  const st = $('#seStage'), c2 = $('#se2d');
+  let painting = false, rotating = null, space = false;
+  const keyd = e => {
+    if (S.page !== 'skins' || S.skTab !== 'editor' || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    if (e.code === 'Space') { space = true; st?.classList.add('grab'); e.preventDefault(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); seUndo(e.shiftKey); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); seUndo(true); }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = SETOOLS.find(x => x[3].toLowerCase() === e.key.toLowerCase()); if (t) { if (t[0] === 'pick') SE.lastTool = SE.tool; SE.tool = t[0]; seTools(); }
+    if (e.key.toLowerCase() === 'm') $('#seMir')?.click();
+    if (e.key === 'x') { /* swap */ }
+  };
+  const keyu = e => { if (e.code === 'Space') { space = false; st?.classList.remove('grab'); } };
+  document.removeEventListener('keydown', SE.kd || (() => { })); document.removeEventListener('keyup', SE.ku || (() => { }));
+  SE.kd = keyd; SE.ku = keyu; document.addEventListener('keydown', keyd); document.addEventListener('keyup', keyu);
+  const hit3 = e => { const f = e.target.closest?.('.f[data-u]'); return f ? seFaceUV(f, e) : null; };
+  st.oncontextmenu = e => e.preventDefault(); c2.oncontextmenu = e => e.preventDefault();
+  st.onpointerdown = e => {
+    if (space || e.button === 1 || !e.target.closest('.f[data-u]')) { rotating = { x: e.clientX, y: e.clientY, r: SE.rot ?? -28, t: SE.tilt ?? -10 }; st.setPointerCapture(e.pointerId); return; }
+    const p = hit3(e); if (!p) return; sePush(); painting = e.button === 2 ? 'erase' : true; seApplyAt(p[0], p[1], e);
+  };
+  st.onpointermove = e => {
+    if (rotating) { SE.rot = rotating.r + (e.clientX - rotating.x) * .5; SE.tilt = Math.max(-60, Math.min(60, rotating.t - (e.clientY - rotating.y) * .4)); seView(); return; }
+    const p = hit3(e); SE.hover = p; if (painting && p && SE.tool !== 'fill' && SE.tool !== 'pick') seApplyAt(p[0], p[1], { button: painting === 'erase' ? 2 : 0 }); else if (SE.view !== '3d') seDraw2d();
+  };
+  st.onpointerup = st.onpointerleave = () => { painting = false; rotating = null; };
+  st.onwheel = e => { e.preventDefault(); SE.zoom = Math.max(.6, Math.min(1.8, (SE.zoom || 1) - e.deltaY * .001)); st.style.setProperty('--z', SE.zoom); };
+  const uv2 = e => { const r = c2.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * 64), Math.floor((e.clientY - r.top) / r.height * 64)]; };
+  c2.onpointerdown = e => { sePush(); painting = e.button === 2 ? 'erase' : true; c2.setPointerCapture(e.pointerId); const [u, v] = uv2(e); seApplyAt(u, v, e); };
+  c2.onpointermove = e => { const [u, v] = uv2(e); SE.hover = [u, v]; if (painting && SE.tool !== 'fill' && SE.tool !== 'pick') seApplyAt(u, v, { button: painting === 'erase' ? 2 : 0 }); else seDraw2d(); };
+  c2.onpointerup = () => painting = false;
+  c2.onpointerleave = () => { painting = false; SE.hover = null; seDraw2d(); };
+}
+/* ---------- collection page ---------- */
+const SKC = { theme: '', q: '', sel: null, page: 1 };
+async function skCollectionPage(body) {
+  const all = skCollection();
+  body.innerHTML = `<div class="skcol"><div class="skc-main">
+      <div class="skc-bar"><div class="fchips" id="skcTh"><button class="fchip ${!SKC.theme ? 'on' : ''}" data-th="">Alle <em>${all.length}</em></button>${THEMES_SK.map(([k, n]) => `<button class="fchip ${SKC.theme === k ? 'on' : ''}" data-th="${k}">${n}</button>`).join('')}</div></div>
+      <div class="skc-grid" id="skcGrid"></div><div id="skcMore"></div></div>
+    <div class="skc-side" id="skcSide"></div></div>`;
+  $('#skcTh').onclick = e => { const b = e.target.closest('[data-th]'); if (!b) return; SKC.theme = b.dataset.th; SKC.page = 1; $$('#skcTh .fchip').forEach(x => x.classList.toggle('on', x === b)); skcGrid(); };
+  skcGrid(); skcSide();
+}
+function skcList() { return skCollection().filter(s => !SKC.theme || s.theme === SKC.theme); }
+async function skcGrid() {
+  const g = $('#skcGrid'); if (!g) return;
+  const l = skcList(), shown = l.slice(0, SKC.page * 48);
+  g.innerHTML = shown.map(s => `<button class="skt ${SKC.sel === s.id ? 'on' : ''}" data-id="${s.id}"><span class="skt-img"><img alt="" data-u="${s.id}"></span><b>${esc(s.name)}</b><small>${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></button>`).join('');
+  $('#skcMore').innerHTML = l.length > shown.length ? `<button class="btn" style="margin:16px auto;display:flex" id="skcMoreB">${ico('chevd')}Mehr laden (${l.length - shown.length})</button>` : '';
+  if ($('#skcMoreB')) $('#skcMoreB').onclick = () => { SKC.page++; skcGrid(); };
+  g.onclick = e => { const b = e.target.closest('[data-id]'); if (!b) return; SKC.sel = b.dataset.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x === b)); skcSide(); };
+  // thumbnails are generated in small batches so the page stays smooth
+  const imgs = [...g.querySelectorAll('img[data-u]')];
+  for (let i = 0; i < imgs.length; i++) {
+    const s = skCollection().find(x => x.id === imgs[i].dataset.u);
+    imgs[i].src = await skThumb(skColUrl(s));
+    if (i % 12 === 11) await new Promise(r => setTimeout(r, 0));
+    if (!$('#skcGrid')) return;
+  }
+}
+async function skcSide() {
+  const el = $('#skcSide'); if (!el) return;
+  const s = skCollection().find(x => x.id === SKC.sel) || skcList()[0]; if (!s) return;
+  SKC.sel = s.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x.dataset.id === s.id));
+  const url = skColUrl(s);
+  el.innerHTML = `<div class="skc-view"><div class="stage3" id="skcStage"><span class="floor"></span>${skinModel(url, s.variant === 'slim', 8)}</div></div>
+    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(THEMES_SK.find(t => t[0] === s.theme)[1])} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
+    <div class="col" style="gap:8px;margin-top:14px">
+      ${S.accounts.length ? `<button class="btn p" id="skcApply" style="justify-content:center">${ico('check')}Übernehmen</button>` : ''}
+      <button class="btn" id="skcEdit" style="justify-content:center">${ico('edit')}Im Editor bearbeiten</button>
+      <button class="btn" id="skcSave" style="justify-content:center">${ico('library')}In Bibliothek</button></div>`;
+  const m = $('#skcStage .mcm'); let r = -25; const spin = () => { if (!$('#skcStage') || SKC.sel !== s.id) return; r += .4; m.style.transform = `rotateX(-8deg) rotateY(${r}deg)`; requestAnimationFrame(spin); }; spin();
+  const add = async () => { const e = await api('skins.add', { data: url, url, name: s.name, variant: s.variant }); if (S.skins?.lib) S.skins.lib.unshift(e); return e; };
+  $('#skcSave').onclick = async () => { try { await add(); toast('In Bibliothek', s.name); } catch (e) { fail('Skin', e); } };
+  $('#skcEdit').onclick = async () => { await seLoad(url, s.name, s.variant); SE.loaded = true; S.skTab = 'editor'; go('skins', {}, false); };
+  if ($('#skcApply')) $('#skcApply').onclick = async () => { const b = $('#skcApply'); b.disabled = true; try { const e = await add(); await api('skin.apply', { id: e.id, variant: s.variant }); toast('Skin übernommen', s.name); } catch (er) { fail('Skin', er); } b.disabled = false; };
+}
+
 /* original demo skins drawn on a canvas (no Mojang assets) */
 const demoCache = {};
 function demoSkin(n) {
@@ -1940,7 +2527,7 @@ async function setBody() {
       + `<div class="row" style="margin-top:14px"><button class="btn p" onclick="login()">${ico('plus')}Konto hinzufügen</button></div><p class="fine">Die Anmeldung läuft über das offizielle Microsoft-Fenster. OrbitLauncher sieht dein Passwort nie und speichert nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI).</p>`);
   }
   if (S.stab === 'design') {
-    b.innerHTML = card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`)
+    b.innerHTML = card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['aurora', 'Polarlicht', 'Wehende Nordlichter in deiner Farbe'], ['rain', 'Regen', 'Ruhiger, schräger Regen'], ['fireflies', 'Glühwürmchen', 'Leuchtende Punkte, die umherschwirren'], ['sakura', 'Kirschblüten', 'Fallende Blütenblätter'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`)
       + '<div class="mt"></div>' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div><p class="fine">Gilt auch für das Ingame-Menü des Orbit Clients.</p>`)
       + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
@@ -2680,15 +3267,20 @@ function fxSet(mode) {
 function fxInit() {
   const c = $('#fx'); FX.dpr = Math.min(1.5, devicePixelRatio || 1);
   FX.w = innerWidth; FX.h = innerHeight; c.width = FX.w * FX.dpr; c.height = FX.h * FX.dpr;
-  const n = FX.mode === 'snow' ? Math.round(FX.w * FX.h / 9500) : FX.mode === 'embers' ? Math.round(FX.w * FX.h / 22000) : FX.mode === 'stars' ? Math.round(FX.w * FX.h / 5200) : 0;
+  const A = FX.w * FX.h;
+  const n = { snow: A / 9500, embers: A / 22000, stars: A / 5200, rain: A / 6000, fireflies: A / 26000, sakura: A / 26000, aurora: A / 9000 }[FX.mode] | 0;
   FX.parts = Array.from({ length: n }, () => fxNew(true));
 }
 function fxNew(any) {
   const W = FX.w, H = FX.h, r = Math.random;
   if (FX.mode === 'snow') { const z = r(); return { x: r() * W, y: any ? r() * H : -10, z, s: 0.8 + z * 2.6, vy: 0.25 + z * 0.9, sw: r() * Math.PI * 2, sp: 0.004 + r() * 0.012, a: 0.25 + z * 0.6 }; }
   if (FX.mode === 'embers') { const z = r(); return { x: r() * W, y: any ? r() * H : H + 10, z, s: 0.8 + z * 2.2, vy: -(0.25 + z * 0.8), vx: (r() - 0.5) * 0.3, life: any ? r() * 400 : 0, max: 500 + r() * 700, sw: r() * 6 }; }
+  if (FX.mode === 'rain') { const z = r(); return { x: r() * (W + 200), y: any ? r() * H : -30 - r() * 200, z, l: 8 + z * 16, vy: 9 + z * 9, a: 0.12 + z * 0.3 }; }
+  if (FX.mode === 'fireflies') return { x: r() * W, y: r() * H, s: 1 + r() * 1.8, a: r() * 6.28, sp: 0.15 + r() * 0.35, t: r() * 6.28, tw: 0.02 + r() * 0.03 };
+  if (FX.mode === 'sakura') { const z = r(); return { x: r() * W * 1.2, y: any ? r() * H : -20, z, s: 3 + z * 5, vy: 0.35 + z * 0.8, vx: 0.25 + r() * 0.5, rot: r() * 6.28, vr: (r() - 0.5) * 0.06, sw: r() * 6.28 }; }
   return { x: r() * W, y: r() * H, s: 0.4 + r() * 1.3, t: r() * 6.28, sp: 0.01 + r() * 0.03 };
 }
+let fxT = 0;
 let fxShoot = null;
 function fxDraw(dt) {
   const c = $('#fx'), x = c.getContext('2d'), d = FX.dpr;
@@ -2711,6 +3303,45 @@ function fxDraw(dt) {
       g.addColorStop(0, `rgba(${acc},${0.9 * k})`); g.addColorStop(1, `rgba(${acc},0)`);
       x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, p.s * 4, 0, 6.283); x.fill();
     }
+  } else if (FX.mode === 'rain') {
+    x.lineWidth = 1; x.strokeStyle = '#bcd4ff';
+    for (const p of FX.parts) {
+      p.y += p.vy * dt; p.x -= p.vy * 0.18 * dt;
+      if (p.y > FX.h + 20) Object.assign(p, fxNew(false));
+      x.globalAlpha = p.a; x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(p.x + p.l * 0.18, p.y - p.l); x.stroke();
+    }
+  } else if (FX.mode === 'fireflies') {
+    for (const p of FX.parts) {
+      p.a += (Math.random() - 0.5) * 0.12 * dt; p.x += Math.cos(p.a) * p.sp * dt; p.y += Math.sin(p.a) * p.sp * dt; p.t += p.tw * dt;
+      if (p.x < -20) p.x = FX.w + 20; if (p.x > FX.w + 20) p.x = -20; if (p.y < -20) p.y = FX.h + 20; if (p.y > FX.h + 20) p.y = -20;
+      const k = 0.25 + Math.max(0, Math.sin(p.t)) * 0.75, rr = p.s * 6;
+      const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr); g.addColorStop(0, `rgba(255,240,150,${0.85 * k})`); g.addColorStop(0.25, `rgba(${acc},${0.35 * k})`); g.addColorStop(1, `rgba(${acc},0)`);
+      x.globalAlpha = 1; x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, rr, 0, 6.283); x.fill();
+    }
+  } else if (FX.mode === 'sakura') {
+    for (const p of FX.parts) {
+      p.sw += 0.02 * dt; p.y += p.vy * dt; p.x += (p.vx + Math.sin(p.sw) * 0.6) * dt; p.rot += p.vr * dt;
+      if (p.y > FX.h + 20 || p.x > FX.w + 40) Object.assign(p, fxNew(false), { x: Math.random() * FX.w * 1.1 - FX.w * 0.1 });
+      x.save(); x.translate(p.x, p.y); x.rotate(p.rot); x.scale(1, 0.55 + Math.abs(Math.sin(p.sw)) * 0.45);
+      x.globalAlpha = 0.55 + p.z * 0.35; x.fillStyle = p.z > 0.5 ? '#ffc4d8' : '#ff9fbf';
+      x.beginPath(); x.moveTo(0, -p.s); x.bezierCurveTo(p.s, -p.s, p.s, p.s * 0.6, 0, p.s); x.bezierCurveTo(-p.s, p.s * 0.6, -p.s, -p.s, 0, -p.s); x.fill(); x.restore();
+    }
+  } else if (FX.mode === 'aurora') {
+    fxT += 0.004 * dt;
+    x.fillStyle = '#fff';
+    for (const p of FX.parts) { p.t += p.sp * dt; x.globalAlpha = 0.15 + Math.abs(Math.sin(p.t)) * 0.45; x.fillRect(p.x, p.y, p.s, p.s); }
+    x.globalCompositeOperation = 'lighter';
+    const bands = [[acc, 0.16, 0], ['80,255,190', 0.12, 2.1], ['140,120,255', 0.1, 4.2]];
+    for (const [c, a, ph] of bands) {
+      const base = FX.h * 0.22;
+      for (let i = 0; i < FX.w; i += 6) {
+        const yy = base + Math.sin(i * 0.004 + fxT * 2 + ph) * 60 + Math.sin(i * 0.011 - fxT * 3 + ph) * 25;
+        const h = 140 + Math.sin(i * 0.007 + fxT * 4 + ph) * 70;
+        const g = x.createLinearGradient(0, yy - h, 0, yy + 30); g.addColorStop(0, `rgba(${c},0)`); g.addColorStop(0.75, `rgba(${c},${a})`); g.addColorStop(1, `rgba(${c},0)`);
+        x.globalAlpha = 1; x.fillStyle = g; x.fillRect(i, yy - h, 6, h + 30);
+      }
+    }
+    x.globalCompositeOperation = 'source-over';
   } else if (FX.mode === 'stars') {
     x.fillStyle = '#fff';
     for (const p of FX.parts) { p.t += p.sp * dt; x.globalAlpha = 0.25 + Math.abs(Math.sin(p.t)) * 0.6; x.fillRect(p.x, p.y, p.s, p.s); }
@@ -2891,6 +3522,7 @@ const Mock = {
       case 'instance.update': Object.assign(inst(), a.patch); return inst();
       case 'instance.delete': M.instances = M.instances.filter(i => i.id !== a.id); return {};
       case 'instance.duplicate': { const c = { ...inst(), id: a.id + '-kopie', name: inst().name + ' (Kopie)', lastPlayed: null, playSeconds: 0 }; M.instances.unshift(c); return c; }
+      case 'library.stats': await sleep(300); return { size: 14.2e9, worlds: 17, screenshots: 42, shaders: 6, resourcepacks: 11 };
       case 'instance.stats': await sleep(250); return { size: 1.6e9 + (inst().mods || 0) * 9e6, mods: inst().mods || 0, resourcepacks: 3, shaders: inst().loader === 'vanilla' ? 0 : 2, worlds: 4, screenshots: 12, updates: 0 };
       case 'instance.shortcut': return { path: 'C:\\Users\\Ky3ls\\Desktop\\' + inst().name + '.lnk' };
       case 'app.args': return { launch: null };
@@ -2941,7 +3573,7 @@ const Mock = {
       case 'stop': onEvent('state', { id: a.id, running: false, code: 0 }); return {};
       case 'news': try {
         const j = await (await fetch('https://launchercontent.mojang.com/v2/javaPatchNotes.json')).json();
-        return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
+        return j.entries.slice(0, 6).map(e => ({ title: e.title, version: e.version, type: e.type, date: e.date, text: e.shortText, id: e.id, image: e.image ? 'https://launchercontent.mojang.com' + e.image.url : null }));
       } catch { return [{ title: 'Minecraft Java Edition 26.3', type: 'release', date: '2026-10-21', text: 'Das Herbst-Update ist da.' }]; }
       case 'cloud.status': return { loggedIn: !!M.cloud, name: M.cloud, lastSync: M.cloud ? iso(60e3 * 3) : null };
       case 'cloud.login': await sleep(400); if (a.password === 'zweit') return { need: 'totp', ticket: 't', name: a.name }; M.cloud = a.name; setTimeout(() => { onEvent('cloud', { state: 'sync' }); setTimeout(() => onEvent('cloud', { state: 'done', pushed: 6, pulled: 0, created: 0, at: iso(0) }), 900); }, 100); return { name: a.name };
@@ -2986,6 +3618,7 @@ const Mock = {
       case 'cache.clear': return {};
       case 'skins.list': return M.skins || (M.skins = [['Orbit', 0, 'classic'], ['Waldläufer', 1, 'classic'], ['Lila Hoodie', 2, 'slim'], ['Rotes Trikot', 3, 'classic']].map(([name, n, variant]) => ({ id: 's' + n, name, variant, url: demoSkin(n), added: iso(n * DAY) })));
       case 'skins.add': if (a.url) { const e = { id: 's' + Date.now(), name: a.name, variant: a.variant, url: a.url }; M.skins.unshift(e); return e; } return null;
+      case 'skins.save': { const e = { id: a.id || 's' + Date.now(), name: a.name, variant: a.variant, url: a.data }; M.skins = (M.skins || []).filter(x => x.id !== e.id); M.skins.unshift(e); return e; }
       case 'skins.update': { const e = M.skins.find(x => x.id === a.id); if (a.name) e.name = a.name; if (a.variant) e.variant = a.variant; return {}; }
       case 'skins.remove': M.skins = M.skins.filter(x => x.id !== a.id); return {};
       case 'skin.profile': return M.prof || (M.prof = { id: M.accounts[0]?.uuid, name: 'Ky3ls', skins: [{ id: 'cur', state: 'ACTIVE', url: demoSkin(0), variant: 'CLASSIC' }], capes: [] });
