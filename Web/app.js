@@ -343,11 +343,6 @@ function onEvent(ev, d) {
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
   if (ev === 'cloud') cloudEvent(d);
-  if (ev === 'skins.added') {
-    if (S.skins?.lib && !S.skins.lib.find(x => x.id === d.id)) S.skins.lib.unshift(d);
-    toast('Skin gespeichert', d.name, true, ['Ansehen', () => { S.skTab = 'lib'; if (S.skins) S.skins.sel = d.id; go('skins', {}, false); }]);
-    if (S.page === 'skins' && S.skTab === 'lib') skinSide();
-  }
   if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); fxSet(d.fx); }
 }
 
@@ -2011,7 +2006,7 @@ PAGES.skins = async el => {
   crumbs([['Skins']]);
   const acc = activeAcc();
   S.skTab = S.skTab || 'lib';
-  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder Skins von Skindex, LabyMod und NameMC holen.</p></div>
+  el.innerHTML = `<div class="ph"><div><div class="kicker">${acc ? esc(acc.name) : 'Nicht angemeldet'}</div><h1>Skins</h1><p class="pd">Sammeln, selbst malen oder aus Orbit-Originals und den Minecraft-Standard-Skins wählen.</p></div>
     <div class="ph-r"><div class="seg sktabs" id="skTabs">${[['lib', 'Meine Skins', 'library'], ['editor', 'Editor', 'edit'], ['col', 'Sammlung', 'grid']].map(([k, n, ic]) => `<button data-k="${k}" class="${S.skTab === k ? 'on' : ''}">${ico(ic)}${n}</button>`).join('')}</div></div></div><div id="skBody"></div>`;
   $('#skTabs').onclick = e => { const b = e.target.closest('[data-k]'); if (!b || b.dataset.k === S.skTab) return; S.skTab = b.dataset.k; go('skins', {}, false); };
   if (S.skTab === 'editor') return skEditorPage($('#skBody'));
@@ -2242,6 +2237,163 @@ function skCollectionOld() {
   return SKCOL;
 }
 const skColUrl = s => s.url || (s.url = genSkin(s.seed, s.theme));
+
+/* ---------- Orbit Originals: hand-designed skins (pixel art in code, our own designs) ---------- */
+function origPainter() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const P = skPainter(cv), x = P.x;
+  // face rects of a part: f=front, b=back, r=right side, l=left side, t=top, u=bottom
+  const F = (part, L = 0) => { const [u, v, w, h, d] = SKP[part][L]; return { t: [u + d, v, w, d], u: [u + d + w, v, w, d], r: [u, v + d, d, h], f: [u + d, v + d, w, h], l: [u + d + w, v + d, d, h], b: [u + 2 * d + w, v + d, w, h] }; };
+  const at = (part, face, fx, fy, w, h, c, L = 0) => { const r = F(part, L)[face]; x.fillStyle = c; x.fillRect(r[0] + fx, r[1] + fy, w, h); };
+  const sides = ['f', 'r', 'l', 'b'];
+  // vertical gradient over the side faces of a part between rows y0..y1
+  const grad = (part, c1, c2, y0 = 0, y1, L = 0) => { const fc = F(part, L); for (const s of sides) { const [u, v, w, h] = fc[s]; const e = y1 ?? h; for (let y = y0; y < e; y++) { x.fillStyle = mix(c1, c2, (y - y0) / Math.max(1, e - y0 - 1)); x.fillRect(u, v + y, w, 1); } } };
+  const top = (part, c, L = 0) => { const [u, v, w, d] = F(part, L).t; x.fillStyle = c; x.fillRect(u, v, w, d); };
+  const bottom = (part, c, L = 0) => { const [u, v, w, d] = F(part, L).u; x.fillStyle = c; x.fillRect(u, v, w, d); };
+  const solid = (part, c, L = 0) => { grad(part, c, c, 0, undefined, L); top(part, shade(c, .08), L); bottom(part, shade(c, -.2), L); };
+  const row = (part, y, c, L = 0, h = 1) => { const fc = F(part, L); for (const s of sides) { const [u, v, w] = fc[s]; x.fillStyle = c; x.fillRect(u, v + y, w, h); } };
+  const dots = (part, face, n, c, seed, L = 0) => { const r = seedRand(seed), [u, v, w, h] = F(part, L)[face]; x.fillStyle = c; for (let i = 0; i < n; i++) x.fillRect(u + Math.floor(r() * w), v + Math.floor(r() * h), 1, 1); };
+  return { cv, P, x, F, at, grad, top, bottom, solid, row, dots };
+}
+const mix = (a, b, t) => { const A = hex2(a), B = hex2(b); return rgbHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t); };
+function origFace(o, skin, eyes, opts = {}) {
+  const { solid, at } = o;
+  solid('head', skin);
+  const eyeW = opts.eyeWhite ?? '#F4F4F5';
+  at('head', 'f', 1, 4, 2, 1, eyeW); at('head', 'f', 5, 4, 2, 1, eyeW);
+  at('head', 'f', 2, 4, 1, 1, eyes); at('head', 'f', 5, 4, 1, 1, eyes);
+  at('head', 'f', 3, 5, 2, 1, shade(skin, -.12));
+  at('head', 'f', 2, 6, 4, 1, shade(skin, -.28)); at('head', 'f', 3, 6, 2, 1, shade(skin, -.4));
+  if (opts.brows) { at('head', 'f', 1, 3, 2, 1, opts.brows); at('head', 'f', 5, 3, 2, 1, opts.brows); }
+}
+function origHair(o, c, style = 'short') {
+  const { top, at } = o, d = shade(c, -.25);
+  top('head', c);
+  for (const s of ['r', 'l', 'b']) at('head', s, 0, 0, 8, style === 'long' ? 8 : 3, c);
+  at('head', 'f', 0, 0, 8, 2, c); at('head', 'f', 0, 2, 1, style === 'long' ? 6 : 2, c); at('head', 'f', 7, 2, 1, style === 'long' ? 6 : 2, c);
+  at('head', 'f', 0, 2, 3, 1, c); at('head', 'f', 1, 0, 1, 2, d); at('head', 'f', 5, 0, 1, 2, d);
+  for (const s of ['r', 'l']) at('head', s, 1, 3, 1, 2, d);
+}
+const ORIGINALS = [
+  ['astro', 'Orbit Astronaut', 'classic', o => {
+    origFace(o, '#E8B894', '#3D7BFF'); origHair(o, '#4A2F1E');
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) o.grad(p, '#F4F4F6', '#C9CBD3');
+    o.row('body', 0, '#FF7A3D'); o.at('body', 'f', 1, 2, 6, 4, '#2A2D36'); o.at('body', 'f', 2, 3, 1, 1, '#FF7A3D'); o.at('body', 'f', 4, 3, 1, 1, '#4ADE80'); o.at('body', 'f', 5, 4, 1, 1, '#38BDF8'); o.at('body', 'f', 2, 5, 4, 1, '#3F4350');
+    o.row('body', 8, '#3F4350', 0, 1); o.at('body', 'f', 3, 8, 2, 1, '#FF7A3D');
+    o.at('body', 'b', 1, 1, 6, 9, '#A6A9B4'); o.at('body', 'b', 2, 2, 4, 3, '#FF7A3D'); o.at('body', 'b', 2, 7, 4, 2, '#7C7F8A');
+    for (const a of ['rarm', 'larm']) { o.row(a, 4, '#FF7A3D'); o.row(a, 10, '#7C7F8A', 0, 2); }
+    for (const l of ['rleg', 'lleg']) { o.row(l, 5, '#C9CBD3'); o.row(l, 9, '#FF7A3D'); o.row(l, 10, '#3F4350', 0, 2); }
+    // helmet on the overlay: glass visor with reflection
+    o.solid('head', '#E9EAEE', 1); o.at('head', 'f', 1, 1, 6, 6, '#1B2A4A', 1); o.at('head', 'f', 1, 1, 6, 6, 'rgba(56,189,248,.55)', 1); o.at('head', 'f', 2, 2, 2, 1, '#FFFFFF', 1); o.at('head', 'f', 2, 3, 1, 1, '#BFE9FF', 1);
+    o.at('head', 't', 3, 3, 2, 2, '#FF7A3D', 1);
+  }],
+  ['neon', 'Neon Runner', 'classic', o => {
+    origFace(o, '#C68863', '#22D3EE', { eyeWhite: '#0B0B10' }); origHair(o, '#0F0F14');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#1A1A22', '#0C0C10');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#22222B', '#121218');
+    o.at('body', 'f', 0, 0, 1, 12, '#22D3EE'); o.at('body', 'f', 7, 0, 1, 12, '#F472B6'); o.at('body', 'f', 3, 2, 2, 5, '#22D3EE'); o.at('body', 'f', 2, 3, 4, 1, '#22D3EE');
+    o.at('body', 'b', 3, 1, 2, 10, '#F472B6');
+    for (const a of ['rarm', 'larm']) { o.row(a, 3, '#22D3EE'); o.row(a, 11, '#C68863'); }
+    for (const l of ['rleg', 'lleg']) { o.row(l, 6, '#F472B6'); o.row(l, 10, '#F4F4F5', 0, 2); o.at(l, 'f', 0, 11, 4, 1, '#22D3EE'); }
+    // hood + mask
+    o.top('head', '#15151C', 1); for (const s of ['r', 'l', 'b']) o.at('head', s, 0, 0, 8, 8, '#15151C', 1); o.at('head', 'f', 0, 0, 8, 2, '#15151C', 1); o.at('head', 'f', 0, 2, 1, 6, '#15151C', 1); o.at('head', 'f', 7, 2, 1, 6, '#15151C', 1);
+    o.at('head', 'f', 1, 5, 6, 3, '#0B0B10', 1); o.at('head', 'f', 1, 5, 6, 1, '#22D3EE', 1);
+  }],
+  ['ember', 'Ember Knight', 'classic', o => {
+    origFace(o, '#2A2A30', '#FF7A3D', { eyeWhite: '#2A2A30' });
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) o.grad(p, '#4A4A54', '#26262C');
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) { o.dots(p, 'f', 5, '#FF7A3D', p + 'e'); o.dots(p, 'r', 2, '#FFB067', p + 'r'); o.dots(p, 'l', 2, '#FFB067', p + 'l'); }
+    o.at('body', 'f', 3, 1, 2, 7, '#FF7A3D'); o.at('body', 'f', 2, 3, 4, 1, '#FFB067'); o.row('body', 9, '#7A3A12'); o.at('body', 'f', 3, 9, 2, 1, '#FFD447');
+    for (const a of ['rarm', 'larm']) { o.row(a, 0, '#5A5A66', 0, 3); o.row(a, 11, '#1C1C22'); }
+    for (const l of ['rleg', 'lleg']) o.row(l, 4, '#5A5A66', 0, 2);
+    o.solid('head', '#55555F', 1); o.at('head', 'f', 1, 4, 6, 1, '#120E0C', 1); o.at('head', 'f', 2, 4, 1, 1, '#FF7A3D', 1); o.at('head', 'f', 5, 4, 1, 1, '#FF7A3D', 1); o.at('head', 'f', 3, 5, 2, 3, '#3A3A42', 1); o.at('head', 't', 3, 0, 2, 8, '#FF7A3D', 1);
+  }],
+  ['frost', 'Frost Mage', 'slim', o => {
+    origFace(o, '#F3D2B3', '#7DD3FC', { brows: '#E0F2FE' }); origHair(o, '#E0F2FE', 'long');
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) o.grad(p, '#3B82F6', '#1E3A8A');
+    o.at('body', 'f', 3, 0, 2, 12, '#E0F2FE'); o.row('body', 6, '#93C5FD'); o.at('body', 'f', 3, 6, 2, 1, '#F0F9FF');
+    for (const a of ['rarm', 'larm']) { o.row(a, 9, '#E0F2FE', 0, 1); o.row(a, 10, '#F3D2B3', 0, 2); }
+    for (const l of ['rleg', 'lleg']) { o.dots(l, 'f', 4, '#BFDBFE', l); o.row(l, 11, '#E0F2FE'); }
+    o.top('head', '#1E40AF', 1); for (const s of ['r', 'l', 'b']) o.at('head', s, 0, 0, 8, 6, '#1E40AF', 1); o.at('head', 'f', 0, 0, 8, 1, '#1E40AF', 1); o.at('head', 't', 3, 3, 2, 2, '#E0F2FE', 1); o.at('head', 'f', 3, 0, 2, 1, '#BAE6FD', 1);
+  }],
+  ['ranger', 'Waldläufer', 'classic', o => {
+    origFace(o, '#D49A73', '#2E8B57', { brows: '#4A2F1E' }); origHair(o, '#7A4B26');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#3F6B35', '#24401F');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#6B4F2F', '#4A3520');
+    o.row('body', 7, '#5A3A1E', 0, 2); o.at('body', 'f', 3, 7, 2, 2, '#C9A13A'); for (let i = 0; i < 9; i++) o.at('body', 'f', i < 8 ? i : 7, i, 1, 1, '#7A5A34');
+    o.at('body', 'b', 2, 0, 3, 9, '#7A5A34'); o.at('body', 'b', 2, 0, 3, 1, '#E7E5E4');
+    for (const a of ['rarm', 'larm']) { o.row(a, 8, '#5A3A1E', 0, 4); }
+    for (const l of ['rleg', 'lleg']) o.row(l, 9, '#3A2A1A', 0, 3);
+    o.top('head', '#2F5228', 1); for (const s of ['r', 'l', 'b']) o.at('head', s, 0, 0, 8, 7, '#2F5228', 1); o.at('head', 'f', 0, 0, 8, 2, '#2F5228', 1); o.at('head', 'f', 0, 2, 1, 5, '#2F5228', 1); o.at('head', 'f', 7, 2, 1, 5, '#2F5228', 1);
+  }],
+  ['ronin', 'Ronin', 'classic', o => {
+    origFace(o, '#E8B894', '#1A1A1A', { brows: '#111' }); origHair(o, '#111114'); o.at('head', 't', 3, 0, 2, 3, '#111114');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#B91C1C', '#7F1D1D');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#1F1F24', '#0E0E12');
+    o.at('body', 'f', 2, 0, 4, 2, '#E8B894'); o.at('body', 'f', 1, 0, 1, 6, '#111114'); o.at('body', 'f', 6, 0, 1, 6, '#111114'); o.row('body', 7, '#111114', 0, 2); o.at('body', 'f', 2, 7, 1, 2, '#F5B53D');
+    for (const a of ['rarm', 'larm']) { o.row(a, 7, '#E8B894', 0, 5); o.row(a, 7, '#111114'); }
+    // straw hat
+    o.top('head', '#D9B56A', 1); for (const s of ['f', 'r', 'l', 'b']) o.at('head', s, 0, 0, 8, 2, '#C9A35A', 1); o.at('head', 't', 2, 2, 4, 4, '#E7C77F', 1);
+  }],
+  ['street', 'Street Hoodie', 'classic', o => {
+    origFace(o, '#F3D2B3', '#6B4226', { brows: '#7A4B26' }); origHair(o, '#B07A3C');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#FF8A4C', '#E5602A');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#3B5B8F', '#24395E');
+    o.at('body', 'f', 1, 7, 6, 3, '#D8561F'); o.at('body', 'f', 3, 0, 1, 4, '#F4F4F5'); o.at('body', 'f', 4, 0, 1, 3, '#F4F4F5');
+    o.at('body', 'f', 2, 3, 4, 3, '#1A1A22'); o.at('body', 'f', 3, 4, 2, 1, '#FF8A4C');
+    for (const a of ['rarm', 'larm']) o.row(a, 11, '#E5602A');
+    for (const l of ['rleg', 'lleg']) { o.row(l, 10, '#F4F4F5', 0, 2); o.at(l, 'f', 0, 10, 4, 1, '#FF7A3D'); o.dots(l, 'f', 3, '#4A6FA8', l); }
+    // headphones
+    o.top('head', 'rgba(0,0,0,0)', 1); o.at('head', 't', 0, 3, 8, 2, '#1A1A22', 1); o.at('head', 'r', 2, 1, 4, 5, '#1A1A22', 1); o.at('head', 'l', 2, 1, 4, 5, '#1A1A22', 1); o.at('head', 'r', 3, 2, 2, 3, '#FF7A3D', 1); o.at('head', 'l', 3, 2, 2, 3, '#FF7A3D', 1);
+  }],
+  ['void', 'Void Walker', 'slim', o => {
+    origFace(o, '#2E1A47', '#E879F9', { eyeWhite: '#C026D3' });
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) { o.grad(p, '#3B1D63', '#0E0718'); o.dots(p, 'f', 4, '#F5D0FE', p + 'v'); o.dots(p, 'b', 3, '#F5D0FE', p + 'w'); o.dots(p, 'r', 1, '#E879F9', p); }
+    o.top('head', '#1A0E2E'); o.at('body', 'f', 3, 3, 2, 2, '#E879F9'); o.at('body', 'f', 2, 4, 4, 1, 'rgba(232,121,249,.6)'); o.at('body', 'f', 3, 2, 2, 4, 'rgba(232,121,249,.45)');
+    o.top('head', '#12091F', 1); for (const s of ['r', 'l', 'b']) o.at('head', s, 0, 0, 8, 8, '#12091F', 1); o.at('head', 'f', 0, 0, 8, 1, '#12091F', 1); o.at('head', 'f', 0, 1, 1, 7, '#12091F', 1); o.at('head', 'f', 7, 1, 1, 7, '#12091F', 1);
+  }],
+  ['pirate', 'Kapitän', 'classic', o => {
+    origFace(o, '#D49A73', '#1A1A1A', { brows: '#2B1D14' }); origHair(o, '#2B1D14'); o.at('head', 'f', 1, 4, 3, 1, '#111'); o.at('head', 'f', 0, 3, 8, 1, '#111'); o.at('head', 'f', 2, 6, 4, 2, '#2B1D14');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#7F1D1D', '#4C1010');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#E7E0D0', '#BDB4A0');
+    o.at('body', 'f', 3, 0, 2, 12, '#F4EFE3'); o.at('body', 'f', 2, 1, 1, 1, '#F5B53D'); o.at('body', 'f', 2, 4, 1, 1, '#F5B53D'); o.at('body', 'f', 5, 1, 1, 1, '#F5B53D'); o.at('body', 'f', 5, 4, 1, 1, '#F5B53D'); o.row('body', 8, '#2B1D14'); o.at('body', 'f', 3, 8, 2, 1, '#F5B53D');
+    for (const a of ['rarm', 'larm']) { o.row(a, 9, '#F5B53D'); o.row(a, 10, '#F4EFE3', 0, 2); }
+    for (const l of ['rleg', 'lleg']) o.row(l, 7, '#2B1D14', 0, 5);
+    o.top('head', '#18181B', 1); for (const s of ['f', 'r', 'l', 'b']) o.at('head', s, 0, 0, 8, 2, '#18181B', 1); o.at('head', 'f', 3, 0, 2, 2, '#F4F4F5', 1);
+  }],
+  ['fox', 'Polarfuchs', 'slim', o => {
+    origFace(o, '#F3D2B3', '#3D7BFF'); origHair(o, '#E3C16F');
+    for (const p of ['body', 'rarm', 'larm']) o.grad(p, '#F8FAFC', '#D9DEE7');
+    for (const p of ['rleg', 'lleg']) o.grad(p, '#94A3B8', '#64748B');
+    o.at('body', 'f', 2, 2, 4, 6, '#E2E8F0'); o.at('body', 'f', 3, 0, 1, 4, '#94A3B8'); o.at('body', 'f', 4, 0, 1, 3, '#94A3B8');
+    for (const a of ['rarm', 'larm']) o.row(a, 11, '#CBD5E1');
+    for (const l of ['rleg', 'lleg']) o.row(l, 10, '#F4F4F5', 0, 2);
+    o.top('head', '#F8FAFC', 1); for (const s of ['r', 'l', 'b']) o.at('head', s, 0, 0, 8, 8, '#F1F5F9', 1); o.at('head', 'f', 0, 0, 8, 2, '#F8FAFC', 1);
+    o.at('head', 'f', 0, 0, 2, 1, '#94A3B8', 1); o.at('head', 'f', 6, 0, 2, 1, '#94A3B8', 1); o.at('head', 't', 0, 0, 2, 2, '#94A3B8', 1); o.at('head', 't', 6, 0, 2, 2, '#94A3B8', 1);
+  }],
+  ['golem', 'Lava-Golem', 'classic', o => {
+    origFace(o, '#57534E', '#FDE047', { eyeWhite: '#F97316' });
+    for (const p of ['head', 'body', 'rarm', 'larm', 'rleg', 'lleg']) { if (p !== 'head') o.grad(p, '#6B6560', '#3F3B37'); for (const s of ['f', 'r', 'l', 'b']) o.dots(p, s, p === 'body' ? 6 : 3, '#F97316', p + s); o.dots(p, 'f', 2, '#FDE047', p + 'y'); }
+    o.at('body', 'f', 2, 2, 4, 4, '#F97316'); o.at('body', 'f', 3, 3, 2, 2, '#FDE047');
+    o.at('head', 'f', 2, 6, 4, 1, '#F97316');
+  }],
+  ['gold', 'Goldener Held', 'classic', o => {
+    origFace(o, '#E8B894', '#1D4ED8', { brows: '#B07A3C' }); origHair(o, '#E3C16F');
+    for (const p of ['body', 'rarm', 'larm', 'rleg', 'lleg']) o.grad(p, '#FFE38A', '#C9961F');
+    o.at('body', 'f', 2, 1, 4, 5, '#1D4ED8'); o.at('body', 'f', 3, 2, 2, 3, '#FFE38A'); o.row('body', 8, '#7A5A12'); o.at('body', 'f', 3, 8, 2, 1, '#EF4444');
+    o.at('body', 'b', 0, 0, 8, 12, '#1D4ED8'); o.at('body', 'b', 0, 11, 8, 1, '#1E3A8A');
+    for (const a of ['rarm', 'larm']) { o.row(a, 0, '#FFF2B8', 0, 1); o.row(a, 9, '#1D4ED8', 0, 3); }
+    for (const l of ['rleg', 'lleg']) o.row(l, 9, '#1D4ED8', 0, 3);
+    o.top('head', 'rgba(0,0,0,0)', 1); o.at('head', 'f', 1, 0, 6, 1, '#FFD447', 1); o.at('head', 'f', 1, 0, 1, 1, '#FFF2B8', 1); o.at('head', 'f', 3, 0, 1, 1, '#EF4444', 1);
+  }],
+];
+const origCache = {};
+function origSkin(id) {
+  if (origCache[id]) return origCache[id];
+  const d = ORIGINALS.find(x => x[0] === id), o = origPainter();
+  d[3](o); o.P.shadeFaces();
+  return origCache[id] = o.cv.toDataURL('image/png');
+}
 
 /* ---------- editor state ---------- */
 const SE = { tool: 'pen', color: '#FF7A3D', size: 1, mirror: false, layer: 'base', recent: [], undo: [], redo: [], view: '3d', grid: true, hide: {}, variant: 'classic', name: 'Mein Skin', id: null, dirty: false };
@@ -2529,17 +2681,9 @@ function seBindPaint() {
 const SKC = { theme: '', q: '', sel: null, page: 1 };
 async function skCollectionPage(body) {
   body.innerHTML = `<div class="skcol"><div class="skc-main">
-      <div class="skc-sites big">${[['Skindex', 'minecraftskins.com', 'Die größte Community-Sammlung', '#3DB8F5'], ['LabyMod', 'laby.net', 'Trends, Tops und neue Skins', '#2E7DF6'], ['NameMC', 'namemc.com', 'Beliebte Skins von Spielern', '#A1A1AA']].map(([n, h, d, c], i) => `<button data-site="${i}" style="--sc:${c}"><span class="sl">${ico('globe')}</span><span><b>${n}</b><small>${d}</small><i>${h}</i></span>${ico('ext')}</button>`).join('')}</div>
-      <p class="skc-how">${ico('info')}<span>Die Seite öffnet sich im Launcher. Drück dort bei einem Skin auf <b>Download</b>, dann landet er sofort in <b>Meine Skins</b>.</span></p>
       <div class="skc-find"><div class="srch">${ico('search')}<input class="in" id="skcQ" placeholder="Spielername oder Link zu einer Skin-PNG…"></div><button class="btn p" id="skcGo">${ico('download')}Laden</button></div>
-      <div class="sec" style="margin-top:6px"><h2>Minecraft-Standard</h2><span class="muted" id="skcN"></span></div>
       <div class="skc-grid" id="skcGrid"><div class="spinner"></div></div></div>
     <div class="skc-side" id="skcSide"></div></div>`;
-  $('.skc-sites').onclick = async e => {
-    const b = e.target.closest('[data-site]'); if (!b) return;
-    if (!HOST) return toast('Nur in der App', 'Die Skin-Seiten öffnen sich in einem eigenen Fenster');
-    try { await api('skins.browse', { site: +b.dataset.site }); } catch (er) { fail('Öffnen', er); }
-  };
   const find = async () => {
     const q = $('#skcQ').value.trim(); if (!q) return;
     const b = $('#skcGo'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Lädt…';
@@ -2558,14 +2702,15 @@ async function skcDefaults(quiet) {
   try { S.skDefaults = (await api('skins.defaults')).map((d, i) => ({ id: 'std-' + i, theme: 'std', name: d.name, variant: d.variant, url: d.data })); }
   catch (e) { S.skDefaults = []; if (!quiet) fail('Standard-Skins', e); }
 }
-const skcAll = () => [...(SKC.imp ? [SKC.imp] : []), ...(S.skDefaults || []), ...skCollection()];
-function skcList() { return skcAll().filter(s => s.theme === 'std'); }
+const skcOrig = () => SKC.orig || (SKC.orig = ORIGINALS.map(([id, name, variant]) => ({ id: 'o-' + id, theme: 'orig', name, variant, get url() { return origSkin(id); } })));
+const skcAll = () => [...(SKC.imp ? [SKC.imp] : []), ...skcOrig(), ...(S.skDefaults || [])];
+function skcList() { return skcAll().filter(s => s.theme !== 'imp'); }
 async function skcGrid() {
   const g = $('#skcGrid'); if (!g) return;
-  const l = skcList(), shown = l;
-  if ($('#skcN')) $('#skcN').textContent = l.length || '';
-  if (!l.length) { g.innerHTML = `<div class="empty" style="grid-column:1/-1">Die Standard-Skins kommen aus deiner Minecraft-Installation und werden beim ersten Mal geladen.</div>`; return; }
-  g.innerHTML = shown.map(s => `<button class="skt ${SKC.sel === s.id ? 'on' : ''}" data-id="${s.id}"><span class="skt-img"><img alt="" data-u="${s.id}"></span><b>${esc(s.name)}</b><small>${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></button>`).join('');
+  const l = skcList(), tile = s => `<button class="skt ${SKC.sel === s.id ? 'on' : ''}" data-id="${s.id}"><span class="skt-img"><img alt="" data-u="${s.id}"></span><b>${esc(s.name)}</b><small>${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small></button>`;
+  const og = l.filter(s => s.theme === 'orig'), st = l.filter(s => s.theme === 'std');
+  g.innerHTML = `<div class="skc-h"><h2>${ico('sparkle')}Orbit Originals</h2><span>Von uns gestaltet</span></div>${og.map(tile).join('')}
+    <div class="skc-h"><h2>${ico('cube')}Minecraft-Standard</h2><span>${st.length ? st.length + ' Skins' : 'Aus deiner Minecraft-Installation'}</span></div>${st.length ? st.map(tile).join('') : '<div class="empty" style="grid-column:1/-1">Die Standard-Skins werden beim ersten Öffnen aus Minecraft geladen.</div>'}`;
   g.onclick = e => { const b = e.target.closest('[data-id]'); if (!b) return; SKC.sel = b.dataset.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x === b)); skcSide(); };
   // thumbnails are generated in small batches so the page stays smooth
   const imgs = [...g.querySelectorAll('img[data-u]')];
@@ -2582,7 +2727,7 @@ async function skcSide() {
   SKC.sel = s.id; $$('#skcGrid .skt').forEach(x => x.classList.toggle('on', x.dataset.id === s.id));
   const url = skColUrl(s);
   el.innerHTML = `<div class="skc-view"><div class="stage3" id="skcStage"><span class="floor"></span>${skinModel(url, s.variant === 'slim', 8, false, s.cape || null)}</div></div>
-    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(s.theme === 'std' ? 'Minecraft-Standard' : 'Geladen' + (s.cape ? ' · mit Umhang' : ''))} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
+    <b class="skc-name">${esc(s.name)}</b><small class="muted">${esc(s.theme === 'std' ? 'Minecraft-Standard' : s.theme === 'orig' ? 'Orbit Original' : 'Geladen' + (s.cape ? ' · mit Umhang' : ''))} · ${s.variant === 'slim' ? 'Schlank' : 'Klassisch'}</small>
     <div class="col" style="gap:8px;margin-top:14px">
       ${S.accounts.length ? `<button class="btn p" id="skcApply" style="justify-content:center">${ico('check')}Übernehmen</button>` : ''}
       <button class="btn" id="skcEdit" style="justify-content:center">${ico('edit')}Im Editor bearbeiten</button>
