@@ -244,12 +244,28 @@ document.addEventListener('mouseup', e => { if (e.button === 3) hist(-1); if (e.
 $('#side').addEventListener('click', e => { const n = e.target.closest('.nav'); if (n) go(n.dataset.p); });
 
 /* ======================= TOAST / MODAL / POPOVER / CONTEXT MENU ======================= */
-function toast(title, text = '', ok = true) {
+function toast(title, text = '', ok = true, action = null) {
+  const key = (ok ? '1' : '0') + title + '\u0000' + text, box = $('#toasts');
+  const close = t => { if (t._gone) return; t._gone = true; clearTimeout(t._tm); t.classList.add('out'); setTimeout(() => t.remove(), 250); };
+  const arm = t => { clearTimeout(t._tm); t._tm = setTimeout(() => close(t), action ? 6000 : ok ? 3600 : 6500); };
+  // the same message again: count it on the existing one instead of stacking
+  const same = [...box.children].find(t => t._key === key && !t._gone);
+  if (same) {
+    same._n = (same._n || 1) + 1;
+    let c = same.querySelector('.tn'); if (!c) { c = document.createElement('em'); c.className = 'tn'; same.append(c); }
+    c.textContent = '×' + same._n; same.classList.remove('bump'); void same.offsetWidth; same.classList.add('bump'); arm(same); return same;
+  }
   const t = document.createElement('div');
+  t._key = key;
   t.className = 'toast' + (ok ? '' : ' err');
-  t.innerHTML = `<div class="ti">${ico(ok ? 'check' : 'alert')}</div><div><b>${esc(title)}</b>${text ? `<span>${esc(text)}</span>` : ''}</div>`;
-  $('#toasts').append(t);
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 250); }, ok ? 3600 : 6500);
+  t.innerHTML = `<div class="ti">${ico(ok ? 'check' : 'alert')}</div><div class="tx"><b>${esc(title)}</b>${text ? `<span>${esc(text)}</span>` : ''}</div>${action ? `<button class="ta">${esc(action[0])}</button>` : ''}<button class="tx-x" title="Schließen">${ico('x')}</button>`;
+  if (action) t.querySelector('.ta').onclick = () => { close(t); action[1](); };
+  t.querySelector('.tx-x').onclick = () => close(t);
+  box.append(t);
+  const live = [...box.children].filter(x => !x._gone);
+  if (live.length > 4) close(live[0]);
+  arm(t);
+  return t;
 }
 const fail = (title, e) => toast(title, e?.message || String(e), false);
 function modal(html, cls = '') { $('#mbox').className = 'card gb mbox ' + cls; $('#mbox').innerHTML = html; $('#modal').classList.add('show'); }
@@ -327,6 +343,11 @@ function onEvent(ev, d) {
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
   if (ev === 'cloud') cloudEvent(d);
+  if (ev === 'skins.added') {
+    if (S.skins?.lib && !S.skins.lib.find(x => x.id === d.id)) S.skins.lib.unshift(d);
+    toast('Skin gespeichert', d.name, true, ['Ansehen', () => { S.skTab = 'lib'; if (S.skins) S.skins.sel = d.id; go('skins', {}, false); }]);
+    if (S.page === 'skins' && S.skTab === 'lib') skinSide();
+  }
   if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); fxSet(d.fx); }
 }
 
@@ -2239,12 +2260,15 @@ async function seLoad(url, name, variant, id) {
   SE.orig = x.getImageData(0, 0, 64, 64);
 }
 const seUrl = () => SE.cv.toDataURL('image/png');
-async function seReset() {
-  if (!SE.orig) return;
-  if (SE.dirty && !await confirmBox('Zurücksetzen?', 'Alle Änderungen seit dem Laden gehen verloren. Mit Strg+Z kannst du es rückgängig machen.', 'Zurücksetzen', true)) return;
-  sePush(); SE.P.x.putImageData(SE.orig, 0, 0); SE.dirty = false; seRefresh(); toast('Zurückgesetzt');
+function seReset() {
+  if (!SE.orig || !SE.dirty) return;
+  const before = SE.P.x.getImageData(0, 0, 64, 64);
+  SE.undo.push(before); SE.redo = [];
+  SE.P.x.putImageData(SE.orig, 0, 0); SE.dirty = false; seRefresh(); seDirtyUI();
+  toast('Skin zurückgesetzt', 'Auf den Stand beim Laden', true, ['Rückgängig', () => { SE.P.x.putImageData(before, 0, 0); SE.undo.pop(); SE.dirty = true; seRefresh(); seDirtyUI(); }]);
 }
-function sePush() { SE.undo.push(SE.P.x.getImageData(0, 0, 64, 64)); if (SE.undo.length > 80) SE.undo.shift(); SE.redo = []; SE.dirty = true; }
+function seDirtyUI() { $$('#seReset, [data-q=reset]').forEach(b => { b.disabled = !SE.dirty; b.classList.toggle('dis', !SE.dirty); }); }
+function sePush() { SE.undo.push(SE.P.x.getImageData(0, 0, 64, 64)); if (SE.undo.length > 80) SE.undo.shift(); SE.redo = []; SE.dirty = true; seDirtyUI(); }
 function seUndo(redo) {
   const from = redo ? SE.redo : SE.undo, to = redo ? SE.undo : SE.redo; if (!from.length) return;
   to.push(SE.P.x.getImageData(0, 0, 64, 64)); SE.P.x.putImageData(from.pop(), 0, 0); seRefresh();
@@ -2379,7 +2403,7 @@ async function skEditorPage(body) {
     <div class="se-tools" id="seTools">${SETOOLS.map(([k, ic, n, key]) => `<button data-t="${k}" data-tip="${n}" data-key="${key}">${ico(ic)}</button>`).join('')}
       <hr><button data-sz="1" data-tip="Pinsel 1 Pixel" class="sz">1</button><button data-sz="2" data-tip="Pinsel 2×2 Pixel" class="sz">2</button><button data-sz="3" data-tip="Pinsel 3×3 Pixel" class="sz">3</button>
       <hr><button id="seMir" data-tip="Spiegeln: beide Seiten gleichzeitig" data-key="M">${ico('dup')}</button><button id="seUndo" data-tip="Rückgängig" data-key="Strg+Z">${ico('back')}</button><button id="seRedo" data-tip="Wiederholen" data-key="Strg+Y"><span style="display:grid;transform:scaleX(-1)">${ico('back')}</span></button>
-      <button id="seReset" data-tip="Zurücksetzen auf den geladenen Skin">${ico('refresh')}</button></div>
+      <button id="seReset" data-tip="Zurücksetzen (nur wenn etwas geändert wurde)">${ico('refresh')}</button></div>
     <div class="se-main">
       <div class="se-top"><div class="seg sm" id="seViewSw"><button data-vw="3d">3D malen</button><button data-vw="2d">Textur</button><button data-vw="split">Beides</button></div>
         <div class="seg sm" id="seLayer"><button data-l="base">Basis</button><button data-l="over">Überzug</button></div>
@@ -2404,7 +2428,7 @@ async function skEditorPage(body) {
         <div class="se-save"><button class="btn" id="seLib">${ico('library')}In Bibliothek</button><button class="btn" id="seExp">${ico('download')}PNG</button></div>
         ${S.accounts.length ? `<button class="btn p" id="seApply" style="width:100%;justify-content:center;margin-top:8px">${ico('check')}Als Skin übernehmen</button>` : `<p class="fine" style="margin-top:8px">Zum Übernehmen mit Microsoft anmelden.</p>`}</div></div>
     </div></div>`;
-  seStage(); seColor(SE.color); seTools(); seLayout();
+  seStage(); seColor(SE.color); seTools(); seLayout(); seDirtyUI();
   $$('#seTools .sz').forEach(b => b.classList.toggle('on', +b.dataset.sz === SE.size));
   $('#seMir').classList.toggle('on', SE.mirror);
   $('#seTools').onclick = e => {
@@ -2499,6 +2523,7 @@ const SKC = { theme: '', q: '', sel: null, page: 1 };
 async function skCollectionPage(body) {
   const all = skCollection();
   body.innerHTML = `<div class="skcol"><div class="skc-main">
+      <div class="skc-sites">${[['Skindex', 'minecraftskins.com', 'Riesige Community-Sammlung', '#3DB8F5'], ['LabyMod', 'laby.net', 'Trends und beliebte Skins', '#2E7DF6'], ['NameMC', 'namemc.com', 'Skins von Spielern', '#9CA3AF']].map(([n, h, d, c], i) => `<button data-site="${i}" style="--sc:${c}"><span class="sl">${ico('globe')}</span><span><b>${n}</b><small>${d}</small></span><em>${h}${ico('ext')}</em></button>`).join('')}</div>
       <div class="skc-find"><div class="srch">${ico('search')}<input class="in" id="skcQ" placeholder="Spielername oder Link zu einer Skin-PNG…"></div><button class="btn p" id="skcGo">${ico('download')}Laden</button></div>
       <div class="skc-bar"><div class="fchips" id="skcTh"><button class="fchip ${!SKC.theme ? 'on' : ''}" data-th="">Alle <em>${all.length}</em></button><button class="fchip std ${SKC.theme === 'std' ? 'on' : ''}" data-th="std">${ico('cube')}Minecraft-Standard</button>${THEMES_SK.map(([k, n]) => `<button class="fchip ${SKC.theme === k ? 'on' : ''}" data-th="${k}">${n}</button>`).join('')}</div></div>
       <div class="skc-grid" id="skcGrid"></div><div id="skcMore"></div></div>
@@ -2512,6 +2537,11 @@ async function skCollectionPage(body) {
       SKC.imp = { id: 'imp', theme: 'imp', name: r.name, variant: r.variant, url: r.data, cape: r.cape }; SKC.sel = 'imp'; skcSide();
     } catch (er) { fail('Laden', er); }
     b.disabled = false; b.innerHTML = ico('download') + 'Laden';
+  };
+  $('.skc-sites').onclick = async e => {
+    const b = e.target.closest('[data-site]'); if (!b) return;
+    if (!HOST) return toast('Nur in der App', 'Die Skin-Seiten öffnen sich in einem eigenen Fenster');
+    try { await api('skins.browse', { site: +b.dataset.site }); toast('Skin-Seite geöffnet', 'Auf „Download“ drücken, dann ist der Skin hier'); } catch (er) { fail('Öffnen', er); }
   };
   $('#skcGo').onclick = find; $('#skcQ').onkeydown = e => { if (e.key === 'Enter') find(); };
   if (SKC.theme === 'std') await skcDefaults();

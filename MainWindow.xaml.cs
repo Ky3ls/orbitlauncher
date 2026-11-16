@@ -232,6 +232,7 @@ public partial class MainWindow : Window
     }
 
     private bool _argsUsed;
+    private SkinBrowserWindow? _skinWin;
     private object Dto(Instance i)
     {
         int mods = 0;
@@ -849,6 +850,17 @@ public partial class MainWindow : Window
             case "skins.defaults": return await WithTask(async p => { p.Report(new Progress("Standard-Skins werden geladen", 0, 1, "")); return await SkinSources.Defaults(); });
             case "skins.player": return await SkinSources.Player(Str(a, "name"));
             case "skins.link": return new { data = await SkinSources.FromLink(Str(a, "url")) };
+            case "skins.browse":
+            {
+                var site = Int(a, "site");
+                var url = SkinBrowserWindow.Sites[Math.Clamp(site, 0, SkinBrowserWindow.Sites.Length - 1)].Url;
+                if (_skinWin != null) { _skinWin.Activate(); _skinWin.Navigate(url); return new { }; }
+                _skinWin = new SkinBrowserWindow(this, Web.CoreWebView2.Environment, url);
+                _skinWin.Added += e => Emit("skins.added", new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) });
+                _skinWin.Closed += (_, _) => _skinWin = null;
+                _skinWin.Show();
+                return new { };
+            }
             case "skins.save":
             {
                 // editor: overwrite an existing skin or add a new one

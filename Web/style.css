@@ -1739,3 +1739,29 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .skc-find .srch{flex:1}.skc-find .srch .in{width:100%}
 .fchip.std{display:inline-flex;align-items:center;gap:5px;border-color:rgba(var(--a-rgb),.35)}
 .fchip.std svg.i{width:13px;height:13px;color:var(--a)}
+
+/* toasts: counter, action, close */
+.toast{position:relative}
+.toast .tx{flex:1;min-width:0}
+.toast .tn{font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,.08);color:var(--sub);flex:none}
+.toast.bump{animation:tbump .35s var(--spring)}
+@keyframes tbump{40%{transform:scale(1.04)}}
+.toast .ta{flex:none;height:30px;padding:0 12px;border-radius:9px;background:rgba(var(--a-rgb),.16);color:var(--a);font-weight:650;font-size:12.5px}
+.toast .ta:hover{background:rgba(var(--a-rgb),.26)}
+.toast .tx-x{flex:none;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--mute);opacity:0;transition:opacity .15s}
+.toast:hover .tx-x{opacity:1}.toast .tx-x:hover{background:rgba(255,255,255,.07);color:var(--text)}
+.toast .tx-x svg.i{width:13px;height:13px}
+/* disabled reset */
+.se-tools button.dis,.se-quick button.dis{opacity:.35;cursor:default}
+.se-tools button.dis:hover{background:none;color:var(--sub)}
+/* skin sites */
+.skc-sites{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.skc-sites button{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(135deg,color-mix(in srgb,var(--sc) 14%,transparent),rgba(255,255,255,.015));text-align:left;transition:border-color .2s,transform .2s var(--spring)}
+.skc-sites button:hover{border-color:color-mix(in srgb,var(--sc) 55%,transparent);transform:translateY(-2px)}
+.skc-sites .sl{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--sc) 22%,transparent);color:var(--sc);flex:none}
+.skc-sites .sl svg.i{width:17px;height:17px}
+.skc-sites b{font-size:13.5px;display:block}.skc-sites small{font-size:11px;color:var(--mute)}
+.skc-sites em{margin-left:auto;font-style:normal;font-size:10.5px;color:var(--mute);display:flex;align-items:center;gap:4px;white-space:nowrap}
+.skc-sites em svg.i{width:11px;height:11px}
+@media (max-width:1300px){.skc-sites em{display:none}}
+.skc-sites em{display:none!important}.skc-sites small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.skc-sites span:not(.sl){min-width:0}
