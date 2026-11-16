@@ -70,11 +70,14 @@ public partial class MainWindow : Window
             int dark = 1; DwmSetWindowAttribute(h, 20, ref dark, sizeof(int));     // dark title/border
         };
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
-        // minimized: let the web view drop caches and run with as little memory as possible
-        StateChanged += (_, _) =>
-        {
-            try { if (Web.CoreWebView2 != null) Web.CoreWebView2.MemoryUsageTargetLevel = WindowState == WindowState.Minimized ? CoreWebView2MemoryUsageTargetLevel.Low : CoreWebView2MemoryUsageTargetLevel.Normal; } catch { }
-        };
+        // in the background (minimized or another window active for a while) the launcher shrinks itself:
+        // the web view drops caches and our own process gives unused memory back to Windows
+        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) Slim(true); else if (IsActive) Slim(false); };
+        var idle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+        idle.Tick += (_, _) => { idle.Stop(); if (!IsActive) Slim(true); };
+        Deactivated += (_, _) => { idle.Stop(); idle.Start(); };
+        Activated += (_, _) => { idle.Stop(); Slim(false); };
+        Loaded += (_, _) => { var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(12) }; t.Tick += (_, _) => { t.Stop(); TrimMemory(); }; t.Start(); };
         Loaded += async (_, _) => await InitWeb();
         Closing += (_, _) => { _rpc.Dispose(); SaveBounds(); S.Save(); _overlay.Detach(); _overlay.Close(); };
         WatchConfig();
@@ -236,6 +239,25 @@ public partial class MainWindow : Window
         finally { Emit("progress", new { task, done = true }); }
     }
 
+    [System.Runtime.InteropServices.DllImport("psapi.dll")] private static extern bool EmptyWorkingSet(IntPtr process);
+    private bool _slim;
+    /// <summary>Background: web view on low memory and trim our own working set. Foreground: normal again.</summary>
+    private void Slim(bool on)
+    {
+        if (_slim == on) return; _slim = on;
+        try { if (Web.CoreWebView2 != null) Web.CoreWebView2.MemoryUsageTargetLevel = on ? CoreWebView2MemoryUsageTargetLevel.Low : CoreWebView2MemoryUsageTargetLevel.Normal; } catch { }
+        if (on) TrimMemory();
+    }
+    private static void TrimMemory()
+    {
+        try
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, true, true); GC.WaitForPendingFinalizers();
+            EmptyWorkingSet(Process.GetCurrentProcess().Handle);
+        }
+        catch { }
+    }
     private bool _argsUsed;
     private object Dto(Instance i)
     {

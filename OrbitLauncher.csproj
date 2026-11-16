@@ -23,6 +23,12 @@
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
     <SatelliteResourceLanguages>de;en</SatelliteResourceLanguages>
+    <!-- small memory footprint: no background GC thread, conserve memory, precompiled code (less JIT memory) -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>false</TieredPGO>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
   <!-- Microsoft app id for the login (public, it ships inside the exe anyway). Override with -p:OrbitClientId=<id> -->
   <PropertyGroup>
@@ -34,6 +40,10 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(CatalogKey)' != ''">
     <AssemblyMetadata Include="CatalogKey" Value="$(CatalogKey)" />
+  </ItemGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+    <RuntimeHostConfigurationOption Include="System.GC.RetainVM" Value="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(OrbitClientId)' != ''">
     <AssemblyMetadata Include="OrbitClientId" Value="$(OrbitClientId)" />
