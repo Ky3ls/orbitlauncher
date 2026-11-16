@@ -1692,3 +1692,26 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .skc-view .stage3{position:absolute;inset:0;display:grid;place-items:center;perspective:1200px}
 .skc-name{font-family:var(--disp);font-size:18px}
 .sestage .mcm{top:-150px}
+
+/* library stats: same plain dark boxes as the discover filters */
+.lside{background:var(--card);border-color:var(--line)}
+.lside .lstats{gap:1px;padding:0 2px 2px}
+.lside .lst{padding:7px 8px;border:0;border-radius:10px;background:none;gap:10px}
+.lside .lst.ck:hover{background:rgba(255,255,255,.04);transform:none}
+.lside .lst>svg.i{width:30px;height:30px;padding:7px;border-radius:9px;background:rgba(255,255,255,.04);color:var(--sub)}
+.lside .lst b{font-size:15px;font-family:var(--body);font-weight:650}
+.lside .lst.txt b{font-size:13px}
+.lside .lst span{font-size:11.5px;color:var(--sub);font-weight:500}
+.lside .lst small{display:none}
+.lgrid2{gap:1px;grid-template-columns:1fr;padding:0 2px 2px}
+.lgrid2 div{flex-direction:row;align-items:center;gap:10px;padding:7px 8px;border:0;border-radius:10px;background:none}
+.lgrid2 div:hover{background:rgba(255,255,255,.04)}
+.lgrid2 svg.i{width:15px;height:15px;color:var(--sub);margin:0}
+.lgrid2 small{order:1;font-size:13px;color:var(--sub);flex:1}
+.lgrid2 b{order:2;font-family:var(--body);font-size:13px;font-weight:650}
+.ltop em{color:var(--mute)}
+.lside .lst>svg.i{width:15px;height:15px;padding:0;background:none;border-radius:0}
+.lside .lst>div{flex:1;flex-direction:row;align-items:center;gap:8px}
+.lside .lst span{order:1;flex:none;font-size:13px}
+.lside .lst b{order:2;margin-left:auto;font-size:13px;min-width:0}
+.lside .lst.txt b{font-size:12.5px;max-width:120px}
