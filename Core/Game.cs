@@ -88,7 +88,14 @@ public static class GameInstaller
         var client = v["downloads"]?["client"];
         var jarPath = Versions.JarPath(jarId);
         if (client != null) dl.Add(new DlItem((string)client["url"]!, jarPath, (string?)client["sha1"], (long?)client["size"] ?? 0));
-        plan.Classpath.Add(jarPath);
+        // Forge/NeoForge (1.17+) hide the client jar from the module system through -DignoreList=…,${version_name}.jar.
+        // That only matches when the jar is named after the loader version (like the official launcher does it);
+        // as 1.20.1.jar it becomes an extra module "_1._20._1" and mods crash with "export package com.mojang…".
+        string? ownJar = null;
+        var ignoreList = v["arguments"]?["jvm"]?.AsArray().Select(x => x is JsonValue jv && jv.TryGetValue<string>(out var str) ? str : null)
+            .FirstOrDefault(x => x != null && x.StartsWith("-DignoreList=", StringComparison.Ordinal));
+        if (ignoreList != null && ignoreList.Contains("${version_name}.jar") && jarId != versionId) ownJar = Versions.JarPath(versionId);
+        plan.Classpath.Add(ownJar ?? jarPath);
 
         // ---- logging config
         var log = v["logging"]?["client"];
@@ -100,6 +107,11 @@ public static class GameInstaller
         }
 
         await Net.DownloadAll(dl, "Bibliotheken", p, ct);
+        if (ownJar != null && File.Exists(jarPath) && (!File.Exists(ownJar) || new FileInfo(ownJar).Length != new FileInfo(jarPath).Length))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ownJar)!);
+            File.Copy(jarPath, ownJar, true);
+        }
 
         // ---- natives
         Directory.CreateDirectory(plan.NativesDir);
