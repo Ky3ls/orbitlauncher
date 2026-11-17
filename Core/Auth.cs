@@ -163,7 +163,16 @@ public class Auth
         JsonNode mc;
         try { mc = await Net.Post("https://api.minecraftservices.com/authentication/login_with_xbox", new { identityToken = $"XBL3.0 x={uhs};{xstsToken}" }, null, ct); }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.Forbidden)
-        { throw new InvalidOperationException("Microsoft-Anmeldung hat geklappt, aber Mojang hat diese App-ID noch nicht für Minecraft freigeschaltet. Antrag bei Mojang stellen bzw. Freigabe abwarten."); }
+        {
+            // show Mojang's own reason too ("Invalid app registration …" = app id not on the allow list)
+            var why = e.Message.Contains(": ") ? e.Message[(e.Message.IndexOf(": ") + 2)..].Trim() : "";
+            var notListed = why.Contains("app registration", StringComparison.OrdinalIgnoreCase) || why.Length == 0;
+            throw new InvalidOperationException((notListed
+                ? "Microsoft-Anmeldung hat geklappt, aber Mojang hat diese App-ID noch nicht für Minecraft freigeschaltet."
+                : "Mojang hat die Anmeldung abgelehnt.")
+                + (why.Length > 0 ? $" (Mojang: {(why.Length > 160 ? why[..160] + "…" : why)})" : "")
+                + $" App-ID: {ClientId}");
+        }
         var mcToken = (string)mc["access_token"]!;
         var exp = DateTime.UtcNow.AddSeconds(((int?)mc["expires_in"] ?? 86400) - 120);
 
