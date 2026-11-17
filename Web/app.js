@@ -436,10 +436,22 @@ window.serverPack = serverPack;
 
 /* ---------- launch / download banner (instance page, project page, instance cards) ---------- */
 const TB_STAGE = { 'Bibliotheken': 'Bibliotheken werden geladen', 'Assets': 'Spieldateien werden geladen', 'Modpack-Dateien': 'Mods werden geladen' };
+const TB_HOLD = {};
+/** Progress that only moves forward: a new stage starting at 0 % holds the bar until it passes the last value. */
+function steadyPct(key, task, pct) {
+  const h = TB_HOLD[key];
+  if (!h || h.task !== task) { TB_HOLD[key] = { task, pct: pct ?? 0 }; return pct; }
+  if (pct != null && pct > h.pct) h.pct = pct;
+  return h.pct || null;
+}
 function tbState(id, proj) {
-  const t = Object.values(S.tasks).filter(x => (id && x.inst === id) || (proj && x.proj === proj)).pop();
+  const all = Object.values(S.tasks).filter(x => (id && x.inst === id) || (proj && x.proj === proj));
+  const t = all.sort((a, b) => +a.task.slice(1) - +b.task.slice(1))[0];
   const l = id && S.launching.get(id);
-  if (t) return { task: t.task, text: (TB_STAGE[t.stage] || t.stage) + '…', detail: t.detail || '', pct: t.total > 1 ? t.pct : null };
+  if (t) {
+    const pct = steadyPct(id || proj, t.task, t.total > 1 ? t.pct : null);
+    return { task: t.task, text: (TB_STAGE[t.stage] || t.stage) + '…', detail: (all.length > 1 ? `+${all.length - 1} weitere · ` : '') + (t.detail || ''), pct };
+  }
   if (l) return { text: l.phase === 'boot' ? 'Spiel startet…' : 'Start wird vorbereitet…', detail: l.what || '', pct: null, boot: l.phase === 'boot' };
   return null;
 }
@@ -483,8 +495,10 @@ function taskUpdate(d) {
   $('#tbTask').classList.toggle('hidden', !t);
   if (!$('#pop').classList.contains('hidden') && $('#pop .tlist')) tasksPop();
   if (!t) return;
-  $('#tbTaskTxt').textContent = (list.length > 1 ? list.length + ' Aufgaben · ' : '') + t.stage + (t.total > 1 ? ' · ' + t.pct + '%' : '');
-  $('#tbTaskBar').style.width = (t.total > 1 ? t.pct : 100) + '%';
+  const first = list.sort((a, b) => +a.task.slice(1) - +b.task.slice(1))[0];
+  const pct = steadyPct('__top', first.task, first.total > 1 ? first.pct : null);
+  $('#tbTaskTxt').textContent = (list.length > 1 ? list.length + ' Aufgaben · ' : '') + first.stage + (pct != null ? ' · ' + pct + '%' : '');
+  $('#tbTaskBar').style.width = (pct ?? 100) + '%';
 }
 function tasksPop(e) {
   const list = Object.values(S.tasks);
@@ -957,7 +971,7 @@ async function instContent(i) {
     if (S.content !== C) return;
     C.all = res.flat(); C.loaded = true;
     // where each mod runs (client / server / both), from the catalogs
-    if (C.all.some(x => x.type === 'mod' && x.projectId)) api('content.env', { id: i.id }).then(m => { if (S.content !== C || !m) return; C.env = m; if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') draw(); }).catch(() => { });
+    if (!C.env && C.all.some(x => x.type === 'mod')) api('content.env', { id: i.id }).then(m => { if (S.content !== C || !m) return; C.env = m; if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') draw(); }).catch(() => { });
     if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') { draw(); const tb = $('#iSide [data-tab=content] em'); if (tb) tb.textContent = C.all.length; }
     const seen = () => { if (C.updates == null && C.all.some(x => x.projectId)) checkUpdates(true); };
     const unresolved = C.all.some(x => !x.projectId && x.source !== 'local');
@@ -2005,13 +2019,14 @@ PAGES.project = async (el, a) => {
   crumbs(tgt ? [[tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Hinzufügen', `go('discover',{type:'${p.project_type}',target:'${jsq(tgt.id)}'})`], [p.title]] : [['Entdecken', "go('discover')"], [tname, `go('discover',{type:'${p.project_type}'})`], [p.title]]);
   const inst = isInstalled(tgt, p.id), cover = p.gallery?.find(g => g.featured)?.raw_url || p.gallery?.[0]?.raw_url || p.gallery?.[0]?.url;
   const web = p.src === 'cf' ? p.website : `https://modrinth.com/${p.project_type}/${p.slug}`;
-  el.innerHTML = `<div id="pTask" class="tbwrap"></div><div class="phero">${cover ? `<div class="ph-bg" style="background-image:url('${esc(cover)}')"></div>` : '<div class="ph-bg none"></div>'}
+  el.innerHTML = `<div class="phero">${cover ? `<div class="ph-bg" style="background-image:url('${esc(cover)}')"></div>` : '<div class="ph-bg none"></div>'}
     <div class="phead">${picHtml(p.icon_url)}<div class="tx"><div class="kicker">${esc(tname)}</div><h1>${esc(p.title)}</h1><p class="d">${esc(p.description)}</p>
       <div class="meta"><span class="stat">${ico('download')}<b>${num(p.downloads)}</b> Downloads</span><span class="stat">${ico(p.src === 'cf' ? 'star' : 'heart')}<b>${num(p.followers)}</b> ${p.src === 'cf' ? 'Daumen hoch' : 'Follower'}</span><span class="stat">${ico('refresh')}Aktualisiert ${esc(ago(p.updated).replace('Vor', 'vor'))}</span>
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
     <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p glow" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
 </div></div></div>
     ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur direkt auf curseforge.com. OrbitLauncher holt die Mod dann von Modrinth, falls sie dort auch veröffentlicht ist, sonst öffnet sich die Download-Seite.</div>' : ''}
+    <div id="pTask" class="tbwrap ptask"></div>
     <div class="itabs" id="pTabs" style="margin-top:18px"></div>
     <div class="pgrid"><div id="pBody"></div><div class="pside" id="pSide"></div></div>`;
   if ($('#pInst')) $('#pInst').onclick = () => installProject(p.id, $('#pInst'));
@@ -3884,7 +3899,8 @@ function fxLoop() {
   if (!FX.on) return;
   const step = t => {
     FX.raf = requestAnimationFrame(step);
-    if (document.hidden || S.running.size || t - FX.last < 41) return;   // ~24 fps, nothing while Minecraft runs
+    // ~24 fps; while Minecraft runs only ~12 fps (and nothing at all when the launcher is not visible)
+    if (document.hidden || t - FX.last < (S.running.size ? 83 : 41)) return;
     const dt = Math.min(3, (t - FX.last) / 16.7); FX.last = t;
     fxDraw(dt);
   };
@@ -3892,7 +3908,11 @@ function fxLoop() {
 }
 // no animation at all while the launcher is in the background
 window.addEventListener('blur', () => { FX.on = false; cancelAnimationFrame(FX.raf); FX.raf = 0; });
-window.addEventListener('focus', () => { if (FX.on) return; FX.on = true; FX.last = performance.now(); fxLoop(); });
+const fxWake = () => { if (FX.on) return; FX.on = true; FX.last = performance.now(); fxLoop(); };
+window.addEventListener('focus', fxWake);
+// WebView2 does not always get a focus event when the window comes back (restore after the game, taskbar click)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && document.hasFocus()) fxWake(); });
+window.addEventListener('pointermove', () => { if (!FX.on && document.hasFocus()) fxWake(); }, { passive: true });
 
 let fxRT = 0; window.addEventListener('resize', () => { clearTimeout(fxRT); fxRT = setTimeout(() => { fxInit(); if (matchMedia('(prefers-reduced-motion: reduce)').matches) fxDraw(0); }, 200); });
 

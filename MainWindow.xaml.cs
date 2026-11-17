@@ -866,7 +866,19 @@ public partial class MainWindow : Window
             {
                 var inst = Inst(a);
                 if (await CatalogEnv.Fill(inst)) Instances.Save(inst, false);
-                return inst.Content.Where(c => c.Type == "mod" && !string.IsNullOrEmpty(c.Env)).ToDictionary(c => Instances.EnabledName(c.File), c => c.Env!);
+                var map = inst.Content.Where(c => c.Type == "mod" && !string.IsNullOrEmpty(c.Env)).GroupBy(c => Instances.EnabledName(c.File), StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Env!, StringComparer.OrdinalIgnoreCase);
+                // files no catalog knows: read the mod's own metadata (in the background, cached per file)
+                await Task.Run(() =>
+                {
+                    var dir = Path.Combine(inst.Dir, "mods");
+                    if (!Directory.Exists(dir)) return;
+                    var rest = Directory.GetFiles(dir).Where(f => f.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase))
+                        .Where(f => !map.ContainsKey(Instances.EnabledName(f))).ToList();
+                    var found = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+                    Parallel.ForEach(rest, new ParallelOptions { MaxDegreeOfParallelism = 4 }, f => { if (ModEnv.Of(f) is string e) found[Instances.EnabledName(f)] = e; });
+                    foreach (var (k, v) in found) map[k] = v;
+                });
+                return map;
             }
             case "serverpack.info":
             {

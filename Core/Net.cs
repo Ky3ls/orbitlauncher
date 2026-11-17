@@ -66,15 +66,32 @@ public static class Net
     public static async Task<JsonNode> Json(string url, CancellationToken ct = default) => JsonNode.Parse(await Text(url, ct))!;
     public static async Task<T> Json<T>(string url, CancellationToken ct = default) => JsonSerializer.Deserialize<T>(await Text(url, ct), J)!;
 
+    /// <summary>Sends a request again after 429 (rate limit) or a 5xx hiccup, honouring Retry-After (max ~12 s in total).</summary>
+    private static async Task<HttpResponseMessage> SendRetry(Func<HttpRequestMessage> make, CancellationToken ct)
+    {
+        for (var i = 0; ; i++)
+        {
+            var r = await Http.SendAsync(make(), ct);
+            var code = (int)r.StatusCode;
+            if (i >= 3 || (code != 429 && code < 500)) return r;
+            var wait = r.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(1.5 * (i + 1));
+            if (wait > TimeSpan.FromSeconds(6)) wait = TimeSpan.FromSeconds(6);
+            r.Dispose();
+            await Task.Delay(wait, ct);
+        }
+    }
+
     public static async Task<JsonNode> Post(string url, object body, string? bearer = null, CancellationToken ct = default)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        var json = body is string s ? s : JsonSerializer.Serialize(body);
+        HttpRequestMessage Make()
         {
-            Content = new StringContent(body is string s ? s : JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
-        };
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        if (bearer != null) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        using var r = await Http.SendAsync(req, ct);
+            var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            if (bearer != null) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            return req;
+        }
+        using var r = await SendRetry(Make, ct);
         var txt = await r.Content.ReadAsStringAsync(ct);
         if (!r.IsSuccessStatusCode) throw new HttpRequestException($"{(int)r.StatusCode} {url}: {Trim(txt)}", null, r.StatusCode);
         return string.IsNullOrWhiteSpace(txt) ? new JsonObject() : JsonNode.Parse(txt)!;
@@ -91,9 +108,8 @@ public static class Net
 
     public static async Task<JsonNode> GetAuth(string url, string bearer, CancellationToken ct = default)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        using var r = await Http.SendAsync(req, ct);
+        HttpRequestMessage Make() { var req = new HttpRequestMessage(HttpMethod.Get, url); req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer); return req; }
+        using var r = await SendRetry(Make, ct);
         var txt = await r.Content.ReadAsStringAsync(ct);
         if (!r.IsSuccessStatusCode) throw new HttpRequestException($"{(int)r.StatusCode} {url}: {Trim(txt)}", null, r.StatusCode);
         return JsonNode.Parse(txt)!;

@@ -223,7 +223,7 @@ public static class Instances
             {
                 file = baseName, on, size = File.Exists(f) ? new FileInfo(f).Length : -1L, title = DisplayTitle(c?.Title, baseName),
                 projectId, version = c?.VersionNumber, icon = c?.IconUrl, dependency = c?.Dependency ?? false, source,
-                env = type != "mod" ? null : !string.IsNullOrEmpty(c?.Env) ? c!.Env : File.Exists(f) ? ModEnv.Of(f) : null,
+                env = type == "mod" && !string.IsNullOrEmpty(c?.Env) ? c!.Env : null,
             });
         }
         return r;

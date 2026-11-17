@@ -178,6 +178,13 @@ public class Auth
 
         JsonNode profile;
         try { profile = await Net.GetAuth("https://api.minecraftservices.com/minecraft/profile", mcToken, ct); }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.TooManyRequests && Accounts.FirstOrDefault(a => a.Xuid == xuid && xuid != "") is Account known)
+        {
+            // Mojang limits how often the profile may be read; name and id do not change between launches
+            known.McToken = mcToken; known.McTokenExpires = exp; known.RefreshProtected = Dpapi.Protect(refresh);
+            Save();
+            return known;
+        }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
         { throw new InvalidOperationException("Dieses Konto besitzt Minecraft: Java Edition nicht (oder hat noch keinen Spielernamen)."); }
 
