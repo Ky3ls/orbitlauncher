@@ -70,7 +70,8 @@ public class Runner
                 fresh.LastPlayed = DateTime.UtcNow;
                 Instances.Save(fresh);
             }
-            State?.Invoke(inst.Id, false, code);
+            // many modpacks end with a non-zero exit code although the player just quit: only a real crash counts
+            State?.Invoke(inst.Id, false, code is null or 0 || !Crashed(inst, started) ? 0 : code);
             if (!string.IsNullOrWhiteSpace(inst.PostExit)) _ = Hook(inst, inst.PostExit!, env, false, default);
         };
         proc.BeginOutputReadLine();
@@ -114,6 +115,27 @@ public class Runner
     public void Kill(string id) { if (_running.TryGetValue(id, out var p)) try { p.Kill(true); } catch { } }
 
     /// <summary>Newest crash report of an instance (if the game crashed).</summary>
+    /// <summary>True for a real crash: a crash report or JVM error file from this session, or a log that never reached the normal shutdown.</summary>
+    public static bool Crashed(Instance inst, DateTime startedUtc)
+    {
+        try
+        {
+            var since = startedUtc.AddSeconds(-5);
+            var cr = Path.Combine(inst.Dir, "crash-reports");
+            if (Directory.Exists(cr) && new DirectoryInfo(cr).GetFiles("*.txt").Any(f => f.LastWriteTimeUtc >= since)) return true;
+            if (new DirectoryInfo(inst.Dir).GetFiles("hs_err_pid*.log").Any(f => f.LastWriteTimeUtc >= since)) return true;
+            var log = Path.Combine(inst.Dir, "logs", "latest.log");
+            if (!File.Exists(log) || File.GetLastWriteTimeUtc(log) < since) return true;
+            using var fs = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            fs.Seek(Math.Max(0, fs.Length - 96 * 1024), SeekOrigin.Begin);
+            var tail = new StreamReader(fs).ReadToEnd();
+            // vanilla prints "Stopping!" when the player quits; a crash prints the report header instead
+            if (tail.Contains("---- Minecraft Crash Report ----") || tail.Contains("Game crashed!")) return true;
+            return !tail.Contains("Stopping!");
+        }
+        catch { return true; }
+    }
+
     public static string? LatestCrash(Instance inst)
     {
         var d = Path.Combine(inst.Dir, "crash-reports");
