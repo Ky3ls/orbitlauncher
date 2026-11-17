@@ -60,6 +60,10 @@ public class Instance
     public int CatalogV { get; set; }
     /// <summary>True once we looked the instance up in the catalogs by its name (to link it to its modpack).</summary>
     public bool LinkTried { get; set; }
+    /// <summary>Folder of the instance in the launcher it was imported from.</summary>
+    public string? ImportedFrom { get; set; }
+    /// <summary>The player keeps their own RAM value: do not suggest more before launching.</summary>
+    public bool RamNoAsk { get; set; }
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;

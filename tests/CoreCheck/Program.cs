@@ -17,6 +17,22 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "worlds":
+    {
+        var inst = Instances.Get("w1")!;
+        for (var k = 0; k < 2; k++) { var t = Stopwatch.StartNew(); var l = Worlds.List(inst); Console.WriteLine($"{l.Count} worlds in {t.ElapsedMilliseconds} ms: {l[0].Name} {l[0].Mode} / {l[^1].Name} {l[^1].Mode}"); }
+        break;
+    }
+    case "import":
+    {
+        foreach (var f in Transfer.Scan())
+            Console.WriteLine($"{f.Launcher} | {f.Name} | {f.Mc} {f.Loader} {f.LoaderVersion} | proj={f.Project} | {System.Text.Json.JsonSerializer.Serialize(f.X)} | mods={Importers.Count(f.Path, "mods", ".jar")}");
+        var first = Transfer.Scan().First(f => f.Launcher == "Modrinth App");
+        var inst = await Transfer.Import(first, null);
+        Console.WriteLine("imported: " + System.Text.Json.JsonSerializer.Serialize(new { inst.Name, inst.Group, inst.PlaySeconds, inst.LastPlayed, inst.Created, inst.RamMb, inst.JvmArgs, inst.EnvVars, inst.Fullscreen, inst.Width, inst.PreLaunch, inst.ImportedFrom, icon = inst.IconUrl?[..30], files = Directory.GetFiles(inst.Dir, "*", SearchOption.AllDirectories).Length }));
+        Console.WriteLine("ram: " + Ram.Check(inst, set));
+        break;
+    }
     case "skins":
     {
         var pl = System.Text.Json.JsonSerializer.Serialize(await SkinSources.Player(args.ElementAtOrDefault(2) ?? "Notch"));

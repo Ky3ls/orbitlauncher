@@ -8,6 +8,10 @@
     <RootNamespace>CoreCheck</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.11" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="../../Core/**/*.cs" />
   </ItemGroup>
 </Project>

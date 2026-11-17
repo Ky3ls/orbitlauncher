@@ -399,6 +399,7 @@ public partial class MainWindow : Window
                     if (pt["bannerUrl"] != null) inst.BannerUrl = StrN(pt, "bannerUrl");
                     if (pt.ContainsKey("iconUrl")) { var iu = StrN(pt, "iconUrl"); if (iu == null || iu.StartsWith("data:image/") || iu.StartsWith("https://")) inst.IconUrl = iu; }
                     if (pt.ContainsKey("ramMb")) inst.RamMb = Int(pt, "ramMb");
+                    if (pt.ContainsKey("ramNoAsk")) inst.RamNoAsk = Bool(pt, "ramNoAsk");
                     if (pt.ContainsKey("javaPath")) inst.JavaPath = StrN(pt, "javaPath");
                     if (pt.ContainsKey("jvmArgs")) inst.JvmArgs = StrN(pt, "jvmArgs");
                     if (pt.ContainsKey("width")) inst.Width = Int(pt, "width");
@@ -573,8 +574,8 @@ public partial class MainWindow : Window
                 var inst = Inst(a);
                 return await Task.Run(() => new
                 {
-                    worlds = Worlds.List(inst).Select(w => new { w.Folder, w.Name, w.LastPlayed, w.Mode, w.Hardcore, icon = w.Icon ? $"https://shots.orbit/{Uri.EscapeDataString(inst.Id)}/saves/{Uri.EscapeDataString(w.Folder)}/icon.png" : null }),
-                    servers = Worlds.Servers(inst).Select(sv => new { sv.Name, sv.Ip, icon = sv.Icon ? "data:image/png;base64," + Worlds.ServerIcon(inst, sv.Ip) : null }),
+                    worlds = Worlds.List(inst).Select(w => new { w.Folder, w.Name, w.LastPlayed, w.Mode, w.Hardcore, icon = w.Icon ? $"https://shots.orbit/{Uri.EscapeDataString(inst.Id)}/saves/{Uri.EscapeDataString(w.Folder)}/icon.png" : null }).ToList(),
+                    servers = Worlds.Servers(inst).Select(sv => new { sv.Name, sv.Ip, icon = sv.Icon }).ToList(),
                 });
             }
             case "worlds.recent":
@@ -845,7 +846,7 @@ public partial class MainWindow : Window
 
             // ---------------- servers, backups, export, import
             case "server.ping": return await ServerPing.Ping(Str(a, "address"));
-            case "backup.list": return Backups.List(Inst(a));
+            case "backup.list": { var inst = Inst(a); return await Task.Run(() => Backups.List(inst)); }
             case "backup.create": { var inst = Inst(a); var f = Str(a, "folder"); return await WithTask(p => { p.Report(new Progress("Backup wird erstellt", 0, 1, f)); return Task.FromResult(Backups.Create(inst, f)); }); }
             case "backup.delete": Backups.Delete(Inst(a), Str(a, "file")); return new { };
             case "backup.restore": { var inst = Inst(a); var f = Str(a, "file"); return new { world = await Task.Run(() => Backups.Restore(inst, f)) }; }
@@ -860,11 +861,38 @@ public partial class MainWindow : Window
                 Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{target}\"") { UseShellExecute = true });
                 return new { path = target };
             }
-            case "import.scan": _found = await Task.Run(Transfer.Scan); return _found.Select((f, i) => new { i, f.Launcher, f.Name, f.Mc, f.Loader });
+            case "import.scan":
+            {
+                _found = await Task.Run(Transfer.Scan);
+                var done = Instances.All().Where(x => x.ImportedFrom != null).Select(x => Path.GetFullPath(x.ImportedFrom!)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var seen = Net.LoadJson<List<string>>(Path.Combine(Paths.Cache, "import-seen.json")) ?? new();
+                return _found.Select((f, i) => new
+                {
+                    i, key = f.Path, f.Launcher, f.Name, f.Mc, f.Loader, f.LoaderVersion,
+                    icon = Importers.IconData(f.X.IconFile) ?? f.IconUrl,
+                    playSeconds = f.X.PlaySeconds, lastPlayed = f.X.LastPlayed, created = f.X.Created, group = f.X.Group,
+                    ramMb = f.X.RamMb, jvm = f.X.JvmArgs != null, hooks = f.X.PreLaunch != null || f.X.Wrapper != null || f.X.PostExit != null,
+                    window = f.X.Width > 0 || f.X.Fullscreen, linked = f.Project != null,
+                    mods = Importers.Count(f.Path, "mods", ".jar|.jar.disabled"), worlds = Importers.Count(f.Path, "saves"),
+                    packs = Importers.Count(f.Path, "resourcepacks", ".zip"), shaders = Importers.Count(f.Path, "shaderpacks", ".zip"),
+                    imported = done.Contains(Path.GetFullPath(f.Path)), seen = seen.Contains(f.Path),
+                });
+            }
+            case "import.seen":
+            {
+                var file = Path.Combine(Paths.Cache, "import-seen.json");
+                var seen = Net.LoadJson<List<string>>(file) ?? new();
+                foreach (var k in _found.Select(f => f.Path)) if (!seen.Contains(k)) seen.Add(k);
+                Net.SaveJson(file, seen);
+                return true;
+            }
+            case "ram.check": { var inst = Inst(a); var r = Ram.Check(inst, S); return new { r.Mods, r.Shaders, r.Rec, r.Cur, r.Custom, r.Total, r.Capped, r.NoAsk }; }
             case "import.run":
             {
                 var f = _found.ElementAtOrDefault(Int(a, "i")) ?? throw new InvalidOperationException("Nicht gefunden");
                 var inst = await WithTask(p => Transfer.Import(f, p));
+                // link the modpack page and picture, then get Minecraft and the loader ready in the background
+                _ = Task.Run(async () => { try { if (await Transfer.Enrich(inst)) Instances.Save(inst); } catch { } });
                 _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
                 return Dto(inst);
             }

@@ -1918,3 +1918,28 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .vhead .srch.sm{width:180px}
 .vpick2{display:flex;gap:10px;align-items:center}.vpick2 .seg{flex:none}.vpick2 .sel{flex:1;height:42px}
 .vpick2>*:last-child{flex:1;min-width:0;width:auto!important;max-width:100%}.vpick2{margin-bottom:14px}
+
+/* ===== import from other launchers ===== */
+.mbox.imp{width:min(760px,calc(100vw - 32px))}
+.imtop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 10px;flex-wrap:wrap}
+.imtop .seg i{font-style:normal;opacity:.55;margin-left:3px;font-size:11px}
+.imlist{display:flex;flex-direction:column;gap:8px;max-height:min(460px,56vh);overflow:auto;padding-right:2px}
+.imrow{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 12px;border-radius:14px;border:1px solid var(--line);background:rgba(var(--ov),.025)}
+.imrow.done{opacity:.6}
+.imic{width:52px;height:52px;border-radius:12px;flex:none;display:grid;place-items:center;background:rgba(var(--ov),.05);overflow:hidden}
+.imic{position:relative}.imic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.imic svg{width:40px;height:40px}
+.imtx{flex:1;min-width:0}
+.imtx>b{font-size:14px;font-weight:650;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.imtx>small{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute);margin-top:2px}
+.imtx>small svg{width:13px;height:13px}
+.imsrc{padding:1px 7px;border-radius:6px;background:rgba(var(--a-rgb),.14);color:var(--a);font-weight:600;font-size:11px}
+.imchips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.imchips span{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;background:rgba(var(--ov),.05);font-size:11.5px;color:var(--sub)}
+.imchips svg{width:12px;height:12px;opacity:.75}
+.imx{font-size:11px;color:var(--mute);margin-top:6px}
+.ramcmp{display:flex;align-items:center;justify-content:center;gap:18px;margin:20px 0 6px}
+.ramcmp div{padding:12px 22px;border-radius:14px;border:1px solid var(--line);text-align:center;min-width:120px}
+.ramcmp div.on{border-color:rgba(var(--a-rgb),.55);background:rgba(var(--a-rgb),.08)}
+.ramcmp small{display:block;font-size:11px;color:var(--mute)}.ramcmp b{font-size:20px;font-family:var(--disp)}
+.ramcmp>svg{width:20px;height:20px;color:var(--mute)}
+.fchip.rec{border-color:rgba(var(--a-rgb),.5);color:var(--a)}.fchip.rec svg{width:13px;height:13px}

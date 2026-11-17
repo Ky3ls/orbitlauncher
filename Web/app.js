@@ -533,6 +533,7 @@ async function play(id, extra = {}) {
   const mode = S.settings.playMode || 'auto';
   if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
   if (!S.accounts.length) return playChoice(id, extra);
+  await ramAdvice(i);
   toast('Minecraft startet', `${i.name}${extra.world ? ' · Welt ' + extra.worldName : extra.server ? ' · ' + extra.server : ''}`);
   try { await api('launch', { id, ...extra }); }
   catch (e) { fail('Start fehlgeschlagen', e); }
@@ -780,6 +781,7 @@ PAGES.inst = (el, a) => {
   const i = instById(a.id); if (!i) return go('library');
   S.itab = a.tab || (S.itabFor === i.id ? S.itab : 'content'); S.itabFor = i.id;
   if (!['content', 'worlds', 'logs', 'orbit'].includes(S.itab) || (S.itab === 'orbit' && !hasOrbitMod(i))) S.itab = 'content';
+  if (S.itab !== 'worlds') setTimeout(() => worldsPrefetch(i.id), 300);
   crumbs([['Bibliothek', "go('library')"], [i.name]]);
   el.innerHTML = `<div id="iHead"></div><div class="dgrid istage"><aside class="filters" id="iSide"></aside><div id="iBody"></div></div>`;
   instHead(i);
@@ -865,7 +867,7 @@ async function instContent(i) {
     <button class="btn sm" id="cUpd" onclick="checkUpdates()">${ico('refresh')}Updates</button>
     <button class="btn sm" onclick="addFile()">${ico('file')}Aus Datei</button>
     <button class="btn sm p" onclick="go('discover',{type:'${i.loader === 'vanilla' ? 'resourcepack' : 'mod'}',target:'${jsq(i.id)}'})">${ico('plus')}Inhalte hinzufügen</button></div>
-    ${i.manualDownloads?.length ? `<div class="note w" style="margin:0 0 12px"><b>${i.manualDownloads.length} Datei(en) musst du selbst laden</b>, weil die Autoren nur Downloads über ihre eigene Website erlauben. Leg sie danach in den passenden Ordner.<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${i.manualDownloads.map(m => { const [n, u] = m.split('|'); return `<button class="fchip" onclick="openUrl('${jsq(u)}')">${ico('ext')}${esc(n)}</button>`; }).join('')}</div></div>` : ''}
+    ${i.manualDownloads?.length ? `<div class="note w" style="margin:0 0 12px"><b>${i.manualDownloads.length} Datei(en) musst du selbst laden</b>, weil die Autoren Downloads nur direkt auf curseforge.com erlauben (auch nicht auf Modrinth gefunden). Lad sie dort und leg sie in den passenden Ordner.<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${i.manualDownloads.map(m => { const [n, u] = m.split('|'); return `<button class="fchip" onclick="openUrl('${jsq(u)}')">${ico('ext')}${esc(n)}</button>`; }).join('')}</div></div>` : ''}
     <div id="cSel"></div><div id="cList">${C.loaded ? '' : '<div class="spinner"></div>'}</div>`;
   const draw = () => renderContent(i, types);
   const load = () => Promise.all(types.map(([t]) => api('instance.content', { id: i.id, type: t }).then(l => l.map(x => ({ ...x, type: t }))).catch(() => [])));
@@ -942,6 +944,12 @@ function renderContent(i, types) {
     if (b.dataset.b === 'rm') { if (!await confirmBox(`${items.length} Einträge entfernen?`, 'Die Dateien werden aus der Instanz gelöscht.', 'Entfernen', true)) return; for (const x of items) { try { await api('content.remove', { id: i.id, type: x.type, file: x.file }); } catch { } } C.all = C.all.filter(x => !C.sel.has(key(x))); }
     else for (const x of items) { const on = b.dataset.b === 'on'; try { await api('content.toggle', { id: i.id, type: x.type, file: x.file, on }); x.on = on; } catch { } }
     C.sel.clear(); renderContent(i, types);
+  };
+  // right click on a row opens the same menu as its ⋯ button, at the mouse
+  el.oncontextmenu = e => {
+    const more = e.target.closest('.ctile[data-k]')?.querySelector('[data-m]'); if (!more) return;
+    e.preventDefault();
+    el.onclick({ target: more, clientX: e.clientX, clientY: e.clientY, preventDefault() { }, stopPropagation() { e.stopPropagation(); } });
   };
   el.onclick = async e => {
     const pg = e.target.closest('[data-pg]');
@@ -1048,10 +1056,25 @@ window.addFile = addFile;
 /* ---------- worlds, servers (live status), backups ---------- */
 async function instWorlds(i) {
   const body = $('#iBody');
-  body.innerHTML = '<div class="spinner"></div>';
+  // last result shows at once, the fresh one replaces it only when something changed
+  const W = S.wcache || (S.wcache = {}), old = W[i.id];
+  if (old) worldsDraw(i, old.r, old.bk); else body.innerHTML = '<div class="spinner"></div>';
   let r = { worlds: [], servers: [] }, bk = [];
-  try { [r, bk] = await Promise.all([api('instance.worlds', { id: i.id }), api('backup.list', { id: i.id }).catch(() => [])]); } catch (e) { fail('Welten', e); }
-  if (S.itab !== 'worlds') return;
+  try { [r, bk] = await Promise.all([api('instance.worlds', { id: i.id }), api('backup.list', { id: i.id }).catch(() => [])]); } catch (e) { if (!old) fail('Welten', e); return; }
+  const sig = JSON.stringify([r, bk]);
+  if (old?.sig === sig) return;
+  W[i.id] = { r, bk, sig };
+  if (S.itab !== 'worlds' || S.args.id !== i.id) return;
+  worldsDraw(i, r, bk);
+}
+/** Warm the worlds of an instance in the background (hover / page open), so the tab opens instantly. */
+function worldsPrefetch(id) {
+  const W = S.wcache || (S.wcache = {}); if (W[id] || worldsPrefetch.busy?.has(id)) return;
+  (worldsPrefetch.busy ||= new Set()).add(id);
+  Promise.all([api('instance.worlds', { id }), api('backup.list', { id }).catch(() => [])]).then(([r, bk]) => { if (!W[id]) W[id] = { r, bk, sig: JSON.stringify([r, bk]) }; }).catch(() => { }).finally(() => worldsPrefetch.busy.delete(id));
+}
+function worldsDraw(i, r, bk) {
+  const body = $('#iBody'); if (!body) return;
   const quick = supportsQuickPlay(i.mcVersion);
   body.innerHTML = `${quick ? '' : `<div class="note" style="margin:0 0 14px">Direkt in eine Welt oder auf einen Server springen geht ab Minecraft 1.20. Bei ${esc(i.mcVersion)} startet das Spiel normal.</div>`}
     <div class="sec" style="margin-top:0"><h2>Welten</h2><span class="muted">${r.worlds.length}</span><span class="sp"></span><button class="btn sm" onclick="api('folder.open',{id:'${jsq(i.id)}',what:'saves'})">${ico('folder')}Ordner</button></div>
@@ -1114,19 +1137,86 @@ function importMenu(e) {
   ctxMenu(e, [['file', 'Modpack-Datei (.mrpack / .zip)', importPack], ['dup', 'Aus anderem Launcher übernehmen', importLaunchers]]);
 }
 window.importMenu = importMenu;
-async function importLaunchers() {
-  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Import</div><h1>Aus anderen Launchern</h1><p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Prism Launcher, MultiMC, PolyMC und weitere Launcher. Welten, Mods und Einstellungen werden kopiert, das Original bleibt unverändert.</p><div class="ipick" id="imList"><div class="spinner"></div></div>`, 'form');
-  let list = [];
-  try { list = await api('import.scan'); } catch (e) { fail('Suche fehlgeschlagen', e); }
-  if (!$('#imList')) return;
-  $('#imList').innerHTML = list.length ? list.map(f => `<div class="ir"><span class="iic">${ico('box')}</span><div class="tx"><b>${esc(f.name)}</b><small>${esc(f.launcher)} · ${esc(LOADERS[f.loader]?.[0] || f.loader)} ${esc(f.mc)}</small></div><button class="btn sm p" data-i="${f.i}">${ico('download')}Übernehmen</button></div>`).join('')
-    : '<div class="empty">Keine Instanzen aus anderen Launchern gefunden.</div>';
-  $('#imList').onclick = async e => {
-    const b = e.target.closest('[data-i]'); if (!b) return;
-    b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Kopiere…';
-    try { const inst = await api('import.run', { i: +b.dataset.i }); b.className = 'btn sm ok'; b.innerHTML = ico('check') + 'Übernommen'; toast('Importiert', inst.name); refreshInstances(); }
-    catch (er) { b.disabled = false; b.innerHTML = ico('download') + 'Übernehmen'; fail('Import fehlgeschlagen', er); }
+const IMP_SRC = { 'Modrinth App': 'Modrinth App', 'CurseForge': 'CurseForge', 'Prism Launcher': 'Prism', 'MultiMC': 'MultiMC', 'PolyMC': 'PolyMC' };
+async function importLaunchers(pre) {
+  const st = { f: 'all', list: pre || null, busy: new Set() };
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Import</div><h1>Aus anderen Launchern</h1>
+    <p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Modrinth App, CurseForge, Prism und MultiMC werden automatisch gefunden. Mods, Welten, Configs, Spielzeit und Einstellungen kommen mit, das Original bleibt unverändert.</p>
+    <div id="imBody"><div class="spinner" style="margin:30px auto"></div></div>`, 'form wide imp');
+  if (!st.list) { try { st.list = await api('import.scan'); } catch (e) { fail('Suche fehlgeschlagen', e); st.list = []; } }
+  api('import.seen').catch(() => { });
+  const fmtRam = mb => mb ? (mb / 1024).toFixed(mb % 1024 ? 1 : 0).replace('.', ',') + ' GB' : '';
+  const draw = () => {
+    const b = $('#imBody'); if (!b) return;
+    const srcs = [...new Set(st.list.map(f => f.launcher))];
+    const view = st.list.filter(f => st.f === 'all' || f.launcher === st.f);
+    const open = view.filter(f => !f.imported && !st.busy.has(f.i));
+    if (!st.list.length) { b.innerHTML = `<div class="empty" style="padding:34px 10px">${ico('search')}<b style="display:block;margin-top:8px">Nichts gefunden</b>Auf diesem PC sind keine Instanzen von Modrinth App, CurseForge, Prism oder MultiMC.</div>`; return; }
+    b.innerHTML = `<div class="imtop"><div class="seg sm" id="imF">${[['all', 'Alle'], ...srcs.map(x => [x, IMP_SRC[x] || x])].map(([k, n]) => `<button data-f="${esc(k)}" class="${st.f === k ? 'on' : ''}">${esc(n)} <i>${k === 'all' ? st.list.length : st.list.filter(f => f.launcher === k).length}</i></button>`).join('')}</div>
+      <button class="btn sm p" id="imAll" ${open.length ? '' : 'disabled'}>${ico('download')}Alle übernehmen${open.length ? ' (' + open.length + ')' : ''}</button></div>
+      <div class="imlist">${view.map(f => {
+        const chips = [f.mods && [`puzzle`, f.mods + ' Mods'], f.worlds && ['earth', f.worlds + (f.worlds === 1 ? ' Welt' : ' Welten')], f.packs && ['image', f.packs + ' Pakete'], f.shaders && ['sun', f.shaders + ' Shader'],
+          f.playSeconds && ['clock', ptime(f.playSeconds)], f.lastPlayed && ['cal', ago(f.lastPlayed)], f.ramMb && ['ram', fmtRam(f.ramMb)]].filter(Boolean);
+        const extra = [f.jvm && 'Java-Argumente', f.window && 'Fenster', f.hooks && 'Befehle', f.group && f.group !== f.launcher && 'Gruppe „' + f.group + '“', f.linked && 'Modpack verknüpft'].filter(Boolean);
+        const state = f.imported ? `<span class="btn sm ok">${ico('check')}Übernommen</span>` : st.busy.has(f.i) ? `<span class="btn sm" disabled>${ico('refresh', 'i spin')}Kopiere…</span>` : `<button class="btn sm p" data-i="${f.i}">${ico('download')}Übernehmen</button>`;
+        return `<div class="imrow ${f.imported ? 'done' : ''}"><span class="imic">${blockSvg(f.loader === 'vanilla' ? 'grass' : 'bookshelf')}${f.icon ? `<img src="${esc(f.icon)}" alt="" onerror="this.remove()">` : ''}</span>
+          <div class="imtx"><b>${esc(f.name)}</b><small><span class="imsrc">${esc(IMP_SRC[f.launcher] || f.launcher)}</span>${ldIcon(f.loader)}${esc(LOADERS[f.loader]?.[0] || f.loader)} ${esc(f.mc)}</small>
+            ${chips.length ? `<div class="imchips">${chips.map(([ic, t]) => `<span>${ico(ic)}${esc(t)}</span>`).join('')}</div>` : ''}
+            ${extra.length ? `<div class="imx">Übernimmt auch: ${esc(extra.join(' · '))}</div>` : ''}</div>${state}</div>`;
+      }).join('')}</div>`;
   };
+  const run = async f => {
+    st.busy.add(f.i); draw();
+    try { const inst = await api('import.run', { i: f.i }); f.imported = true; refreshInstances(); return inst; }
+    catch (er) { fail('Import fehlgeschlagen', er); }
+    finally { st.busy.delete(f.i); draw(); }
+  };
+  draw();
+  $('#imBody').onclick = async e => {
+    const fb = e.target.closest('[data-f]'); if (fb) { st.f = fb.dataset.f; return draw(); }
+    if (e.target.closest('#imAll')) {
+      const todo = st.list.filter(f => (st.f === 'all' || f.launcher === st.f) && !f.imported && !st.busy.has(f.i));
+      let n = 0; for (const f of todo) if (await run(f)) n++;
+      if (n) toast('Import fertig', `${n} Instanz${n === 1 ? '' : 'en'} übernommen`);
+      return;
+    }
+    const b = e.target.closest('[data-i]'); if (!b) return;
+    const f = st.list.find(x => x.i === +b.dataset.i); if (!f) return;
+    const inst = await run(f); if (inst) toast('Übernommen', `${inst.name} · ${IMP_SRC[f.launcher] || f.launcher}`);
+  };
+}
+window.importLaunchers = importLaunchers;
+/** On start: new instances in other launchers → one quiet hint (only once per instance). */
+async function importHint() {
+  let list = []; try { list = await api('import.scan'); } catch { return; }
+  const fresh = list.filter(f => !f.imported && !f.seen); if (!fresh.length) return;
+  const srcs = [...new Set(fresh.map(f => IMP_SRC[f.launcher] || f.launcher))].join(' & ');
+  api('import.seen').catch(() => { });
+  toast(`${fresh.length} Instanz${fresh.length === 1 ? '' : 'en'} gefunden`, `In ${srcs}. Mit Mods, Welten, Spielzeit und Einstellungen übernehmen?`, true, ['Ansehen', () => importLaunchers(list)]);
+}
+
+/* ---------- memory: a fitting value for big projects ---------- */
+const gb = mb => (mb / 1024).toFixed(mb % 1024 ? 1 : 0).replace('.', ',') + ' GB';
+/** Before a launch: raise the RAM by itself when the instance uses the global value, ask when the player set one. */
+async function ramAdvice(i) {
+  let r; try { r = await api('ram.check', { id: i.id }); } catch { return true; }
+  if (!r || r.mods < 40 || r.cur >= r.rec) return true;
+  if (!r.custom) {
+    try { await api('instance.update', { id: i.id, patch: { ramMb: r.rec } }); i.ramMb = r.rec; } catch { return true; }
+    toast('Arbeitsspeicher angepasst', `${gb(r.rec)} für ${r.mods} Mods${r.shaders ? ' und Shader' : ''}. Ändern in den Instanz-Einstellungen.`);
+    return true;
+  }
+  if (r.noAsk || r.rec - r.cur < 1024) return true;
+  return new Promise(res => {
+    S.modalClose = () => res(true);
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Arbeitsspeicher</div><h1>Mehr RAM für ${esc(i.name)}?</h1>
+      <p class="sub" style="margin:6px 0 0;max-width:none;text-align:left">Mit ${r.mods} Mods${r.shaders ? ' und Shadern' : ''} sind <b>${gb(r.cur)}</b> knapp. Empfohlen sind <b>${gb(r.rec)}</b>${r.capped ? `, mehr gibt dein PC (${gb(r.total)}) nicht sicher her` : ''}.</p>
+      <div class="ramcmp"><div><small>Jetzt</small><b>${gb(r.cur)}</b></div>${ico('right')}<div class="on"><small>Empfohlen</small><b>${gb(r.rec)}</b></div></div>
+      <div class="act" style="justify-content:space-between"><button class="btn ghost" id="raNo">Nicht mehr fragen</button><span class="row" style="gap:8px"><button class="btn" id="raKeep">Beibehalten</button><button class="btn p" id="raYes">${ico('check')}Auf ${gb(r.rec)} setzen</button></span></div>`, 'form');
+    $('#raYes').onclick = async () => { try { await api('instance.update', { id: i.id, patch: { ramMb: r.rec } }); i.ramMb = r.rec; toast('Arbeitsspeicher', gb(r.rec)); } catch (e) { fail('Fehler', e); } closeModal(); };
+    $('#raKeep').onclick = () => closeModal();
+    $('#raNo').onclick = async () => { try { await api('instance.update', { id: i.id, patch: { ramNoAsk: true } }); } catch { } closeModal(); };
+  });
 }
 
 /* ======================= SCREENSHOTS ======================= */
@@ -1485,12 +1575,13 @@ async function isRender() {
     m.innerHTML = `<h2>Java &amp; Speicher</h2><p class="sub">Leer lassen = Standard aus den globalen Einstellungen. Java wird pro Version automatisch passend geladen.</p>
       <label class="fl">Arbeitsspeicher</label><div class="fsw" style="padding:0 0 8px"><span>Eigenen Wert nutzen</span>${isTg('isRamOn', ram)}</div>
       <div class="ramrow ${ram ? '' : 'dim'}" id="isRamRow"><input type="range" min="1024" max="${Math.max(16384, def)}" step="256" value="${ram || def}" id="isRam"><input class="in" id="isRamN" value="${ram || def} MB" readonly></div>
-      <div class="row" style="gap:6px;margin-top:8px">${[2048, 4096, 6144, 8192, 12288].map(v => `<button class="fchip" data-ram="${v}">${v / 1024} GB</button>`).join('')}</div>
+      <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${[2048, 4096, 6144, 8192, 12288].map(v => `<button class="fchip" data-ram="${v}">${v / 1024} GB</button>`).join('')}<span id="isRamRec"></span></div>
       <label class="fl">Java-Pfad</label><div class="inline"><input class="in" id="isJava" placeholder="Automatisch (empfohlen)" value="${esc(i.javaPath || '')}"><button class="btn" onclick="pickJava('isJava')">${ico('folder')}Durchsuchen</button></div>
       <label class="fl">JVM-Argumente</label><input class="in mono" id="isJvm" placeholder="${esc(S.settings.jvmArgs || 'Mojangs Standard (G1GC)')}" value="${esc(i.jvmArgs || '')}">
       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${PRESETS.map(([v, n]) => `<button class="fchip" data-jvm="${esc(v)}">${n}</button>`).join('')}</div>
       <label class="fl">Umgebungsvariablen</label><textarea class="in ta mono" id="isEnv" rows="3" placeholder="NAME=wert (eine pro Zeile)">${esc(i.envVars || '')}</textarea>`;
     const r = $('#isRam'); setRange(r);
+    api('ram.check', { id: i.id }).then(a => { const el = $('#isRamRec'); if (el && a) el.outerHTML = `<button class="fchip rec" data-ram="${a.rec}" title="Passend für ${a.mods} Mods${a.shaders ? ' und Shader' : ''} auf diesem PC">${ico('sparkle')}Empfohlen: ${gb(a.rec)}</button>`; }).catch(() => { });
     const setRam = v => { r.value = v; setRange(r); $('#isRamN').value = r.value + ' MB'; };
     r.oninput = () => { setRam(r.value); if ($('#isRamOn').classList.contains('on')) isDeb(() => isPatch({ ramMb: +r.value })); };
     $('#isRamOn').onclick = e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); $('#isRamRow').classList.toggle('dim', !on); isPatch({ ramMb: on ? +r.value : 0 }); };
@@ -1769,6 +1860,12 @@ async function installInto(inst, p, versionId, btn) {
   try {
     const r = p.src === 'cf' ? await api('cf.install', { id: inst.id, project: cfNum(p.id), file: versionId ? +versionId : 0 })
       : await api('mr.install', { id: inst.id, project: p.id, type: typeOfInst(p.project_type), version: versionId || null });
+    if (!r.installed.length && r.skipped.length) {
+      // the author allows this file only on curseforge.com and it is not on Modrinth either
+      toast('Nur auf curseforge.com', `${p.title || p.name || 'Diese Mod'} kannst du dort laden und in den mods-Ordner legen.`, false, p.website ? ['Öffnen', () => openUrl(p.website + '/files')] : null);
+      if (btn) { btn.disabled = false; btn.innerHTML = ico('download') + 'Installieren'; }
+      return false;
+    }
     toast('Installiert', `${r.installed.join(', ')} → ${inst.name}${r.skipped.length ? ' · übersprungen: ' + r.skipped.join(', ') : ''}`);
     if (btn) { btn.className = btn.className.replace(' p', '') + ' ok'; btn.disabled = false; btn.innerHTML = ico('check') + 'Installiert'; }
     if (S.content?.id === inst.id) S.content.loaded = false;
@@ -1831,7 +1928,7 @@ PAGES.project = async (el, a) => {
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
     <div class="acts">${inst ? `<button class="btn lg ok">${ico('check')}Installiert</button>` : `<button class="btn lg p glow" id="pInst">${ico('download')}${tgt ? 'In ' + esc(tgt.name) : 'Installieren'}</button>`}
 </div></div></div>
-    ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur über seine eigene Website. OrbitLauncher öffnet dann die Download-Seite, statt die Datei selbst zu laden.</div>' : ''}
+    ${p.src === 'cf' && !p.allow ? '<div class="note w" style="margin-top:14px">Der Autor erlaubt Downloads nur direkt auf curseforge.com. OrbitLauncher holt die Mod dann von Modrinth, falls sie dort auch veröffentlicht ist, sonst öffnet sich die Download-Seite.</div>' : ''}
     <div class="itabs" id="pTabs" style="margin-top:18px"></div>
     <div class="pgrid"><div id="pBody"></div><div class="pside" id="pSide"></div></div>`;
   if ($('#pInst')) $('#pInst').onclick = () => installProject(p.id, $('#pInst'));
@@ -2857,7 +2954,7 @@ async function setBody() {
     b.innerHTML = card('', `<div class="srcrow"><span class="srclogo mr"></span><div class="tx"><b>Standard-Katalog</b><p>Zehntausende Mods, Modpacks, Shader und Ressourcenpakete. Immer aktiv, kein Schlüssel nötig.</p></div><span class="chip g">Verbunden</span></div>`)
       + '<div class="mt"></div>' + card('', `<div class="srcrow"><span class="srclogo cf"></span><div class="tx"><b>Erweiterter Katalog</b><p>Noch mehr Mods und Modpacks. Braucht einen kostenlosen API-Schlüssel (Anmeldung mit Google oder Discord, keine Bankdaten).</p></div><span class="chip ${cfs.ready ? 'g' : 'w'}">${cfs.ready ? 'Verbunden' : 'Nicht verbunden'}</span></div>
         <div class="inline" style="margin-top:14px"><input class="in" id="cfKeyIn" type="password" placeholder="${cfs.own ? 'Eigener Schlüssel gespeichert' : cfs.ready ? 'Eingebauter Schlüssel aktiv' : 'API-Schlüssel einfügen'}" style="font-family:var(--mono);font-size:12px"><button class="btn p" onclick="saveCfKey().then(()=>setBody())">${ico('check')}Speichern</button><button class="btn" onclick="openUrl('https://console.curseforge.com/')">${ico('ext')}Schlüssel holen</button></div>
-        <p class="fine">Mods, deren Autoren Downloads nur über ihre eigene Website erlauben, lädt OrbitLauncher nicht selbst. Du bekommst dann den Link zur Download-Seite.</p>`);
+        <p class="fine">Manche Autoren erlauben Downloads nur direkt auf curseforge.com. Dann nimmt OrbitLauncher dieselbe Mod von Modrinth, falls es sie dort gibt, sonst bekommst du den Link.</p>`);
   }
   if (S.stab === 'java') {
     b.innerHTML = card('Java-Laufzeiten', '<div class="spinner"></div>');
@@ -3790,6 +3887,7 @@ async function boot() {
   if (!S.accounts.length && (S.settings.firstRun || q.has('gate'))) { gate(true); if (S.settings.firstRun) setS('firstRun', false); }
   requestAnimationFrame(moveInd);
   if (S.settings.autoUpdate !== false) setTimeout(() => checkUpdate(false), 2000);
+  if (HOST) setTimeout(importHint, 3500);
   loadBlockTextures(false).then(ok => { if (!ok && HOST) setTimeout(() => loadBlockTextures(true), 4000); });
   api('app.args').then(r => { if (r?.launch && instById(r.launch)) { go('inst', { id: r.launch }); play(r.launch); } }).catch(() => { });
   if (!HOST && q.get('run')) setTimeout(() => (0, eval)(q.get('run')), 400);
@@ -3949,7 +4047,13 @@ const Mock = {
       case 'backup.create': await sleep(700); return { file: a.folder + '_x.zip', world: a.folder, date: iso(0), size: 51e6 };
       case 'backup.delete': case 'backup.restore': return { world: 'Neue Welt (Backup)' };
       case 'instance.export': await sleep(900); return { path: 'C:\\Users\\Ky3ls\\Desktop\\' + inst().name + '.mrpack' };
-      case 'import.scan': await sleep(500); return [{ i: 0, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric' }, { i: 1, launcher: 'Mod-Launcher', name: 'All the Mods 10', mc: '1.21.1', loader: 'neoforge' }];
+      case 'import.scan': await sleep(300); return [
+        { i: 0, launcher: 'Modrinth App', name: 'Fabulously Optimized', mc: '1.21.4', loader: 'fabric', mods: 92, worlds: 3, packs: 2, shaders: 1, playSeconds: 151200, lastPlayed: new Date(Date.now() - 864e5 * 2).toISOString(), ramMb: 6144, jvm: true, group: 'Favoriten', linked: true, icon: 'https://cdn.modrinth.com/data/1KVo5zza/icon.png' },
+        { i: 1, launcher: 'CurseForge', name: 'All the Mods 10', mc: '1.21.1', loader: 'neoforge', mods: 412, worlds: 1, playSeconds: 0, lastPlayed: new Date(Date.now() - 864e5 * 9).toISOString(), ramMb: 10240, jvm: true, linked: true },
+        { i: 2, launcher: 'CurseForge', name: 'Vanilla Plus', mc: '1.20.1', loader: 'forge', mods: 38, worlds: 2, imported: true },
+        { i: 3, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric', mods: 241, worlds: 4, playSeconds: 40000, lastPlayed: new Date(Date.now() - 864e5 * 30).toISOString(), window: true }];
+      case 'import.seen': return true;
+      case 'ram.check': return { mods: 142, shaders: true, rec: 8192, cur: 4096, custom: true, total: 16384, capped: false, noAsk: false };
       case 'import.run': await sleep(900); return M.instances[0];
       case 'screenshots.list': return ['survival-1-21-11', 'orbit-client-26-3', 'survival-1-21-11', 'technik-abenteuer', 'orbit-client-26-3', 'survival-1-21-11'].map((id, i) => ({ id, version: '', file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0, 675)), date: iso(i * DAY / 2) }));
       case 'mr.get': { const r = await fetch('https://api.modrinth.com/v2' + a.path); if (!r.ok) throw new Error('Katalog ' + r.status); return r.json(); }

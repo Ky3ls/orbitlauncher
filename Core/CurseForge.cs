@@ -88,8 +88,20 @@ public static class CurseForge
         var url = (string?)file["downloadUrl"];
         if (string.IsNullOrEmpty(url))
         {
-            // author does not allow downloads outside CurseForge – respect that
-            res.Skipped.Add(title + " (nur über die Website des Autors)");
+            // the author does not allow third-party downloads from CurseForge – respect that,
+            // but take the same project from Modrinth when the author publishes it there too
+            try
+            {
+                if (await OnModrinth(mod, type, ct) is string mr)
+                {
+                    var r2 = await Modrinth.Install(inst, mr, type, null, p, ct);
+                    res.Installed.AddRange(r2.Installed); res.Skipped.AddRange(r2.Skipped);
+                    return;
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { }
+            res.Skipped.Add(title + " (nur direkt auf curseforge.com)");
             return;
         }
         p?.Report(new Progress("Installiere " + title, 0, 1, (string?)file["displayName"]));
@@ -224,6 +236,7 @@ public static class CurseForge
 
         var entries = man["files"]?.AsArray().Where(f => f != null && (bool?)f["required"] != false).ToList() ?? new();
         var manual = new List<string>();
+        var blocked = new List<(JsonNode? mod, string type)>();
         if (entries.Count > 0)
         {
             if (!Ready) throw new InvalidOperationException("NO_CF_KEY");
@@ -243,7 +256,7 @@ public static class CurseForge
                 var type = TypeOf((int?)m?["classId"] ?? ClassMods);
                 var url = (string?)f["downloadUrl"];
                 var fname = Path.GetFileName((string)f["fileName"]!);
-                if (string.IsNullOrEmpty(url)) { manual.Add($"{(string?)m?["name"] ?? fname}|{(string?)m?["links"]?["websiteUrl"]}/files/{(int)f["id"]!}"); continue; }
+                if (string.IsNullOrEmpty(url)) { blocked.Add((m, type)); manual.Add($"{(string?)m?["name"] ?? fname}|{(string?)m?["links"]?["websiteUrl"]}/files/{(int)f["id"]!}"); continue; }
                 items.Add(new DlItem(url, Path.Combine(Instances.ContentDir(inst, type), fname), Sha1(f), (long?)f["fileLength"] ?? 0));
                 inst.Content.Add(new InstalledContent { ProjectId = "cf:" + modId, VersionId = ((int)f["id"]!).ToString(), Title = (string?)m?["name"] ?? fname, Type = type, File = fname, Sha1 = Sha1(f), IconUrl = (string?)m?["logo"]?["thumbnailUrl"], VersionNumber = (string?)f["displayName"], Source = "curseforge" });
             }
@@ -259,6 +272,19 @@ public static class CurseForge
             Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
             e.ExtractToFile(dst, true);
         }
+        // files CurseForge may not hand out: the same project on Modrinth, if the author publishes it there
+        foreach (var (bm, bt) in blocked)
+        {
+            try
+            {
+                if (await OnModrinth(bm, bt, ct) is not string mr) continue;
+                await Modrinth.Install(inst, mr, bt, null, p, ct);
+                var bname = (string?)bm?["name"];
+                manual.RemoveAll(x => bname != null && x.StartsWith(bname + "|"));
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { }
+        }
         inst.ManualDownloads = manual;
         Instances.Save(inst);
         p?.Report(new Progress("Inhalte werden erkannt", 0, 1));
@@ -271,11 +297,30 @@ public static class CurseForge
         var mod = await Mod(modId, ct);
         var file = fileId != null ? (await Get($"/mods/{modId}/files/{fileId}", ct))["data"]! : await BestFile(modId, null, null, ct) ?? throw new InvalidOperationException("Keine Modpack-Datei gefunden");
         var url = (string?)file["downloadUrl"];
-        if (string.IsNullOrEmpty(url)) throw new InvalidOperationException("Der Autor erlaubt den Download nur über seine eigene Website.");
+        if (string.IsNullOrEmpty(url))
+        {
+            if (await OnModrinth(mod, "modpack", ct) is string mrPack) return await Modrinth.InstallModpack(mrPack, null, p, ct);
+            throw new InvalidOperationException("Der Autor erlaubt den Download dieses Modpacks nur direkt auf curseforge.com.");
+        }
         var tmp = Path.Combine(Paths.Cache, "cf-" + Path.GetFileName((string)file["fileName"]!));
         p?.Report(new Progress("Modpack wird geladen", 0, 1, (string?)mod["name"]));
         await Net.Download(new DlItem(url, tmp, Sha1(file), (long?)file["fileLength"] ?? 0), ct);
         try { return await ImportPack(tmp, (string?)mod["name"], p, ct, modId, (string?)mod["logo"]?["thumbnailUrl"]); }
         finally { try { File.Delete(tmp); } catch { } }
+    }
+
+    private static string NormName(string s) => new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    /// <summary>The same project on Modrinth (exact name or slug), or null.</summary>
+    public static async Task<string?> OnModrinth(JsonNode? mod, string type, CancellationToken ct = default)
+    {
+        var name = (string?)mod?["name"]; var slug = (string?)mod?["slug"];
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var n = NormName(name);
+        var facets = Uri.EscapeDataString($"[[\"project_type:{type}\"]]");
+        var r = await Net.Json($"{Modrinth.Api}/search?limit=10&query={Uri.EscapeDataString(name)}&facets={facets}", ct);
+        var hit = r["hits"]?.AsArray().FirstOrDefault(h => NormName((string?)h?["title"] ?? "") == n)
+            ?? r["hits"]?.AsArray().FirstOrDefault(h => slug != null && (string?)h?["slug"] == slug && NormName((string?)h?["title"] ?? "").Length > 0);
+        return (string?)hit?["project_id"];
     }
 }

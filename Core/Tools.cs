@@ -188,7 +188,11 @@ public static class Transfer
         }, ct);
     }
 
-    public record Found(string Launcher, string Name, string Path, string Mc, string Loader, string? LoaderVersion, string? Project = null, string? IconUrl = null);
+    public record Found(string Launcher, string Name, string Path, string Mc, string Loader, string? LoaderVersion, string? Project = null, string? IconUrl = null)
+    {
+        /// <summary>Settings, play time and dates from the other launcher.</summary>
+        public Importers.Extra X { get; init; } = new();
+    }
 
     /// <summary>Instances of Prism Launcher / MultiMC and the CurseForge app on this PC.</summary>
     public static List<Found> Scan()
@@ -221,55 +225,24 @@ public static class Transfer
                     var packId = cfg.FirstOrDefault(l => l.StartsWith("ManagedPackID="))?[14..];
                     var project = string.IsNullOrWhiteSpace(packId) ? null : packType == "modrinth" ? packId : "cf:" + packId.Trim();
                     var mcDir = Directory.Exists(Path.Combine(d, ".minecraft")) ? Path.Combine(d, ".minecraft") : Path.Combine(d, "minecraft");
-                    if (mc.Length > 0) r.Add(new Found(name, title, mcDir, mc, loader, loader == "forge" && lv != null ? mc + "-" + lv : lv, project, null));
+                    var x = new Importers.Extra { Group = name };
+                    long Cfg(string k) => long.TryParse(cfg.FirstOrDefault(l => l.StartsWith(k + "="))?[(k.Length + 1)..], out var v) ? v : 0;
+                    string? CfgS(string k) => cfg.FirstOrDefault(l => l.StartsWith(k + "="))?[(k.Length + 1)..] is { Length: > 0 } v ? v : null;
+                    x.PlaySeconds = Cfg("totalTimePlayed");
+                    if (Cfg("lastLaunchTime") is long ll and > 0) x.LastPlayed = DateTimeOffset.FromUnixTimeMilliseconds(ll).UtcDateTime;
+                    if (CfgS("OverrideMemory") == "true" && Cfg("MaxMemAlloc") is long mm and >= 512) x.RamMb = (int)mm;
+                    if (CfgS("OverrideJavaArgs") == "true") x.JvmArgs = CfgS("JvmArgs");
+                    if (CfgS("OverrideWindow") == "true") { x.Width = (int)Cfg("MinecraftWinWidth"); x.Height = (int)Cfg("MinecraftWinHeight"); x.Fullscreen = CfgS("LaunchMaximized") == "true"; }
+                    if (CfgS("OverrideCommands") == "true") { x.PreLaunch = CfgS("PreLaunchCommand"); x.Wrapper = CfgS("WrapperCommand"); x.PostExit = CfgS("PostExitCommand"); }
+                    var iconKey = CfgS("iconKey");
+                    if (iconKey != null && iconKey != "default") x.IconFile = Path.Combine(Path.GetDirectoryName(dir)!, "icons", iconKey + ".png");
+                    if (mc.Length > 0) r.Add(new Found(name, title, mcDir, mc, loader, loader == "forge" && lv != null ? mc + "-" + lv : lv, project, null) { X = x });
                 }
                 catch { }
             }
         }
-        var cf = Path.Combine(home, "curseforge", "minecraft", "Instances");
-        if (Directory.Exists(cf))
-            foreach (var d in Directory.GetDirectories(cf))
-            {
-                try
-                {
-                    var f = Path.Combine(d, "minecraftinstance.json"); if (!File.Exists(f)) continue;
-                    var j = JsonNode.Parse(File.ReadAllText(f))!;
-                    var mc = (string?)j["gameVersion"] ?? "";
-                    var lid = (string?)j["baseModLoader"]?["name"] ?? "";
-                    string loader = "vanilla"; string? lv = null;
-                    if (lid.Contains('-')) { loader = lid[..lid.IndexOf('-')]; lv = lid[(lid.IndexOf('-') + 1)..]; if (loader == "forge") lv = mc + "-" + lv; }
-                    var pack = j["installedModpack"] ?? j["modpack"];
-                    var pid = Num(pack?["modId"]) ?? Num(pack?["projectID"]) ?? Num(j["projectID"]);
-                    var icon = Web(Text(pack?["thumbnailUrl"]) ?? Text(pack?["iconUrl"]) ?? Text(j["thumbnailUrl"]));
-                    if (mc.Length > 0) r.Add(new Found("Mod-Launcher", (string?)j["name"] ?? Path.GetFileName(d), d, mc, loader, lv, pid == null ? null : "cf:" + pid, icon));
-                }
-                catch { }
-            }
-        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        foreach (var dir in new[] { Path.Combine(roaming, "com.modrinth.theseus", "profiles"), Path.Combine(roaming, "ModrinthApp", "profiles"), Path.Combine(roaming, "com.modrinth.app", "profiles") })
-        {
-            if (!Directory.Exists(dir)) continue;
-            foreach (var d in Directory.GetDirectories(dir))
-            {
-                try
-                {
-                    var pf = Path.Combine(d, "profile.json"); if (!File.Exists(pf)) continue;
-                    var j = JsonNode.Parse(File.ReadAllText(pf))!;
-                    var meta = j["metadata"] ?? j;
-                    var mc = Text(meta?["game_version"]) ?? "";
-                    var loader = (Text(meta?["loader"]) ?? Text(meta?["mod_loader"]) ?? "vanilla").ToLowerInvariant();
-                    if (loader is not ("fabric" or "quilt" or "forge" or "neoforge" or "vanilla")) loader = "vanilla";
-                    var lv = Text(meta?["loader_version"]) ?? Text(meta?["mod_loader_version"]);
-                    if (loader == "forge" && lv != null && !lv.StartsWith(mc + "-")) lv = mc + "-" + lv;
-                    var mcDir = Directory.Exists(Path.Combine(d, ".minecraft")) ? Path.Combine(d, ".minecraft")
-                        : Directory.Exists(Path.Combine(d, "minecraft")) ? Path.Combine(d, "minecraft") : d;
-                    var project = Text(meta?["linked_data"]?["project_id"]);
-                    var icon = Text(meta?["icon_url"]) ?? Text(meta?["icon"]);
-                    if (mc.Length > 0) r.Add(new Found("Profil", Text(meta?["name"]) ?? Path.GetFileName(d), mcDir, mc, loader, lv, project, icon));
-                }
-                catch { }
-            }
-        }
+        try { foreach (var (f, x) in Importers.Modrinth()) r.Add(f with { X = x }); } catch { }
+        try { foreach (var (f, x) in Importers.CurseForgeApp()) r.Add(f with { X = x }); } catch { }
         return r;
     }
 
@@ -382,21 +355,31 @@ public static class Transfer
     {
         var kind = f.Loader != "vanilla" ? "modpack" : "custom";
         var inst = Instances.Create(f.Name, f.Mc, f.Loader, f.LoaderVersion, kind);
-        inst.Group = f.Launcher; inst.Icon = kind == "modpack" ? "box" : "wood";
+        var ex = f.X;
+        inst.Group = ex.Group ?? f.Launcher; inst.Icon = kind == "modpack" ? "box" : "wood";
+        inst.ImportedFrom = f.Path;
+        inst.PlaySeconds = ex.PlaySeconds; inst.LastPlayed = ex.LastPlayed;
+        if (ex.Created is DateTime cr) inst.Created = cr;
+        if (ex.RamMb > 0) inst.RamMb = ex.RamMb;
+        inst.JvmArgs = ex.JvmArgs; inst.EnvVars = ex.EnvVars; inst.Fullscreen = ex.Fullscreen;
+        if (ex.JavaPath != null && File.Exists(ex.JavaPath)) inst.JavaPath = ex.JavaPath;
+        if (ex.Width > 0 && ex.Height > 0) { inst.Width = ex.Width; inst.Height = ex.Height; }
+        inst.PreLaunch = ex.PreLaunch; inst.Wrapper = ex.Wrapper; inst.PostExit = ex.PostExit;
+        if (Importers.IconData(ex.IconFile) is string data) { inst.IconUrl = data; inst.Icon = "box"; }
         if (!string.IsNullOrEmpty(f.Project)) inst.ModpackProject = f.Project;
-        if (!string.IsNullOrEmpty(f.IconUrl) && f.IconUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { inst.IconUrl = f.IconUrl; inst.Icon = "box"; }
+        if (inst.IconUrl == null && !string.IsNullOrEmpty(f.IconUrl) && f.IconUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { inst.IconUrl = f.IconUrl; inst.Icon = "box"; }
         Instances.Save(inst);
         var list = Directory.GetFiles(f.Path, "*", SearchOption.AllDirectories)
-            .Where(x => { var rel = Path.GetRelativePath(f.Path, x); var name = Path.GetFileName(x); return !rel.StartsWith("logs") && !rel.StartsWith("crash-reports") && !rel.StartsWith(".fabric") && name is not ("minecraftinstance.json" or "profile.json"); }).ToList();
+            .Where(x => { var rel = Path.GetRelativePath(f.Path, x); var name = Path.GetFileName(x); return !rel.StartsWith("logs") && !rel.StartsWith("crash-reports") && !rel.StartsWith(".fabric") && !rel.StartsWith("natives") && name is not ("minecraftinstance.json" or "profile.json" or "session.lock"); }).ToList();
         int i = 0;
         await Task.Run(() =>
         {
-            foreach (var x in list)
+            foreach (var file in list)
             {
+                var x = file;
                 if (++i % 25 == 0) p?.Report(new Progress("Import aus " + f.Launcher, i, list.Count, f.Name));
                 var dst = Path.Combine(inst.Dir, Path.GetRelativePath(f.Path, x));
-                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
-                File.Copy(x, dst, true);
+                try { Directory.CreateDirectory(Path.GetDirectoryName(dst)!); File.Copy(x, dst, true); } catch { /* locked or vanished file: skip it */ }
             }
         }, ct);
         var mods = Path.Combine(inst.Dir, "mods");

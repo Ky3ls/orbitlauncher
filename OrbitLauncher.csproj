@@ -11,7 +11,7 @@
     <AssemblyName>OrbitLauncher</AssemblyName>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.8.9</Version>
+    <Version>0.9.0</Version>
     <Product>OrbitLauncher</Product>
     <Description>OrbitLauncher – Minecraft Launcher</Description>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -51,7 +51,9 @@
     <AssemblyMetadata Include="OrbitClientId" Value="$(OrbitClientId)" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.11" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.IO" />

@@ -7,71 +7,66 @@ namespace OrbitLauncher.Core;
 public static class Worlds
 {
     public record World(string Folder, string Name, DateTime LastPlayed, bool Icon, string? Mode, bool Hardcore);
-    public record Server(string Name, string Ip, bool Icon);
+    public record Server(string Name, string Ip, string? Icon);
     public record LogFile(string Name, long Size, DateTime Date);
+
+    // level.dat is only parsed again when it changed (modded worlds can have multi-MB level.dat files)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime at, long len, World w)> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     public static List<World> List(Instance inst)
     {
         var d = Path.Combine(inst.Dir, "saves");
         if (!Directory.Exists(d)) return new();
-        var r = new List<World>();
-        foreach (var w in new DirectoryInfo(d).GetDirectories())
-        {
-            var lvl = Path.Combine(w.FullName, "level.dat");
-            if (!File.Exists(lvl)) continue;
-            string name = w.Name; string? mode = null; bool hc = false; DateTime last = File.GetLastWriteTimeUtc(lvl);
-            try
-            {
-                using var fs = File.OpenRead(lvl);
-                using var gz = new GZipStream(fs, CompressionMode.Decompress);
-                var root = Nbt.Read(gz);
-                if (root.TryGetValue("Data", out var dataObj) && dataObj is Dictionary<string, object> data)
-                {
-                    if (data.TryGetValue("LevelName", out var n) && n is string s && s.Length > 0) name = s;
-                    if (data.TryGetValue("GameType", out var g) && g is int gt) mode = gt switch { 0 => "Überleben", 1 => "Kreativ", 2 => "Abenteuer", 3 => "Zuschauer", _ => null };
-                    if (data.TryGetValue("hardcore", out var h) && h is sbyte hb) hc = hb != 0;
-                    if (data.TryGetValue("LastPlayed", out var lp) && lp is long ms && ms > 0) last = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
-                }
-            }
-            catch { }
-            r.Add(new World(w.Name, name, last, File.Exists(Path.Combine(w.FullName, "icon.png")), hc ? "Hardcore" : mode, hc));
-        }
-        return r.OrderByDescending(w => w.LastPlayed).ToList();
+        var dirs = new DirectoryInfo(d).GetDirectories();
+        var r = new World?[dirs.Length];
+        Parallel.For(0, dirs.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount) }, k => r[k] = Read(dirs[k]));
+        return r.Where(w => w != null).Select(w => w!).OrderByDescending(w => w.LastPlayed).ToList();
     }
 
+    private static World? Read(DirectoryInfo w)
+    {
+        var lf = new FileInfo(Path.Combine(w.FullName, "level.dat"));
+        if (!lf.Exists) return null;
+        var icon = File.Exists(Path.Combine(w.FullName, "icon.png"));
+        if (Cache.TryGetValue(w.FullName, out var c) && c.at == lf.LastWriteTimeUtc && c.len == lf.Length) return c.w with { Icon = icon };
+        string name = w.Name; string? mode = null; bool hc = false; DateTime last = lf.LastWriteTimeUtc;
+        try
+        {
+            using var fs = new FileStream(lf.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
+            using var gz = new GZipStream(fs, CompressionMode.Decompress);
+            using var bs = new BufferedStream(gz, 1 << 16);
+            var root = Nbt.Read(bs);
+            if (root.TryGetValue("Data", out var dataObj) && dataObj is Dictionary<string, object> data)
+            {
+                if (data.TryGetValue("LevelName", out var n) && n is string s && s.Length > 0) name = s;
+                if (data.TryGetValue("GameType", out var g) && g is int gt) mode = gt switch { 0 => "Überleben", 1 => "Kreativ", 2 => "Abenteuer", 3 => "Zuschauer", _ => null };
+                if (data.TryGetValue("hardcore", out var h) && h is sbyte hb) hc = hb != 0;
+                if (data.TryGetValue("LastPlayed", out var lp) && lp is long ms && ms > 0) last = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
+            }
+        }
+        catch { }
+        var world = new World(w.Name, name, last, icon, hc ? "Hardcore" : mode, hc);
+        Cache[w.FullName] = (lf.LastWriteTimeUtc, lf.Length, world);
+        return world;
+    }
+
+    /// <summary>Saved servers with their icons, servers.dat read once.</summary>
     public static List<Server> Servers(Instance inst)
     {
         var f = Path.Combine(inst.Dir, "servers.dat");
         if (!File.Exists(f)) return new();
         try
         {
-            using var fs = File.OpenRead(f);
+            using var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
             var root = Nbt.Read(fs);
             if (root.TryGetValue("servers", out var l) && l is List<object> list)
                 return list.OfType<Dictionary<string, object>>().Select(s => new Server(
                     s.TryGetValue("name", out var n) ? n as string ?? "Server" : "Server",
                     s.TryGetValue("ip", out var ip) ? ip as string ?? "" : "",
-                    s.ContainsKey("icon"))).Where(s => s.Ip.Length > 0).ToList();
+                    s.TryGetValue("icon", out var ic) && ic is string b64 && b64.Length > 0 ? "data:image/png;base64," + b64 : null)).Where(s => s.Ip.Length > 0).ToList();
         }
         catch { }
         return new();
-    }
-
-    /// <summary>Server icon (base64 PNG stored in servers.dat).</summary>
-    public static string? ServerIcon(Instance inst, string ip)
-    {
-        var f = Path.Combine(inst.Dir, "servers.dat");
-        if (!File.Exists(f)) return null;
-        try
-        {
-            using var fs = File.OpenRead(f);
-            var root = Nbt.Read(fs);
-            if (root["servers"] is List<object> list)
-                foreach (var s in list.OfType<Dictionary<string, object>>())
-                    if (s.TryGetValue("ip", out var i) && (string)i == ip && s.TryGetValue("icon", out var ic)) return ic as string;
-        }
-        catch { }
-        return null;
     }
 
     public static string WorldDir(Instance inst, string folder)
@@ -121,10 +116,13 @@ public static class Nbt
         return (Dictionary<string, object>)Payload(r, 10, 0);
     }
 
-    private static short I16(BinaryReader r) { var b = r.ReadBytes(2); return (short)(b[0] << 8 | b[1]); }
-    private static int I32(BinaryReader r) { var b = r.ReadBytes(4); return b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]; }
+    private static short I16(BinaryReader r) => System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(r.ReadInt16());
+    private static int I32(BinaryReader r) => System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(r.ReadInt32());
     private static long I64(BinaryReader r) => (long)(uint)I32(r) << 32 | (uint)I32(r);
     private static string ReadString(BinaryReader r) { int n = (ushort)I16(r); return Encoding.UTF8.GetString(r.ReadBytes(n)); }
+
+    private static readonly byte[] Junk = new byte[1 << 14];
+    private static void Skip(BinaryReader r, long n) { while (n > 0) { var k = r.BaseStream.Read(Junk, 0, (int)Math.Min(n, Junk.Length)); if (k <= 0) throw new EndOfStreamException(); n -= k; } }
 
     private static object Payload(BinaryReader r, byte t, int depth)
     {
@@ -137,7 +135,7 @@ public static class Nbt
             case 4: return I64(r);
             case 5: return BitConverter.Int32BitsToSingle(I32(r));
             case 6: return BitConverter.Int64BitsToDouble(I64(r));
-            case 7: { int n = I32(r); r.ReadBytes(n); return Array.Empty<byte>(); }
+            case 7: { int n = I32(r); Skip(r, n); return Array.Empty<byte>(); }
             case 8: return ReadString(r);
             case 9:
             {
@@ -157,8 +155,8 @@ public static class Nbt
                     d[name] = Payload(r, ct, depth + 1);
                 }
             }
-            case 11: { int n = I32(r); r.ReadBytes(n * 4); return Array.Empty<int>(); }
-            case 12: { int n = I32(r); r.ReadBytes(n * 8); return Array.Empty<long>(); }
+            case 11: { int n = I32(r); Skip(r, n * 4L); return Array.Empty<int>(); }
+            case 12: { int n = I32(r); Skip(r, n * 8L); return Array.Empty<long>(); }
         }
         throw new InvalidDataException("Unbekannter NBT-Typ " + t);
     }
