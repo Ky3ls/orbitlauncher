@@ -653,7 +653,7 @@ public partial class MainWindow : Window
                 var opened = OfficialLauncher.Open();
                 return new { profile = name, opened, found = OfficialLauncher.FindExe() != null };
             }
-            case "stop": _runner.Kill(Str(a, "id")); return new { };
+            case "stop": _ = _runner.Stop(Str(a, "id")); return new { };
             case "task.cancel": { if (_taskCts.TryGetValue(Str(a, "task"), out var c)) c.Cancel(); return new { }; }
 
             // ---------------- modrinth

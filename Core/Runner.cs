@@ -71,7 +71,9 @@ public class Runner
                 Instances.Save(fresh);
             }
             // many modpacks end with a non-zero exit code although the player just quit: only a real crash counts
-            State?.Invoke(inst.Id, false, code is null or 0 || !Crashed(inst, started) ? 0 : code);
+            // ended from the launcher, or many modpacks that end with a non-zero code after a normal quit: only a real crash counts
+            var stopped = _stopping.TryRemove(inst.Id, out _);
+            State?.Invoke(inst.Id, false, stopped || code is null or 0 || !Crashed(inst, started) ? 0 : code);
             if (!string.IsNullOrWhiteSpace(inst.PostExit)) _ = Hook(inst, inst.PostExit!, env, false, default);
         };
         proc.BeginOutputReadLine();
@@ -113,6 +115,24 @@ public class Runner
     }
 
     public void Kill(string id) { if (_running.TryGetValue(id, out var p)) try { p.Kill(true); } catch { } }
+
+    private readonly ConcurrentDictionary<string, byte> _stopping = new();
+    /// <summary>Ends the game like the player would: closes its window so Minecraft saves and shuts down normally.
+    /// Only if it does not react (still loading, hanging) it is ended hard after a while.</summary>
+    public async Task Stop(string id)
+    {
+        if (!_running.TryGetValue(id, out var p)) return;
+        _stopping[id] = 1;
+        var asked = false;
+        try { p.Refresh(); asked = p.CloseMainWindow(); } catch { }
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(asked ? 25 : 3));
+            await p.WaitForExitAsync(cts.Token);
+        }
+        catch { }
+        if (!p.HasExited) try { p.Kill(true); } catch { }
+    }
 
     /// <summary>Newest crash report of an instance (if the game crashed).</summary>
     /// <summary>True for a real crash: a crash report or JVM error file from this session, or a log that never reached the normal shutdown.</summary>

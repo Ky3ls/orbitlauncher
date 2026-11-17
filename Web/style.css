@@ -2001,3 +2001,13 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .envb.sm{width:24px;height:24px;border-radius:7px;margin-right:0}.envb.sm svg{width:14px;height:14px}
 @keyframes tbFlow{0%{background-position:100% 0}100%{background-position:-100% 0}}
 .tbwrap.ptask.on{margin:16px 0 0}
+
+/* ===== faster loading ===== */
+.tulist{display:flex;flex-direction:column;gap:8px}
+.tuopt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(var(--ov),.025);cursor:pointer;transition:border-color .15s}
+.tuopt:hover{border-color:var(--line2)}
+.tuopt.done{cursor:default;opacity:.7}
+.tuopt b{display:block;font-size:13.5px}.tuopt small{font-size:12px;color:var(--sub);line-height:1.45}
+.tuck{width:20px;height:20px;border-radius:6px;flex:none;margin-top:1px;display:grid;place-items:center;border:1.5px solid var(--line2);color:transparent}
+.tuck svg{width:13px;height:13px}
+.tuck.on{background:var(--a);border-color:var(--a);color:var(--on)}

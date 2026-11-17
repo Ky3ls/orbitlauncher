@@ -412,6 +412,47 @@ const ENVS = [['client', 'Nur Client', 'envc', 'Läuft nur im Spiel (Client). Ge
 /** Same rule as the launcher core (CatalogEnv.FromModrinth). */
 const envOf = (c, sv) => sv === 'unsupported' ? 'client' : c === 'unsupported' ? 'server' : c === 'required' && sv === 'optional' ? 'client' : sv === 'required' && c === 'optional' ? 'server' : 'both';
 const envBadge = e => { const x = ENVS.find(v => v[0] === e); return x ? `<span class="envb ${e}" data-tip="${esc(x[1])}" title="${esc(x[1] + ' · ' + x[3])}"><svg class="i"><use href="#${x[2]}"/></svg></span>` : ''; };
+/* ---------- faster loading for big modpacks ---------- */
+// well-known, widely compatible mods that cut load time and memory (installed from Modrinth on request only)
+const TURBO = [
+  ['modernfix', 'ModernFix', 'Lädt Modpacks deutlich schneller und spart viel RAM. Der größte Hebel bei Forge.', ['forge', 'neoforge', 'fabric']],
+  ['ferrite-core', 'FerriteCore', 'Weniger Arbeitsspeicher für Blöcke und Modelle, dadurch kürzere Ladepausen.', ['forge', 'neoforge', 'fabric', 'quilt']],
+];
+async function turbo(id) {
+  const i = instById(id); if (!i) return;
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Ladezeit</div><h1>Schneller laden</h1><div id="tuBody"><div class="spinner" style="margin:24px auto"></div></div>`, 'form');
+  let list = [], ram = null;
+  try { list = await api('instance.content', { id, type: 'mod' }); } catch { }
+  try { ram = await api('ram.check', { id }); } catch { }
+  const has = slug => list.some(x => (x.projectId && TURBO_IDS[slug] === x.projectId) || (x.file || '').toLowerCase().replace(/[^a-z]/g, '').includes(slug.replace(/[^a-z]/g, '')));
+  const opts = TURBO.filter(t => t[3].includes(i.loader));
+  const b = $('#tuBody'); if (!b) return;
+  const tooMuch = ram && ram.cur > Math.max(ram.rec * 1.6, ram.rec + 4096);
+  b.innerHTML = `<p class="sub" style="margin:6px 0 14px;max-width:none;text-align:left">Große Modpacks brauchen beim ersten Laden lange. Diese Mods verkürzen das spürbar und vertragen sich mit fast allen Modpacks.</p>
+    <div class="tulist">${opts.map(([slug, n, d]) => has(slug)
+      ? `<div class="tuopt done"><span class="tuck on">${ico('check')}</span><div><b>${esc(n)}</b><small>Schon installiert</small></div></div>`
+      : `<label class="tuopt" data-s="${slug}"><span class="tuck on">${ico('check')}</span><div><b>${esc(n)}</b><small>${esc(d)}</small></div></label>`).join('')}</div>
+    ${tooMuch ? `<div class="note w" style="margin-top:12px"><b>${gb(ram.cur)} Arbeitsspeicher</b> sind mehr als nötig (empfohlen ${gb(ram.rec)}). Mehr RAM macht das Laden nicht schneller, eher die Pausen beim Aufräumen länger. <button class="btn sm" id="tuRam" style="margin-top:8px">${ico('ram')}Auf ${gb(ram.rec)} setzen</button></div>` : ''}
+    <div class="note" style="margin-top:12px">Tipp: Windows-Sicherheit prüft beim Start jede Mod-Datei. Den Ordner <b>OrbitLauncher\\instances</b> unter Windows-Sicherheit → Viren- &amp; Bedrohungsschutz → Ausschlüsse hinzuzufügen, beschleunigt das Laden oft am meisten.</div>
+    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Schließen</button>${opts.some(([slug]) => !has(slug)) ? `<button class="btn p" id="tuGo">${ico('zap')}Installieren</button>` : ''}</div>`;
+  b.querySelectorAll('label.tuopt').forEach(l => l.onclick = () => l.querySelector('.tuck').classList.toggle('on'));
+  if ($('#tuRam')) $('#tuRam').onclick = async e => { try { await api('instance.update', { id, patch: { ramMb: ram.rec } }); e.target.closest('.note').innerHTML = `${ico('check')} Arbeitsspeicher auf ${gb(ram.rec)} gesetzt.`; } catch (er) { fail('Fehler', er); } };
+  if ($('#tuGo')) $('#tuGo').onclick = async () => {
+    const pick = [...b.querySelectorAll('label.tuopt')].filter(l => l.querySelector('.tuck.on')).map(l => l.dataset.s);
+    closeModal(); if (!pick.length) return;
+    const ok = [], miss = [];
+    for (const slug of pick) {
+      try { const r = await api('mr.install', { id, project: slug, type: 'mod', version: null }); ok.push(...r.installed); }
+      catch { miss.push(TURBO.find(t => t[0] === slug)[1]); }
+    }
+    if (ok.length) toast('Schneller laden', `${ok.join(', ')} installiert. Wirkt ab dem nächsten Start.`);
+    if (miss.length) toast('Nicht für diese Version', `${miss.join(', ')} gibt es nicht für ${LOADERS[i.loader]?.[0] || i.loader} ${i.mcVersion}.`, false);
+    if (S.content?.id === id) S.content.loaded = false;
+    refreshInstances();
+  };
+}
+const TURBO_IDS = { modernfix: 'nmDcB62a', 'ferrite-core': 'uXXizFIs' };
+window.turbo = turbo;
 async function serverPack(id) {
   const i = instById(id); if (!i) return;
   modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Server</div><h1>Server-Paket</h1><div id="spBody"><div class="spinner" style="margin:24px auto"></div></div>`, 'form');
@@ -615,7 +656,7 @@ function runUI() {
 }
 async function play(id, extra = {}) {
   const i = instById(id); if (!i) return;
-  if (S.running.has(id)) { try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
+  if (S.running.has(id)) { toast('Minecraft wird beendet', `${i.name} · Welt wird gespeichert`); try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
   const mode = S.settings.playMode || 'auto';
   if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
   if (!S.accounts.length) return playChoice(id, extra);
@@ -898,7 +939,7 @@ function instHead(i) {
   el.innerHTML = `<div class="ihero"><div class="ih-bg ${cover ? 'cover' : ''}" id="iBanner" style="${cover ? `background-image:url('${esc(cover)}')` : (i.iconUrl ? `background-image:url('${esc(i.iconUrl)}')` : '')}">${cover || i.iconUrl ? '' : `<span>${blockSvg(i.icon)}</span>`}</div><div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1></div>
     <div class="acts"><button class="btn lg ${run ? 'stop' : 'play glow'}" onclick="play('${jsq(i.id)}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
       ${i.modpackProject ? `<button class="ib" title="Modpack-Seite" onclick="go('project',{id:'${jsq(i.modpackProject)}'})">${ico('compass')}</button>` : ''}
-      ${i.loader !== 'vanilla' ? `<button class="ib" title="Server-Paket" onclick="serverPack('${jsq(i.id)}')">${ico('envs')}</button>` : ''}
+      ${i.loader !== 'vanilla' ? `<button class="ib" title="Schneller laden" onclick="turbo('${jsq(i.id)}')">${ico('zap')}</button><button class="ib" title="Server-Paket" onclick="serverPack('${jsq(i.id)}')">${ico('envs')}</button>` : ''}
       <button class="ib" title="Ordner öffnen" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}</button>
       <button class="ib" title="Einstellungen" onclick="instSettings('${jsq(i.id)}')">${ico('settings')}</button>
       <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div>
