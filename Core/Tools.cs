@@ -366,7 +366,7 @@ public static class Transfer
         if (ex.Width > 0 && ex.Height > 0) { inst.Width = ex.Width; inst.Height = ex.Height; }
         inst.PreLaunch = ex.PreLaunch; inst.Wrapper = ex.Wrapper; inst.PostExit = ex.PostExit;
         if (Importers.IconData(ex.IconFile) is string data) { inst.IconUrl = data; inst.Icon = "box"; }
-        if (!string.IsNullOrEmpty(f.Project)) inst.ModpackProject = f.Project;
+        if (!string.IsNullOrEmpty(f.Project)) { inst.ModpackProject = f.Project; inst.ModpackVersion = ex.PackVersion; }
         if (inst.IconUrl == null && !string.IsNullOrEmpty(f.IconUrl) && f.IconUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) { inst.IconUrl = f.IconUrl; inst.Icon = "box"; }
         Instances.Save(inst);
         var list = Directory.GetFiles(f.Path, "*", SearchOption.AllDirectories)

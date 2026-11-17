@@ -215,7 +215,7 @@ public static class CurseForge
         try { using var z = ZipFile.OpenRead(zip); return z.GetEntry("manifest.json") != null; } catch { return false; }
     }
 
-    public static async Task<Instance> ImportPack(string zip, string? name, IProgress<Progress>? p, CancellationToken ct = default, int? projectId = null, string? iconUrl = null)
+    public static async Task<Instance> ImportPack(string zip, string? name, IProgress<Progress>? p, CancellationToken ct = default, int? projectId = null, string? iconUrl = null, int? fileId = null)
     {
         using var z = ZipFile.OpenRead(zip);
         JsonNode man;
@@ -231,7 +231,7 @@ public static class CurseForge
             if (loader == "neoforge" && lv.StartsWith(mc + "-")) lv = lv[(mc.Length + 1)..];
         }
         var inst = Instances.Create(name ?? (string?)man["name"] ?? Path.GetFileNameWithoutExtension(zip), mc, loader, lv, "modpack");
-        inst.Icon = "box"; inst.IconUrl = iconUrl; inst.ModpackProject = projectId != null ? "cf:" + projectId : null;
+        inst.Icon = "box"; inst.IconUrl = iconUrl; inst.ModpackProject = projectId != null ? "cf:" + projectId : null; inst.ModpackVersion = fileId?.ToString();
         Instances.Save(inst);
 
         var entries = man["files"]?.AsArray().Where(f => f != null && (bool?)f["required"] != false).ToList() ?? new();
@@ -305,7 +305,7 @@ public static class CurseForge
         var tmp = Path.Combine(Paths.Cache, "cf-" + Path.GetFileName((string)file["fileName"]!));
         p?.Report(new Progress("Modpack wird geladen", 0, 1, (string?)mod["name"]));
         await Net.Download(new DlItem(url, tmp, Sha1(file), (long?)file["fileLength"] ?? 0), ct);
-        try { return await ImportPack(tmp, (string?)mod["name"], p, ct, modId, (string?)mod["logo"]?["thumbnailUrl"]); }
+        try { return await ImportPack(tmp, (string?)mod["name"], p, ct, modId, (string?)mod["logo"]?["thumbnailUrl"], (int?)file["id"]); }
         finally { try { File.Delete(tmp); } catch { } }
     }
 

@@ -17,6 +17,20 @@ var waitSec = 60;
 
 switch (mode)
 {
+    case "serverpack":
+    {
+        var inst = Instances.All().First();
+        var target = Path.Combine(root, "server.zip");
+        ServerPack.Build(inst, target, null, default);
+        using var z = System.IO.Compression.ZipFile.OpenRead(target);
+        Console.WriteLine(string.Join("\n", z.Entries.Select(e => e.FullName).Where(n => !n.StartsWith("config/"))));
+        break;
+    }
+    case "env":
+    {
+        foreach (var f in Directory.GetFiles(args[2], "*.jar")) Console.WriteLine($"{ModEnv.Of(f),-7} {Path.GetFileName(f)}");
+        break;
+    }
     case "worlds":
     {
         var inst = Instances.Get("w1")!;

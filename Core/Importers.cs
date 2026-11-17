@@ -28,6 +28,8 @@ public static class Importers
         public string? PostExit { get; set; }
         /// <summary>Local picture of the instance in the other launcher.</summary>
         public string? IconFile { get; set; }
+        /// <summary>File / version id of the installed modpack (CurseForge file id, Modrinth version id).</summary>
+        public string? PackVersion { get; set; }
     }
 
     private static string Roaming => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -218,6 +220,7 @@ public static class Importers
                         RamMb = j["isMemoryOverride"] is JsonValue mo && mo.TryGetValue<bool>(out var o) && o && Long(j["allocatedMemory"]) is long mem && mem >= 512 ? (int)mem : 0,
                         JvmArgs = NonEmpty(Str(j["javaArgsOverride"])),
                         IconFile = Str(j["profileImagePath"]),
+                        PackVersion = (Long(j["fileID"]) ?? Long(pack?["installedFile"]?["id"]))?.ToString(),
                     };
                     var icon = Str(pack?["thumbnailUrl"]) ?? Str(j["thumbnailUrl"]);
                     r.Add((new Transfer.Found("CurseForge", Str(j["name"]) ?? Path.GetFileName(d), d, mc, loader, lv, pid is > 0 ? "cf:" + pid : null,

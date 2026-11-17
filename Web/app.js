@@ -55,7 +55,7 @@ const openUrl = url => api('open.url', { url });
 window.openUrl = openUrl;
 
 const S = {
-  settings: {}, instances: [], versions: [], latest: {}, accounts: [], active: null, running: new Set(), logs: {}, tasks: {},
+  settings: {}, instances: [], versions: [], latest: {}, accounts: [], active: null, running: new Set(), launching: new Map(), logs: {}, tasks: {},
   java: [], version: '0.3.0', root: '', page: 'home', args: {}, hist: [], hi: -1,
 };
 const LOADERS = { vanilla: ['Vanilla', 'van'], fabric: ['Fabric', 'fab'], quilt: ['Quilt', 'qui'], forge: ['Forge', 'frg'], neoforge: ['NeoForge', 'neo'] };
@@ -288,7 +288,7 @@ function go(p, args = {}, push = true) {
   moveInd();
   const el = $('#p-' + p);
   if (!same || push) el.scrollTop = 0;
-  PAGES[p]?.(el, args);
+  Promise.resolve(PAGES[p]?.(el, args)).then(() => tbanRefresh()).catch(() => { });
   enterPage(el);
   histUI(); sideUI();
 }
@@ -326,7 +326,7 @@ function toast(title, text = '', ok = true, action = null) {
   arm(t);
   return t;
 }
-const fail = (title, e) => toast(title, e?.message || String(e), false);
+const fail = (title, e) => { const m = e?.message || String(e); if (m.includes('CANCELLED')) return toast('Abgebrochen', title.replace(/ fehlgeschlagen$/, '')); toast(title, m, false); };
 function modal(html, cls = '') { $('#mbox').className = 'card gb mbox ' + cls; $('#mbox').innerHTML = html; $('#modal').classList.add('show'); }
 function closeModal() { $('#modal').classList.remove('show'); const f = S.modalClose; S.modalClose = null; f?.(); }
 window.closeModal = closeModal;
@@ -391,6 +391,7 @@ function onEvent(ev, d) {
   }
   if (ev === 'state') {
     d.running ? S.running.add(d.id) : S.running.delete(d.id);
+    if (S.launching.has(d.id)) { S.launching.delete(d.id); tbanRefresh(); }
     if (!d.running && d.code && d.code !== 0) {
       const i = S.instances.find(x => x.id === d.id);
       toast('Minecraft wurde beendet', `${i?.name || ''}: Exit-Code ${d.code}${d.crash ? ' · Crash-Report unter Logs' : ''}`, false);
@@ -406,8 +407,78 @@ function onEvent(ev, d) {
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
+/* ---------- client / server ---------- */
+const ENVS = [['client', 'Nur Client', 'envc', 'Läuft nur im Spiel (Client). Gehört nicht auf den Server.'], ['server', 'Nur Server', 'envs', 'Läuft nur auf dem Server.'], ['both', 'Client & Server', 'envb', 'Muss im Spiel und auf dem Server installiert sein.']];
+/** Same rule as the launcher core (CatalogEnv.FromModrinth). */
+const envOf = (c, sv) => sv === 'unsupported' ? 'client' : c === 'unsupported' ? 'server' : c === 'required' && sv === 'optional' ? 'client' : sv === 'required' && c === 'optional' ? 'server' : 'both';
+const envBadge = e => { const x = ENVS.find(v => v[0] === e); return x ? `<span class="envb ${e}" data-tip="${esc(x[1])}" title="${esc(x[1] + ' · ' + x[3])}"><svg class="i"><use href="#${x[2]}"/></svg></span>` : ''; };
+async function serverPack(id) {
+  const i = instById(id); if (!i) return;
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Server</div><h1>Server-Paket</h1><div id="spBody"><div class="spinner" style="margin:24px auto"></div></div>`, 'form');
+  let r = null; try { r = await api('serverpack.info', { id }); } catch { }
+  const b = $('#spBody'); if (!b) return;
+  b.innerHTML = `<div class="sphero"><span class="spic">${instIcon(i)}<i>${ico('envs')}</i></span><div><b>${esc(i.name)}</b><small>${esc(LOADERS[i.loader]?.[0] || i.loader)} ${esc(i.mcVersion)}${i.loaderVersion ? ' · ' + esc(i.loaderVersion) : ''}</small></div></div>
+    ${r?.official
+      ? `<div class="spopt on">${ico('check')}<div><b>Offizielles Server-Paket</b><small>Von den Modpack-Autoren auf CurseForge${r.size ? ' · ' + bytes(r.size) : ''}${r.name ? ' · ' + esc(r.name) : ''}</small></div></div>`
+      : `<div class="spopt on">${ico('sparkle')}<div><b>Server-Paket aus deiner Instanz</b><small>Alle Mods außer reinen Client-Mods${r?.mods ? ` (${r.mods} weggelassen)` : ''}, dazu Configs und Skripte. Eine Anleitung für die Server-Software liegt bei.</small></div></div>`}
+    <div class="act" style="justify-content:flex-end"><button class="btn" onclick="closeModal()">Abbrechen</button><button class="btn p" id="spGo">${ico('download')}${r?.official ? 'Herunterladen' : 'Erstellen'}</button></div>`;
+  $('#spGo').onclick = async () => {
+    closeModal();
+    try {
+      const res = await api('serverpack.get', { id });
+      if (!res) return;
+      if (res.kind === 'website') toast('Nur auf curseforge.com', 'Die Autoren erlauben den Download nur dort. Die Seite ist geöffnet.', false);
+      else toast(res.kind === 'official' ? 'Server-Paket geladen' : 'Server-Paket erstellt', res.path);
+    } catch (e) { fail('Server-Paket fehlgeschlagen', e); }
+  };
+}
+window.serverPack = serverPack;
+
+/* ---------- launch / download banner (instance page, project page, instance cards) ---------- */
+const TB_STAGE = { 'Bibliotheken': 'Bibliotheken werden geladen', 'Assets': 'Spieldateien werden geladen', 'Modpack-Dateien': 'Mods werden geladen' };
+function tbState(id, proj) {
+  const t = Object.values(S.tasks).filter(x => (id && x.inst === id) || (proj && x.proj === proj)).pop();
+  const l = id && S.launching.get(id);
+  if (t) return { task: t.task, text: (TB_STAGE[t.stage] || t.stage) + '…', detail: t.detail || '', pct: t.total > 1 ? t.pct : null };
+  if (l) return { text: l.phase === 'boot' ? 'Spiel startet…' : 'Start wird vorbereitet…', detail: l.what || '', pct: null, boot: l.phase === 'boot' };
+  return null;
+}
+function tbHtml(st, icon, name, sub, id) {
+  return `<div class="tban ${st.boot ? 'boot' : ''}"><span class="tb-ic">${icon}</span>
+    <div class="tb-tx"><div class="tb-t"><b>${esc(name)}</b>${sub ? `<span class="tb-sub">${esc(sub)}</span>` : ''}</div>
+      <div class="tb-st"><span class="tb-dots"><i></i><i></i><i></i></span>${esc(st.text)}${st.detail ? `<small>${esc(st.detail)}</small>` : ''}</div>
+      <div class="tb-row"><div class="tb-bar ${st.pct == null ? 'ind' : ''}"><i style="width:${st.pct ?? 35}%"></i></div>${st.pct != null ? `<span class="tb-pct">${st.pct}%</span>` : ''}</div></div>
+    <button class="btn tb-x" data-tbx="${esc(st.task || '')}" data-tbi="${esc(id || '')}">${st.boot ? 'Beenden' : 'Abbrechen'}</button></div>`;
+}
+function tbanRefresh() {
+  const ib = $('#iTask');
+  if (ib && S.page === 'inst') {
+    const i = instById(S.args.id), st = i && tbState(i.id);
+    ib.innerHTML = st ? tbHtml(st, instIcon(i), i.name, `${LOADERS[i.loader]?.[0] || i.loader} ${i.mcVersion}`, i.id) : '';
+    ib.classList.toggle('on', !!st);
+  }
+  const pb = $('#pTask');
+  if (pb && S.page === 'project' && S.proj?.p) {
+    const p = S.proj.p, st = tbState(null, p.id);
+    pb.innerHTML = st ? tbHtml(st, picHtml(p.icon_url), p.title, p.author ? 'von ' + p.author : '', null) : '';
+    pb.classList.toggle('on', !!st);
+  }
+  $$('.icprog[data-tk]').forEach(el => {
+    const st = tbState(el.dataset.tk);
+    el.classList.toggle('on', !!st); el.classList.toggle('ind', !!st && st.pct == null);
+    el.innerHTML = st ? `<span>${esc(st.text)}${st.pct != null ? ' ' + st.pct + '%' : ''}</span><i style="width:${st.pct ?? 35}%"></i>` : '';
+  });
+}
+window.tbanRefresh = tbanRefresh;
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-tbx]'); if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.tbx) api('task.cancel', { task: b.dataset.tbx }).catch(() => { });
+  else if (b.dataset.tbi) { api('stop', { id: b.dataset.tbi }).catch(() => { }); S.launching.delete(b.dataset.tbi); tbanRefresh(); }
+}, true);
 function taskUpdate(d) {
   if (d.done) delete S.tasks[d.task]; else S.tasks[d.task] = d;
+  tbanRefresh();
   const list = Object.values(S.tasks), t = list[list.length - 1];
   $('#tbTask').classList.toggle('hidden', !t);
   if (!$('#pop').classList.contains('hidden') && $('#pop .tlist')) tasksPop();
@@ -509,6 +580,7 @@ function instancesChanged() {
   if (S.page === 'home') PAGES.home($('#p-home'), S.args, true);
   if (S.page === 'library') renderLibGrid();
   if (S.page === 'inst') { const i = instById(S.args.id); if (i) instHead(i); else go('library'); }
+  tbanRefresh();
 }
 function sideUI() {
   $('#navLib').textContent = S.instances.length || '';
@@ -534,9 +606,14 @@ async function play(id, extra = {}) {
   if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
   if (!S.accounts.length) return playChoice(id, extra);
   await ramAdvice(i);
-  toast('Minecraft startet', `${i.name}${extra.world ? ' · Welt ' + extra.worldName : extra.server ? ' · ' + extra.server : ''}`);
-  try { await api('launch', { id, ...extra }); }
-  catch (e) { fail('Start fehlgeschlagen', e); }
+  S.launching.set(id, { phase: 'prep', at: Date.now(), what: extra.world ? 'Welt ' + extra.worldName : extra.server || '' }); tbanRefresh();
+  try {
+    await api('launch', { id, ...extra });
+    // the process is up: show "starting" until Minecraft reports it is running
+    S.launching.set(id, { phase: 'boot', at: Date.now() }); tbanRefresh();
+    setTimeout(() => { if (S.launching.get(id)?.phase === 'boot') { S.launching.delete(id); tbanRefresh(); } }, 25000);
+  }
+  catch (e) { S.launching.delete(id); tbanRefresh(); fail('Start fehlgeschlagen', e); }
 }
 window.play = play;
 function instCtx(e, id) {
@@ -691,7 +768,7 @@ function supportsQuickPlay(v) {
 function instCard(i, mini) {
   const run = S.running.has(i.id);
   return `<div class="icard ${mini ? 'mini' : ''}" onclick="go('inst',{id:'${jsq(i.id)}'})" oncontextmenu="instCtx(event,'${jsq(i.id)}')">
-    <div class="cv">${instIcon(i)}${run ? '<span class="lv"><i class="dot on"></i>LÄUFT</span>' : ''}</div>
+    <div class="cv">${instIcon(i)}${run ? '<span class="lv"><i class="dot on"></i>LÄUFT</span>' : ''}<div class="icprog" data-tk="${esc(i.id)}"></div></div>
     <button class="pl ${run ? 'run' : ''}" onclick="event.stopPropagation();play('${jsq(i.id)}')" title="${run ? 'Beenden' : 'Spielen'}">${ico(run ? 'stop' : 'play', '')}</button>
     <div class="bd"><b>${esc(i.name)}</b><small>${esc(instSub(i))}${mini ? '' : ' · ' + esc(ago(i.lastPlayed))}</small>${mini ? '' : `<div class="chips">${loaderChip(i.loader)}${i.kind !== 'custom' ? `<span class="chip ${i.kind === 'orbit' ? 'a' : 'm'}">${KIND[i.kind]}</span>` : ''}${i.mods ? `<span class="chip m">${i.mods} Mods</span>` : ''}</div>`}</div></div>`;
 }
@@ -768,6 +845,7 @@ function renderLibGrid() {
   list.forEach(i => { const k = keyOf(i); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
   const ghost = !q ? `<button class="icard ghost" onclick="newInstance()"><span class="gi">${ico('plus')}</span><b>Neue Instanz</b><small>Version wählen oder Modpack installieren</small></button>` : '';
   el.innerHTML = [...groups].map(([k, l], gi) => `<div class="ggrp">${k ? `<h3>${esc(k)}<i>${l.length}</i></h3>` : ''}<div class="igrid">${l.map(i => instCard(i)).join('')}${gi === groups.size - 1 ? ghost : ''}</div></div>`).join('');
+  tbanRefresh();
 }
 async function importPack() {
   try { const inst = await api('pack.import'); if (!inst) return; toast('Modpack importiert', inst.name); await refreshInstances(); go('inst', { id: inst.id }); }
@@ -783,7 +861,7 @@ PAGES.inst = (el, a) => {
   if (!['content', 'worlds', 'logs', 'orbit'].includes(S.itab) || (S.itab === 'orbit' && !hasOrbitMod(i))) S.itab = 'content';
   if (S.itab !== 'worlds') setTimeout(() => worldsPrefetch(i.id), 300);
   crumbs([['Bibliothek', "go('library')"], [i.name]]);
-  el.innerHTML = `<div id="iHead"></div><div class="dgrid istage"><aside class="filters" id="iSide"></aside><div id="iBody"></div></div>`;
+  el.innerHTML = `<div id="iHead"></div><div id="iTask" class="tbwrap"></div><div class="dgrid istage"><aside class="filters" id="iSide"></aside><div id="iBody"></div></div>`;
   instHead(i);
   $('#iSide').onclick = e => {
     const tab = e.target.closest('[data-tab]');
@@ -806,6 +884,7 @@ function instHead(i) {
   el.innerHTML = `<div class="ihero"><div class="ih-bg ${cover ? 'cover' : ''}" id="iBanner" style="${cover ? `background-image:url('${esc(cover)}')` : (i.iconUrl ? `background-image:url('${esc(i.iconUrl)}')` : '')}">${cover || i.iconUrl ? '' : `<span>${blockSvg(i.icon)}</span>`}</div><div class="ihead">${instIcon(i)}<div class="tx"><div class="kicker">${KIND[i.kind] || 'Instanz'}${i.group ? ' · ' + esc(i.group) : ''}</div><h1>${esc(i.name)}</h1></div>
     <div class="acts"><button class="btn lg ${run ? 'stop' : 'play glow'}" onclick="play('${jsq(i.id)}')">${ico(run ? 'stop' : 'play')}${run ? 'Beenden' : 'Spielen'}</button>
       ${i.modpackProject ? `<button class="ib" title="Modpack-Seite" onclick="go('project',{id:'${jsq(i.modpackProject)}'})">${ico('compass')}</button>` : ''}
+      ${i.loader !== 'vanilla' ? `<button class="ib" title="Server-Paket" onclick="serverPack('${jsq(i.id)}')">${ico('envs')}</button>` : ''}
       <button class="ib" title="Ordner öffnen" onclick="api('folder.open',{id:'${jsq(i.id)}',what:''})">${ico('folder')}</button>
       <button class="ib" title="Einstellungen" onclick="instSettings('${jsq(i.id)}')">${ico('settings')}</button>
       <button class="ib nr" title="Mehr" onclick="instCtx(event,'${jsq(i.id)}')">${ico('more')}</button></div></div>
@@ -877,6 +956,8 @@ async function instContent(i) {
     const res = await load();
     if (S.content !== C) return;
     C.all = res.flat(); C.loaded = true;
+    // where each mod runs (client / server / both), from the catalogs
+    if (C.all.some(x => x.type === 'mod' && x.projectId)) api('content.env', { id: i.id }).then(m => { if (S.content !== C || !m) return; C.env = m; if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') draw(); }).catch(() => { });
     if (S.page === 'inst' && S.args.id === i.id && S.itab === 'content') { draw(); const tb = $('#iSide [data-tab=content] em'); if (tb) tb.textContent = C.all.length; }
     const seen = () => { if (C.updates == null && C.all.some(x => x.projectId)) checkUpdates(true); };
     const unresolved = C.all.some(x => !x.projectId && x.source !== 'local');
@@ -927,7 +1008,7 @@ function renderContent(i, types) {
     const sub = [x.dependency ? 'Abhängigkeit' : '', x.version || (x.projectId ? '' : 'Eigene Datei')].filter(Boolean).join(' · ');
     return `<article class="ctile ${x.on ? '' : 'off'} ${sel ? 'sel' : ''} ${x.projectId ? 'link' : ''}" data-k="${esc(k)}" title="${esc(plain(x.file))}"><div class="pv">${picHtml(x.icon, 'pic', CTYPES.find(c => c[0] === x.type)?.[2] || 'puzzle')}<span class="cb ${sel ? 'on' : ''}" data-s><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span></div>
       <div class="tx"><b>${esc(contentName(x))}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
-      <div class="ac">${u ? `<button class="upill" data-u title="Neue Version: ${esc(u.to)}">${ico('arrowup')}Update</button>` : ''}<button class="ib sm ghost more" data-m title="Mehr">${ico('more')}</button><div class="tg sm ${x.on ? 'on' : ''}" data-tg></div></div></article>`;
+      <div class="ac">${x.type === 'mod' ? envBadge(C.env?.[x.file] || x.env) : ''}${u ? `<button class="upill" data-u title="Neue Version: ${esc(u.to)}">${ico('arrowup')}Update</button>` : ''}<button class="ib sm ghost more" data-m title="Mehr">${ico('more')}</button><div class="tg sm ${x.on ? 'on' : ''}" data-tg></div></div></article>`;
   };
   const sections = (C.type === 'all' || C.type === 'updates' ? types : types.filter(t => t[0] === C.type)).map(([t, n]) => ({ t, n, total: list.filter(x => x.type === t).length, items: view.filter(x => x.type === t) })).filter(g => g.items.length);
   const pager = pages > 1 ? `<nav class="cpager"><button class="ib sm" data-pg="prev" ${C.page <= 1 ? 'disabled' : ''}>${ico('left')}</button><span>Seite ${C.page} von ${pages}</span><button class="ib sm" data-pg="next" ${C.page >= pages ? 'disabled' : ''}>${ico('right')}</button></nav>` : '';
@@ -1724,13 +1805,14 @@ async function discFilters() {
     html += box('ver', 'Spielversion', `<input class="in" id="dVq" placeholder="Version suchen…" value="${esc(D.vq)}">${[...D.vers].filter(v => !rel.includes(v)).concat(rel).filter(v => !vq || v.includes(vq)).slice(0, 120).map(v => opt('ver', v, v, D.vers.has(v))).join('')}<div class="fsw"><span>Snapshots</span><div class="tg sm ${D.snaps ? 'on' : ''}" id="dSnap"></div></div>`);
     if (PLOADERS[D.type].length) html += box('ld', D.type === 'shader' ? 'Shader-Loader' : 'Loader', PLOADERS[D.type].map(l => opt('ld', l, LOADERS[l]?.[0] || cap(l), D.loaders.has(l))).join(''));
   }
+  if (D.type !== 'resourcepack' && D.type !== 'shader') html += box('env', 'Umgebung', ENVS.map(([k, n, ic]) => opt('env', k, n, D.env.has(k), `<svg class="i env-${k}"><use href="#${ic}"/></svg>`)).join(''));
   Object.entries(heads).forEach(([h, list]) => { if (list.length) html += box('h:' + h, HEAD_DE[h] || cap(h), list.sort((a, b) => a.label.localeCompare(b.label, 'de')).map(c => opt('cat', c.name, c.label, D.cats.has(c.name), c.icon)).join('')); });
-  if (D.type !== 'resourcepack' && D.type !== 'shader') html += box('env', 'Umgebung', opt('env', 'client', 'Client', D.env.has('client')) + opt('env', 'server', 'Server', D.env.has('server')));
   html += `<div class="fbox"><div class="fsw"><span>Nur Open Source</span><div class="tg sm ${D.open ? 'on' : ''}" id="dOpen"></div></div></div>`;
   el.innerHTML = html;
   el.onclick = e => {
     const fh = e.target.closest('.fh'); if (fh) { const b = fh.parentElement, k = b.dataset.box; b.classList.toggle('closed'); b.classList.contains('closed') ? D.closed.add(k) : D.closed.delete(k); return; }
     const o = e.target.closest('[data-f]');
+    if (o && o.dataset.f === 'env') { const v = o.dataset.v, on = !D.env.has(v); D.env.clear(); if (on) D.env.add(v); $$('[data-f=env]').forEach(x => { const h = D.env.has(x.dataset.v); x.classList.toggle('on', h); x.querySelector('.cb').classList.toggle('on', h); }); D.page = 0; discSearch(); return; }
     if (o) { const set = { ver: D.vers, ld: D.loaders, cat: D.cats, env: D.env }[o.dataset.f], v = o.dataset.v; set.has(v) ? set.delete(v) : set.add(v); o.classList.toggle('on', set.has(v)); o.querySelector('.cb').classList.toggle('on', set.has(v)); D.page = 0; discSearch(); return; }
     if (e.target.id === 'dCompat') { D.compat = !D.compat; D.page = 0; discFilters(); discSearch(); }
     if (e.target.id === 'dOpen') { D.open = !D.open; e.target.classList.toggle('on'); D.page = 0; discSearch(); }
@@ -1770,8 +1852,9 @@ function mrSearchPath(per, page) {
   if (lock) { f.push([`versions:${tgt.mcVersion}`]); if (D.type === 'mod') f.push(tgt.loader === 'quilt' ? ['categories:quilt', 'categories:fabric'] : [`categories:${tgt.loader}`]); }
   else { if (D.vers.size) f.push([...D.vers].map(v => `versions:${v}`)); if (D.loaders.size) f.push([...D.loaders].map(l => `categories:${l}`)); }
   D.cats.forEach(c => f.push([`categories:${c}`]));
-  if (D.env.has('client')) f.push(['client_side:required', 'client_side:optional']);
-  if (D.env.has('server')) f.push(['server_side:required', 'server_side:optional']);
+  if (D.env.has('client')) f.push(['client_side:required', 'client_side:optional'], ['server_side:unsupported']);
+  if (D.env.has('server')) f.push(['server_side:required', 'server_side:optional'], ['client_side:unsupported']);
+  if (D.env.has('both')) f.push(['client_side:required'], ['server_side:required']);
   if (D.open) f.push(['open_source:true']);
   return `/search?limit=${per}&offset=${page * per}&index=${D.sort}${D.q.trim() ? '&query=' + encodeURIComponent(D.q.trim()) : ''}&facets=${encodeURIComponent(JSON.stringify(f))}`;
 }
@@ -1802,7 +1885,7 @@ async function discSearch() {
   const ch = c.status === 'fulfilled' ? c.value.data.map(cfHit) : [];
   const mt = m.status === 'fulfilled' ? m.value.total_hits : 0, ct = c.status === 'fulfilled' ? Math.min(c.value.pagination.totalCount, 10000) : 0;
   const hits = mergeHits(mh, ch), total = mt + ct, per = cfPath && c.status === 'fulfilled' ? half : D.per;
-  const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c2 => ['cat', c2, catName(c2)]), [...D.env].map(e => ['env', e, cap(e)]));
+  const chips = [...D.vers].map(v => ['ver', v, v]).concat([...D.loaders].map(l => ['ld', l, LOADERS[l]?.[0] || cap(l)]), [...D.cats].map(c2 => ['cat', c2, catName(c2)]), [...D.env].map(e => ['env', e, ENVS.find(x => x[0] === e)?.[1] || e]));
   $('#dInfo').innerHTML = `<span><b style="color:var(--text)">${total.toLocaleString('de-DE')}</b> Ergebnisse</span>${chips.map(([k, v, n]) => `<button class="fchip on" data-rm="${k}" data-v="${esc(v)}">${esc(n)}${ico('x')}</button>`).join('')}${chips.length ? '<button class="fchip" data-clr>Alle Filter entfernen</button>' : ''}`;
   $('#dInfo').onclick = e => {
     if (e.target.closest('[data-clr]')) { D.vers.clear(); D.loaders.clear(); D.cats.clear(); D.env.clear(); }
@@ -1829,7 +1912,7 @@ function pcard(h) {
   return `<div class="pcard tilt" onclick="go('project',{id:'${jsq(h.project_id)}'${D.target ? `,target:'${jsq(D.target)}'` : ''}})">
     <span class="pcov ${cover ? '' : 'nocov'}" style="${cover ? `background-image:url('${esc(cover)}')` : ''}">${cover ? '' : coverFb(h)}</span>${picHtml(h.icon_url)}
     <div class="tx"><h3>${esc(h.title)}<small>von ${esc(h.author)}</small></h3><p>${esc(h.description)}</p>
-      <div class="tags">${cats.map(c => `<span class="chip m">${ico('tag')}${esc(h.cfcats ? c : catName(c))}</span>`).join('')}${lds.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}</div></div>
+      <div class="tags">${h.client_side && h.project_type === 'mod' ? envBadge(envOf(h.client_side, h.server_side)).replace('class="envb', 'class="envb sm') : ''}${cats.map(c => `<span class="chip m">${ico('tag')}${esc(h.cfcats ? c : catName(c))}</span>`).join('')}${lds.map(l => LOADERS[l] ? loaderChip(l) : `<span class="chip m">${esc(cap(l))}</span>`).join('')}</div></div>
     <div class="rs"><div class="stats"><span class="stat">${ico('download')}<b>${num(h.downloads)}</b></span><span class="stat">${ico(h.src === 'cf' ? 'star' : 'heart')}<b>${num(h.follows)}</b></span><span class="stat">${ico('refresh')}${esc(ago(h.date_modified))}</span></div>
       ${inst ? `<button class="btn sm ok" title="Installiert">${ico('check')}Installiert</button>` : `<button class="btn sm p" title="Installieren" onclick="event.stopPropagation();installProject('${jsq(h.project_id)}',this)">${ico('download')}Installieren</button>`}</div></div>`;
 }
@@ -1922,7 +2005,7 @@ PAGES.project = async (el, a) => {
   crumbs(tgt ? [[tgt.name, `go('inst',{id:'${jsq(tgt.id)}'})`], ['Hinzufügen', `go('discover',{type:'${p.project_type}',target:'${jsq(tgt.id)}'})`], [p.title]] : [['Entdecken', "go('discover')"], [tname, `go('discover',{type:'${p.project_type}'})`], [p.title]]);
   const inst = isInstalled(tgt, p.id), cover = p.gallery?.find(g => g.featured)?.raw_url || p.gallery?.[0]?.raw_url || p.gallery?.[0]?.url;
   const web = p.src === 'cf' ? p.website : `https://modrinth.com/${p.project_type}/${p.slug}`;
-  el.innerHTML = `<div class="phero">${cover ? `<div class="ph-bg" style="background-image:url('${esc(cover)}')"></div>` : '<div class="ph-bg none"></div>'}
+  el.innerHTML = `<div id="pTask" class="tbwrap"></div><div class="phero">${cover ? `<div class="ph-bg" style="background-image:url('${esc(cover)}')"></div>` : '<div class="ph-bg none"></div>'}
     <div class="phead">${picHtml(p.icon_url)}<div class="tx"><div class="kicker">${esc(tname)}</div><h1>${esc(p.title)}</h1><p class="d">${esc(p.description)}</p>
       <div class="meta"><span class="stat">${ico('download')}<b>${num(p.downloads)}</b> Downloads</span><span class="stat">${ico(p.src === 'cf' ? 'star' : 'heart')}<b>${num(p.followers)}</b> ${p.src === 'cf' ? 'Daumen hoch' : 'Follower'}</span><span class="stat">${ico('refresh')}Aktualisiert ${esc(ago(p.updated).replace('Vor', 'vor'))}</span>
         ${(p.categories || []).slice(0, 4).map(c => `<span class="chip m">${esc(p.cfcats ? c : catName(c))}</span>`).join('')}</div></div>
@@ -4010,7 +4093,7 @@ const Mock = {
       case 'instance.log': return { text: ['[18:42:01] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader 0.20.1', '[18:42:02] [main/INFO]: Loading 19 mods:', '\t- fabric-api 0.166.2+26.3', '\t- orbitclient 1.0.0', '\t- sodium 0.8.14', '[18:42:05] [Render thread/INFO]: Backend library: LWJGL version 3.4.3', '[18:42:06] [Render thread/WARN]: Shader complementary: option not found', '[18:42:09] [Render thread/INFO]: Sound engine started', '[18:55:12] [Render thread/ERROR]: Failed to load skin texture', 'java.io.IOException: connection reset', '\tat net.minecraft.client.resources.SkinManager.load(SkinManager.java:120)', '[18:58:40] [Render thread/INFO]: Stopping!'].join('\n') };
       case 'launch': {
         const id = a.id; await sleep(200);
-        for (const [st, n] of [['Bibliotheken', 64], ['Assets', 120]]) for (let k = 0; k <= n; k += 8) { onEvent('progress', { task: 'l' + id, stage: st, pct: Math.round(k / n * 100), total: n, detail: `${k}/${n}` }); await sleep(25); }
+        for (const [st, n] of [['Bibliotheken', 64], ['Assets', 120]]) for (let k = 0; k <= n; k += 8) { onEvent('progress', { task: 'l' + id, inst: id, stage: st, pct: Math.round(k / n * 100), total: n, detail: `${k}/${n}` }); await sleep(90); }
         onEvent('progress', { task: 'l' + id, done: true });
         onEvent('state', { id, running: true });
         ['[OrbitLauncher] java -Xmx3072M … net.fabricmc.loader.impl.launch.knot.KnotClient', '[18:42:01] [main/INFO]: Loading Minecraft with Fabric Loader 0.20.1', '[18:42:05] [Render thread/INFO]: Backend library: LWJGL version 3.4.3', '[18:42:06] [Render thread/WARN]: Shader complementary: option not found', '[18:42:09] [Render thread/INFO]: Sound engine started'].forEach(l => onEvent('log', { id, line: l }));
@@ -4053,6 +4136,9 @@ const Mock = {
         { i: 2, launcher: 'CurseForge', name: 'Vanilla Plus', mc: '1.20.1', loader: 'forge', mods: 38, worlds: 2, imported: true },
         { i: 3, launcher: 'Prism Launcher', name: 'Better MC 4', mc: '1.21.1', loader: 'fabric', mods: 241, worlds: 4, playSeconds: 40000, lastPlayed: new Date(Date.now() - 864e5 * 30).toISOString(), window: true }];
       case 'import.seen': return true;
+      case 'content.env': { const out = {}; (S.content?.all || []).filter(x => x.type === 'mod').forEach((x, k) => out[x.file] = ['client', 'both', 'both', 'server', 'client'][k % 5]); return out; }
+      case 'serverpack.info': return { official: a.id !== 'survival-1-21-11', name: 'ServerFiles-3.1.zip', size: 412e6, mods: 23 };
+      case 'serverpack.get': await sleep(600); return { kind: 'official', path: 'C:\\Users\\Spieler\\Downloads\\Server.zip' };
       case 'ram.check': return { mods: 142, shaders: true, rec: 8192, cur: 4096, custom: true, total: 16384, capped: false, noAsk: false };
       case 'import.run': await sleep(900); return M.instances[0];
       case 'screenshots.list': return ['survival-1-21-11', 'orbit-client-26-3', 'survival-1-21-11', 'technik-abenteuer', 'orbit-client-26-3', 'survival-1-21-11'].map((id, i) => ({ id, version: '', file: `2026-11-1${4 - (i >> 1)}_2${i}.14.0${i}.png`, url: 'data:image/svg+xml,' + encodeURIComponent(bannerSvg(i % 2 === 0, 675)), date: iso(i * DAY / 2) }));

@@ -227,7 +227,9 @@ public partial class MainWindow : Window
 
     // ---- progress → UI (throttled), several tasks can run in parallel
     private sealed class Prog(Action<Progress> a) : IProgress<Progress> { public void Report(Progress p) => a(p); }
-    private (IProgress<Progress> p, string task) NewTask()
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CancellationTokenSource> _taskCts = new();
+    /// <summary>inst / proj tie a task to an instance or a catalog project, so the UI can show it right there.</summary>
+    private (IProgress<Progress> p, string task) NewTask(string? inst = null, string? proj = null)
     {
         var task = "t" + Interlocked.Increment(ref _taskSeq);
         var gate = new object(); var last = DateTime.MinValue; string? stage = null;
@@ -239,14 +241,21 @@ public partial class MainWindow : Window
                 if (p.Stage == stage && (now - last).TotalMilliseconds < 90 && p.Done < p.Total) return;
                 last = now; stage = p.Stage;
             }
-            Emit("progress", new { task, stage = p.Stage, pct = p.Pct, total = p.Total, detail = p.Detail });
+            Emit("progress", new { task, inst, proj, stage = p.Stage, pct = p.Pct, total = p.Total, detail = p.Detail });
         }), task);
     }
-    private async Task<T> WithTask<T>(Func<IProgress<Progress>, Task<T>> work)
+    private Task<T> WithTask<T>(Func<IProgress<Progress>, Task<T>> work, string? inst = null, string? proj = null) => WithTask((p, _) => work(p), inst, proj);
+
+    /// <summary>Background work with progress; cancellable from the UI (task.cancel).</summary>
+    private async Task<T> WithTask<T>(Func<IProgress<Progress>, CancellationToken, Task<T>> work, string? inst = null, string? proj = null)
     {
-        var (p, task) = NewTask();
-        try { return await Task.Run(() => work(p)); }
-        finally { Emit("progress", new { task, done = true }); }
+        var (p, task) = NewTask(inst, proj);
+        using var cts = new CancellationTokenSource();
+        _taskCts[task] = cts;
+        Emit("progress", new { task, inst, proj, stage = "Wird vorbereitet", pct = 0, total = 0, detail = "" });
+        try { return await Task.Run(() => work(p, cts.Token)); }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested) { throw new InvalidOperationException("CANCELLED"); }
+        finally { _taskCts.TryRemove(task, out _); Emit("progress", new { task, done = true }); }
     }
 
     [System.Runtime.InteropServices.DllImport("psapi.dll")] private static extern bool EmptyWorkingSet(IntPtr process);
@@ -386,7 +395,7 @@ public partial class MainWindow : Window
                 inst.Group = StrN(a, "group");
                 Instances.Save(inst);
                 // download everything in the background so the first start is instant
-                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch (Exception e) { Emit("log", new { id = inst.Id, line = "[OrbitLauncher] Vorbereitung fehlgeschlagen: " + e.Message }); } return 0; });
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(inst, S, p, ct); } catch (Exception e) when (e is not OperationCanceledException) { Emit("log", new { id = inst.Id, line = "[OrbitLauncher] Vorbereitung fehlgeschlagen: " + e.Message }); } return 0; }, inst.Id);
                 return Dto(inst);
             }
             case "instance.update":
@@ -489,7 +498,7 @@ public partial class MainWindow : Window
             {
                 var inst = Inst(a);
                 // re-check the version JSON and all files (sizes); missing ones are downloaded again
-                return await WithTask(async p => { await Runner.Prepare(inst, S, p); return new { ok = true }; });
+                return await WithTask(async (p, ct) => { await Runner.Prepare(inst, S, p, ct); return new { ok = true }; }, inst.Id);
             }
             case "instance.content":
             {
@@ -517,7 +526,7 @@ public partial class MainWindow : Window
                 ups.AddRange(await CurseForge.CheckUpdates(inst));
                 return ups;
             }
-            case "content.updateAll": { var inst = Inst(a); return await WithTask(async p => new { count = await Modrinth.UpdateAll(inst, p) }); }
+            case "content.updateAll": { var inst = Inst(a); return await WithTask(async p => new { count = await Modrinth.UpdateAll(inst, p) }, inst.Id); }
             case "content.versions":
             {
                 var inst = Inst(a);
@@ -622,12 +631,13 @@ public partial class MainWindow : Window
                 var inst = Inst(a);
                 var acc = _auth.Active ?? throw new InvalidOperationException("Bitte zuerst mit einem Microsoft-Konto anmelden.");
                 var session = await _auth.GetSession(acc);
-                await WithTask(async p =>
+                await WithTask(async (p, ct) =>
                 {
                     if (S.AutoUpdateMods && inst.Content.Count > 0) { try { await Modrinth.UpdateAll(inst, p); } catch { } }
-                    await _runner.Launch(inst, session, S, p, default, StrN(a, "server"), StrN(a, "world"));
+                    ct.ThrowIfCancellationRequested();
+                    await _runner.Launch(inst, session, S, p, ct, StrN(a, "server"), StrN(a, "world"));
                     return 0;
-                });
+                }, inst.Id);
                 var onl = inst.OnLaunch ?? S.OnLaunch;
                 if (onl is "minimize" or "close")
                 {
@@ -644,6 +654,7 @@ public partial class MainWindow : Window
                 return new { profile = name, opened, found = OfficialLauncher.FindExe() != null };
             }
             case "stop": _runner.Kill(Str(a, "id")); return new { };
+            case "task.cancel": { if (_taskCts.TryGetValue(Str(a, "task"), out var c)) c.Cancel(); return new { }; }
 
             // ---------------- modrinth
             case "mr.get":
@@ -663,13 +674,13 @@ public partial class MainWindow : Window
             case "mr.install":
             {
                 var inst = Inst(a);
-                var r = await WithTask(p => Modrinth.Install(inst, Str(a, "project"), Str(a, "type"), StrN(a, "version"), p));
+                var r = await WithTask((p, ct) => Modrinth.Install(inst, Str(a, "project"), Str(a, "type"), StrN(a, "version"), p, ct), inst.Id, Str(a, "project"));
                 return new { installed = r.Installed, skipped = r.Skipped };
             }
             case "mr.modpack":
             {
-                var inst = await WithTask(p => Modrinth.InstallModpack(Str(a, "project"), StrN(a, "version"), p));
-                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                var inst = await WithTask((p, ct) => Modrinth.InstallModpack(Str(a, "project"), StrN(a, "version"), p, ct), null, Str(a, "project"));
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(inst, S, p, ct); } catch { } return 0; }, inst.Id);
                 return Dto(inst);
             }
             case "pack.import":
@@ -678,7 +689,7 @@ public partial class MainWindow : Window
                 if (dlg.ShowDialog(this) != true) return null;
                 var file = dlg.FileName;
                 var inst = await WithTask(p => file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && CurseForge.IsCfPack(file) ? CurseForge.ImportPack(file, null, p) : Modrinth.ImportPack(file, null, p));
-                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(inst, S, p, ct); } catch { } return 0; }, inst.Id);
                 return Dto(inst);
             }
 
@@ -722,7 +733,7 @@ public partial class MainWindow : Window
                 var packs = (a["packs"] as JsonArray)?.Select(x => (string?)x ?? "").ToList() ?? new();
                 var ram = Int(a, "ramMb");
                 var r = await WithTask(p => OrbitClient.Create(StrN(a, "mc"), packs, ram > 0 ? ram : 3072, AccentHex(S.Accent), p));
-                _ = WithTask(async p => { try { await Runner.Prepare(r.inst, S, p); } catch { } return 0; });
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(r.inst, S, p, ct); } catch { } return 0; }, r.inst.Id);
                 return new { id = r.inst.Id, installed = r.installed, skipped = r.skipped };
             }
             case "orbit.config.get": return OrbitClient.ReadConfig() ?? new JsonObject { ["modules"] = new JsonObject() };
@@ -833,14 +844,14 @@ public partial class MainWindow : Window
             case "cf.install":
             {
                 var inst = Inst(a); var fid = Int(a, "file");
-                var r = await WithTask(p => CurseForge.Install(inst, Int(a, "project"), fid > 0 ? fid : null, p));
+                var r = await WithTask((p, ct) => CurseForge.Install(inst, Int(a, "project"), fid > 0 ? fid : null, p, ct), inst.Id, "cf:" + Int(a, "project"));
                 return new { installed = r.Installed, skipped = r.Skipped };
             }
             case "cf.modpack":
             {
                 var fid = Int(a, "file");
-                var inst = await WithTask(p => CurseForge.InstallModpack(Int(a, "project"), fid > 0 ? fid : null, p));
-                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                var inst = await WithTask((p, ct) => CurseForge.InstallModpack(Int(a, "project"), fid > 0 ? fid : null, p, ct), null, "cf:" + Int(a, "project"));
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(inst, S, p, ct); } catch { } return 0; }, inst.Id);
                 return Dto(inst);
             }
 
@@ -851,6 +862,30 @@ public partial class MainWindow : Window
             case "backup.delete": Backups.Delete(Inst(a), Str(a, "file")); return new { };
             case "backup.restore": { var inst = Inst(a); var f = Str(a, "file"); return new { world = await Task.Run(() => Backups.Restore(inst, f)) }; }
             case "backup.folder": { var d = Paths.Dir(Path.Combine("backups", Inst(a).Id)); Process.Start(new ProcessStartInfo("explorer.exe", $"\"{d}\"") { UseShellExecute = true }); return null; }
+            case "content.env":
+            {
+                var inst = Inst(a);
+                if (await CatalogEnv.Fill(inst)) Instances.Save(inst, false);
+                return inst.Content.Where(c => c.Type == "mod" && !string.IsNullOrEmpty(c.Env)).ToDictionary(c => Instances.EnabledName(c.File), c => c.Env!);
+            }
+            case "serverpack.info":
+            {
+                var inst = Inst(a);
+                JsonNode? off = null;
+                try { off = await ServerPack.Official(inst); } catch { }
+                return new { official = off != null, name = (string?)off?["fileName"], size = (long?)off?["fileLength"] ?? 0, mods = await Task.Run(() => Directory.Exists(Path.Combine(inst.Dir, "mods")) ? Directory.GetFiles(Path.Combine(inst.Dir, "mods"), "*.jar").Count(f => ModEnv.Of(f) == "client") : 0) };
+            }
+            case "serverpack.get":
+            {
+                var inst = Inst(a);
+                var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Server-Paket (*.zip)|*.zip", FileName = $"{inst.Name} Server.zip", Title = "Server-Paket speichern" };
+                if (dlg.ShowDialog(this) != true) return null;
+                var target = dlg.FileName;
+                var r = await WithTask((p, ct) => ServerPack.Create(inst, target, p, ct), inst.Id);
+                if (r.Kind == "website") { if (r.Url != null) Process.Start(new ProcessStartInfo(r.Url) { UseShellExecute = true }); return new { kind = r.Kind }; }
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{target}\"") { UseShellExecute = true });
+                return new { kind = r.Kind, path = target };
+            }
             case "instance.export":
             {
                 var inst = Inst(a);
@@ -890,10 +925,10 @@ public partial class MainWindow : Window
             case "import.run":
             {
                 var f = _found.ElementAtOrDefault(Int(a, "i")) ?? throw new InvalidOperationException("Nicht gefunden");
-                var inst = await WithTask(p => Transfer.Import(f, p));
+                var inst = await WithTask((p, ct) => Transfer.Import(f, p, ct));
                 // link the modpack page and picture, then get Minecraft and the loader ready in the background
                 _ = Task.Run(async () => { try { if (await Transfer.Enrich(inst)) Instances.Save(inst); } catch { } });
-                _ = WithTask(async p => { try { await Runner.Prepare(inst, S, p); } catch { } return 0; });
+                _ = WithTask(async (p, ct) => { try { await Runner.Prepare(inst, S, p, ct); } catch { } return 0; }, inst.Id);
                 return Dto(inst);
             }
 

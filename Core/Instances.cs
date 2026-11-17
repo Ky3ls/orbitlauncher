@@ -83,6 +83,8 @@ public class InstalledContent
     public bool Enabled { get; set; } = true;
     /// <summary>modrinth | curseforge</summary>
     public string Source { get; set; } = "modrinth";
+    /// <summary>client | server | both, from the catalog ("" = catalog has no answer).</summary>
+    public string? Env { get; set; }
 }
 
 public static class Instances
@@ -221,6 +223,7 @@ public static class Instances
             {
                 file = baseName, on, size = File.Exists(f) ? new FileInfo(f).Length : -1L, title = DisplayTitle(c?.Title, baseName),
                 projectId, version = c?.VersionNumber, icon = c?.IconUrl, dependency = c?.Dependency ?? false, source,
+                env = type != "mod" ? null : !string.IsNullOrEmpty(c?.Env) ? c!.Env : File.Exists(f) ? ModEnv.Of(f) : null,
             });
         }
         return r;
