@@ -47,6 +47,20 @@ switch (mode)
         Console.WriteLine("ram: " + Ram.Check(inst, set));
         break;
     }
+    case "skinhist":
+    {
+        Paths.Root = root; Directory.CreateDirectory(root);
+        const string T = "http://textures.minecraft.net/texture/";
+        Skins.Seen("u1", T + "aaa", "CLASSIC");
+        Skins.Seen("u1", T + "aaa", "CLASSIC");          // same skin again: no new entry
+        Skins.Seen("u2", T + "zzz", "CLASSIC");          // other account
+        await Task.Delay(20); Skins.Seen(System.Text.Json.Nodes.JsonNode.Parse($"{{\"id\":\"u1\",\"skins\":[{{\"state\":\"ACTIVE\",\"url\":\"{T}bbb\",\"variant\":\"SLIM\"}}]}}"));
+        await Task.Delay(20); Skins.Seen("u1", T + "aaa", "classic");  // back to the old one: new entry
+        foreach (var o in Skins.HistoryOf("u1")) Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(o));
+        Skins.Forget("u1", Skins.History().First(x => x.Url.EndsWith("bbb")) is var w ? "bbb_" + w.From.Ticks : "");
+        Console.WriteLine("nach Entfernen: " + Skins.HistoryOf("u1").Count + " / u2: " + Skins.HistoryOf("u2").Count);
+        break;
+    }
     case "skincheck":
     {
         foreach (var f in args.Skip(2))

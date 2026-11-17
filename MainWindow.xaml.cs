@@ -978,6 +978,14 @@ public partial class MainWindow : Window
                 else e = Skins.Add(png, name, variant);
                 return new { e.Id, e.Name, e.Variant, e.Added, url = Skins.DataUrl(e.Id) };
             }
+            case "skins.history":
+            {
+                var acc = _auth.Active; if (acc == null) return Array.Empty<object>();
+                // the skin known from the last login counts too, even before the profile is loaded
+                if (!Skins.History().Any(x => x.Uuid == acc.Uuid)) Skins.Seen(acc.Uuid, acc.SkinUrl, null);
+                return Skins.HistoryOf(acc.Uuid);
+            }
+            case "skins.forget": Skins.Forget(_auth.Active?.Uuid ?? "", Str(a, "key")); return new { };
             case "skins.update": Skins.Update(Str(a, "id"), StrN(a, "name"), StrN(a, "variant")); return new { };
             case "skins.remove": Skins.Remove(Str(a, "id")); return new { };
             case "skin.profile":
@@ -994,6 +1002,7 @@ public partial class MainWindow : Window
                 var variant = StrN(a, "variant") ?? e.Variant;
                 var prof = await Skins.Upload(ses.AccessToken, await File.ReadAllBytesAsync(Skins.FileOf(e.Id)), variant);
                 acc.SkinUrl = (string?)prof["skins"]?.AsArray().FirstOrDefault(x => (string?)x!["state"] == "ACTIVE")?["url"] ?? acc.SkinUrl;
+                Skins.Seen(prof["id"] is null ? null : prof);
                 _auth.Save();
                 return prof;
             }

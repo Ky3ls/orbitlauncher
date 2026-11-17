@@ -158,7 +158,93 @@ public static class Skins
         return await Net.Http.GetByteArrayAsync(u, ct);
     }
 
-    public static Task<JsonNode> Profile(string token, CancellationToken ct = default) => Net.GetAuth(ProfileApi, token, ct);
+    public static async Task<JsonNode> Profile(string token, CancellationToken ct = default)
+    {
+        var p = await Net.GetAuth(ProfileApi, token, ct);
+        Seen(p);
+        return p;
+    }
+
+    // ---------------- history: every skin the launcher saw active on an account (Mojang keeps no history itself)
+    public class Worn
+    {
+        public string Uuid { get; set; } = "";
+        public string Url { get; set; } = "";
+        /// <summary>classic | slim</summary>
+        public string Variant { get; set; } = "classic";
+        public DateTime From { get; set; } = DateTime.UtcNow;
+        public DateTime Last { get; set; } = DateTime.UtcNow;
+    }
+    private static readonly object HL = new();
+    private static string HistoryFile => Path.Combine(Dir, "history.json");
+    private static string HistoryDir => Paths.Dir(Path.Combine("skins", "history"));
+    public static List<Worn> History() { lock (HL) return Net.LoadJson<List<Worn>>(HistoryFile) ?? new(); }
+
+    /// <summary>Notes the active skin of a profile answer ({id, skins[]}).</summary>
+    public static void Seen(JsonNode? profile)
+    {
+        try
+        {
+            var s = profile?["skins"]?.AsArray().FirstOrDefault(x => (string?)x!["state"] == "ACTIVE");
+            Seen((string?)profile?["id"], (string?)s?["url"], (string?)s?["variant"]);
+        }
+        catch { }
+    }
+    public static void Seen(string? uuid, string? url, string? variant)
+    {
+        if (string.IsNullOrEmpty(uuid) || string.IsNullOrEmpty(url)) return;
+        url = url.Replace("http://", "https://");
+        var v = string.Equals(variant, "slim", StringComparison.OrdinalIgnoreCase) ? "slim" : "classic";
+        lock (HL)
+        {
+            var l = Net.LoadJson<List<Worn>>(HistoryFile) ?? new();
+            var last = l.Where(x => x.Uuid == uuid).OrderByDescending(x => x.Last).FirstOrDefault();
+            if (last != null && last.Url == url) { last.Last = DateTime.UtcNow; last.Variant = v; }
+            else l.Add(new Worn { Uuid = uuid, Url = url, Variant = v });
+            Net.SaveJson(HistoryFile, l);
+        }
+        _ = KeepTexture(url);
+    }
+
+    /// <summary>Keeps a copy of the texture, so old skins still show if the address stops working.</summary>
+    private static async Task KeepTexture(string url)
+    {
+        try
+        {
+            var f = Path.Combine(HistoryDir, Path.GetFileName(new Uri(url).AbsolutePath) + ".png");
+            if (File.Exists(f)) return;
+            var png = await Texture(url);
+            Validate(png);
+            await File.WriteAllBytesAsync(f, png);
+        }
+        catch { }
+    }
+
+    /// <summary>The history of one account, newest first, with a local copy of each texture when there is one.</summary>
+    public static List<object> HistoryOf(string uuid)
+    {
+        var l = History().Where(x => x.Uuid == uuid).OrderByDescending(x => x.Last).ToList();
+        return l.Select((x, i) =>
+        {
+            var f = Path.Combine(HistoryDir, Path.GetFileName(new Uri(x.Url).AbsolutePath) + ".png");
+            var url = File.Exists(f) ? "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(f)) : x.Url;
+            return (object)new { key = KeyOf(x), url, texture = x.Url, variant = x.Variant, from = x.From, last = x.Last, active = i == 0 };
+        }).ToList();
+    }
+
+    // the same skin can be worn more than once: the key includes when
+    private static string KeyOf(Worn x) => Path.GetFileName(new Uri(x.Url).AbsolutePath) + "_" + x.From.Ticks;
+
+    /// <summary>Removes one entry from the history.</summary>
+    public static void Forget(string uuid, string key)
+    {
+        lock (HL)
+        {
+            var l = Net.LoadJson<List<Worn>>(HistoryFile) ?? new();
+            l.RemoveAll(x => x.Uuid == uuid && KeyOf(x) == key);
+            Net.SaveJson(HistoryFile, l);
+        }
+    }
 
     /// <summary>Uploads a skin to the account (multipart, like the official launcher).</summary>
     public static async Task<JsonNode> Upload(string token, byte[] png, string variant, CancellationToken ct = default)

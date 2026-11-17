@@ -192,6 +192,7 @@ public class Auth
         acc.Uuid = (string)profile["id"]!;
         acc.Name = (string)profile["name"]!;
         acc.SkinUrl = (string?)profile["skins"]?.AsArray().FirstOrDefault(s => (string?)s!["state"] == "ACTIVE")?["url"];
+        Skins.Seen(profile);
         acc.CapeUrl = (string?)profile["capes"]?.AsArray().FirstOrDefault(s => (string?)s!["state"] == "ACTIVE")?["url"];
         acc.Xuid = xuid;
         acc.RefreshProtected = Dpapi.Protect(refresh);

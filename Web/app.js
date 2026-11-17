@@ -2307,10 +2307,12 @@ PAGES.skins = async el => {
   $('#skBody').innerHTML = `
     <div class="skwrap"><div class="skview"><div class="stage3" id="skStage"><span class="floor"></span></div><div class="sbar" id="skBar"></div></div><div id="skSide"><div class="spinner"></div></div></div>`;
   const [lib, prof] = await Promise.all([api('skins.list').catch(() => []), acc ? api('skin.profile').catch(e => ({ error: e.message })) : Promise.resolve(null)]);
+  // after the profile: it notes the current skin, so the history is up to date
+  const hist = acc ? await api('skins.history').catch(() => []) : [];
   if (S.page !== 'skins') return;
-  S.skins = { lib, prof, sel: S.skins?.sel };
+  S.skins = { lib, prof, hist, sel: S.skins?.sel };
   const active = prof?.skins?.find(s => s.state === 'ACTIVE');
-  if (!S.skins.sel || (S.skins.sel !== '__cur' && !lib.find(x => x.id === S.skins.sel))) S.skins.sel = active ? '__cur' : lib[0]?.id || '__def';
+  if (!S.skins.sel || (S.skins.sel !== '__cur' && !lib.find(x => x.id === S.skins.sel) && !hist.find(x => '__h:' + x.key === S.skins.sel))) S.skins.sel = active ? '__cur' : lib[0]?.id || '__def';
   skinSide(); skinShow();
   const st = $('#skStage');
   st.onpointerdown = e => { SV.drag = { x: e.clientX, y: e.clientY, r: SV.rot, t: SV.tilt }; st.setPointerCapture(e.pointerId); };
@@ -2320,6 +2322,8 @@ PAGES.skins = async el => {
 function selSkin() {
   const K = S.skins, active = K.prof?.skins?.find(s => s.state === 'ACTIVE');
   if (K.sel === '__cur' && active) return { id: '__cur', name: 'Aktueller Skin', url: active.url.replace('http://', 'https://'), variant: active.variant === 'SLIM' ? 'slim' : 'classic', current: true };
+  const h = K.sel?.startsWith('__h:') && (K.hist || []).find(x => '__h:' + x.key === K.sel);
+  if (h) return { id: K.sel, name: h.active ? 'Aktueller Skin' : 'Getragen bis ' + dateDe(h.last), url: h.url, variant: h.variant, hist: h };
   if (K.sel === '__def' || !K.lib.length) return { id: '__def', name: 'Orbit (Vorlage)', url: demoSkin(0), variant: 'classic', demo: true };
   return K.lib.find(x => x.id === K.sel) || K.lib[0];
 }
@@ -2329,18 +2333,32 @@ async function skinShow() {
   const capeOn = S.skins.capePrev !== undefined ? S.skins.capePrev : S.skins.prof?.capes?.find(c => c.state === 'ACTIVE')?.url;
   st.innerHTML = '<span class="floor"></span>' + skinModel(s.url, s.variant === 'slim', 9, h === 32, capeOn ? capeOn.replace('http://', 'https://') : null);
   viewerLoop();
-  const canApply = !s.current && !s.demo && S.accounts.length;
+  const canApply = !s.current && !s.demo && !s.hist && S.accounts.length;
   $('#skBar').innerHTML = `<div class="row"><b class="ell" style="flex:1">${esc(s.name)}</b>${s.current ? '<span class="chip g">Aktiv</span>' : ''}</div>
     <div class="row"><div class="seg" id="skVar"><button data-v="classic" class="${s.variant !== 'slim' ? 'on' : ''}">Klassisch</button><button data-v="slim" class="${s.variant === 'slim' ? 'on' : ''}">Schlank</button></div><span class="sp"></span>
       <button class="ib ${SV.walk ? 'on' : ''}" id="skWalk" title="Laufen">${ico('walk')}</button><button class="ib ${SV.spin ? 'on' : ''}" id="skSpin" title="Drehen">${ico('rotate')}</button></div>
-    ${canApply ? `<button class="btn p" id="skApply" style="justify-content:center">${ico('check')}Für ${esc(activeAcc().name)} übernehmen</button>` : s.current ? `<button class="btn" id="skSave" style="justify-content:center">${ico('download')}In Bibliothek speichern</button>` : !S.accounts.length ? `<button class="btn" onclick="login()" style="justify-content:center">${ico('user')}Anmelden zum Übernehmen</button>` : ''}`;
-  $('#skVar').onclick = async e => { const b = e.target.closest('[data-v]'); if (!b) return; s.variant = b.dataset.v; if (!s.current && !s.demo) api('skins.update', { id: s.id, variant: s.variant }); skinShow(); skinSide(); };
+    ${s.hist ? `<div class="row" style="gap:8px"><button class="btn" id="skHSave" style="flex:1;justify-content:center">${ico('download')}In Bibliothek</button>${s.hist.active ? '' : `<button class="btn p" id="skHWear" style="flex:1;justify-content:center">${ico('refresh')}Wieder tragen</button>`}</div>`
+    : canApply ? `<button class="btn p" id="skApply" style="justify-content:center">${ico('check')}Für ${esc(activeAcc().name)} übernehmen</button>` : s.current ? `<button class="btn" id="skSave" style="justify-content:center">${ico('download')}In Bibliothek speichern</button>` : !S.accounts.length ? `<button class="btn" onclick="login()" style="justify-content:center">${ico('user')}Anmelden zum Übernehmen</button>` : ''}`;
+  $('#skVar').onclick = async e => { const b = e.target.closest('[data-v]'); if (!b) return; s.variant = b.dataset.v; if (!s.current && !s.demo && !s.hist) api('skins.update', { id: s.id, variant: s.variant }); skinShow(); skinSide(); };
   $('#skWalk').onclick = () => { SV.walk = !SV.walk; $('#skWalk').classList.toggle('on', SV.walk); };
   $('#skSpin').onclick = () => { SV.spin = !SV.spin; $('#skSpin').classList.toggle('on', SV.spin); };
   if ($('#skApply')) $('#skApply').onclick = async () => {
     const b = $('#skApply'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird übernommen…';
-    try { const prof = await api('skin.apply', { id: s.id, variant: s.variant }); S.skins.prof = prof; toast('Skin übernommen', 'Im Spiel nach dem nächsten Start sichtbar'); const r = await api('init'); S.accounts = r.accounts; accountUI(); S.skins.sel = '__cur'; skinSide(); skinShow(); }
+    try { const prof = await api('skin.apply', { id: s.id, variant: s.variant }); S.skins.prof = prof; toast('Skin übernommen', 'Im Spiel nach dem nächsten Start sichtbar'); const r = await api('init'); S.accounts = r.accounts; accountUI(); S.skins.hist = await api('skins.history').catch(() => S.skins.hist); S.skins.sel = '__cur'; skinSide(); skinShow(); }
     catch (e) { b.disabled = false; b.innerHTML = ico('check') + 'Übernehmen'; fail('Skin', e); }
+  };
+  // history: the texture comes from the local copy (data) or Mojang's texture server (url)
+  const fromHist = () => api('skins.add', { ...(s.url.startsWith('data:') ? { data: s.url } : { url: s.hist.texture }), name: s.hist.active ? (activeAcc()?.name || 'Skin') : 'Skin vom ' + dateDe(s.hist.from), variant: s.variant });
+  if ($('#skHSave')) $('#skHSave').onclick = async () => { try { const e = await fromHist(); S.skins.lib.unshift(e); toast('In Bibliothek gespeichert', e.name); skinSide(); } catch (er) { fail('Skin', er); } };
+  if ($('#skHWear')) $('#skHWear').onclick = async () => {
+    const b = $('#skHWear'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird übernommen…';
+    try {
+      const e = await fromHist(); S.skins.lib.unshift(e);
+      S.skins.prof = await api('skin.apply', { id: e.id, variant: s.variant });
+      toast('Alter Skin wieder aktiv', 'Im Spiel nach dem nächsten Start sichtbar');
+      const r = await api('init'); S.accounts = r.accounts; accountUI();
+      S.skins.hist = await api('skins.history').catch(() => S.skins.hist); S.skins.sel = '__cur'; skinSide(); skinShow();
+    } catch (er) { b.disabled = false; b.innerHTML = ico('refresh') + 'Wieder tragen'; fail('Skin', er); }
   };
   if ($('#skSave')) $('#skSave').onclick = async () => { try { const e = await api('skins.add', { url: s.url, name: (activeAcc()?.name || 'Skin'), variant: s.variant }); S.skins.lib.unshift(e); toast('Gespeichert'); skinSide(); } catch (e) { fail('Skin', e); } };
 }
@@ -2355,13 +2373,21 @@ function skinSide() {
     <div class="sklib" id="skLib"><button class="skc add" id="skAdd"><span>${ico('plus')}<b>Skin hinzufügen</b><small>PNG, 64×64</small></span></button>
       ${active ? card('__cur', 'Aktueller Skin', active.url.replace('http://', 'https://'), active.variant === 'SLIM' ? 'slim' : 'classic', '<span class="badge">AKTIV</span>') : ''}
       ${K.lib.map(x => card(x.id, x.name, x.url, x.variant, `<span class="act"><button class="ib sm" data-edit="${esc(x.id)}" title="Im Editor öffnen">${ico('palette')}</button><button class="ib sm" data-ren="${esc(x.id)}" title="Umbenennen">${ico('edit')}</button><button class="ib sm d" data-del="${esc(x.id)}" title="Löschen">${ico('trash')}</button></span>`)).join('')}
-      ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>`;
+      ${!K.lib.length && !active ? card('__def', 'Orbit (Vorlage)', demoSkin(0), 'classic') : ''}</div>
+    ${K.hist?.length ? `<div class="sec"><h2>Verlauf</h2><span class="muted">${K.hist.length}</span><span class="sp"></span><span class="muted" style="font-size:12px">Skins, die du getragen hast</span></div>
+    <div class="sklib skhist" id="skHist">${K.hist.map(h => card('__h:' + h.key, h.active ? 'Aktuell' : 'Bis ' + dateDe(h.last), h.url, h.variant, `${h.active ? '<span class="badge">AKTIV</span>' : `<span class="act"><button class="ib sm d" data-forget="${esc(h.key)}" title="Aus Verlauf entfernen">${ico('trash')}</button></span>`}`).replace(/<small>[^<]*<\/small>/, `<small>${h.active ? 'seit ' + dateDe(h.from) : dateDe(h.from) === dateDe(h.last) ? 'einen Tag' : 'ab ' + dateDe(h.from)}</small>`)).join('')}</div>` : ''}`;
+  if ($('#skHist')) $('#skHist').onclick = async e => {
+    const fg = e.target.closest('[data-forget]');
+    if (fg) { e.stopPropagation(); await api('skins.forget', { key: fg.dataset.forget }).catch(() => { }); K.hist = K.hist.filter(x => x.key !== fg.dataset.forget); if (K.sel === '__h:' + fg.dataset.forget) K.sel = '__cur'; skinSide(); skinShow(); return; }
+    const c = e.target.closest('[data-sk]'); if (!c) return;
+    K.sel = c.dataset.sk; $$('#skSide .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow();
+  };
   $('#skLib').onclick = async e => {
     if (e.target.closest('#skAdd')) { try { const x = await api('skins.add', { variant: 'classic' }); if (x) { K.lib.unshift(x); K.sel = x.id; skinSide(); skinShow(); } } catch (er) { fail('Skin', er); } return; }
     const del = e.target.closest('[data-del]'); if (del) { e.stopPropagation(); if (!await confirmBox('Skin löschen?', 'Er wird aus deiner Bibliothek entfernt.', 'Löschen', true)) return; await api('skins.remove', { id: del.dataset.del }); K.lib = K.lib.filter(x => x.id !== del.dataset.del); if (K.sel === del.dataset.del) K.sel = null; skinSide(); skinShow(); return; }
     const ed = e.target.closest('[data-edit]'); if (ed) { e.stopPropagation(); const x = K.lib.find(y => y.id === ed.dataset.edit); await seLoad(x.url, x.name, x.variant, x.id); SE.loaded = true; S.skTab = 'editor'; return go('skins', {}, false); }
     const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); const x = K.lib.find(y => y.id === ren.dataset.ren); const n = await promptBox('Umbenennen', 'Name', x.name); if (n) { x.name = n; api('skins.update', { id: x.id, name: n }); skinSide(); skinShow(); } return; }
-    const c = e.target.closest('[data-sk]'); if (c) { K.sel = c.dataset.sk; $$('#skLib .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow(); }
+    const c = e.target.closest('[data-sk]'); if (c) { K.sel = c.dataset.sk; $$('#skSide .skc').forEach(x => x.classList.toggle('on', x === c)); skinShow(); }
   };
   if ($('#skCapes')) {
     const cs = $('#skCapes');
@@ -4263,6 +4289,8 @@ const Mock = {
       case 'java.pick': return null;
       case 'storage.info': return [['instances', 14.2e9], ['versions', 1.1e9], ['libraries', 2.4e9], ['assets', 1.9e9], ['runtime', 0.9e9], ['cache', 0.21e9]].map(([name, size]) => ({ name, size }));
       case 'cache.clear': return {};
+      case 'skins.history': return M.hist || (M.hist = [[0, 0, 40, true], [5, 40, 75], [2, 75, 120], [6, 120, 200], [3, 200, 260]].map(([n, a, b, act]) => ({ key: 'h' + n, url: n ? genSkin(n * 13, 'gamer') : demoSkin(0), texture: '', variant: n === 2 ? 'slim' : 'classic', from: iso(b * DAY), last: iso(a * DAY), active: !!act })));
+      case 'skins.forget': M.hist = (M.hist || []).filter(x => x.key !== a.key); return {};
       case 'skins.list': return M.skins || (M.skins = [['Orbit', 0, 'classic'], ['Waldläufer', 1, 'classic'], ['Lila Hoodie', 2, 'slim'], ['Rotes Trikot', 3, 'classic']].map(([name, n, variant]) => ({ id: 's' + n, name, variant, url: demoSkin(n), added: iso(n * DAY) })));
       case 'skins.add': if (a.url || a.data) { const e = { id: 's' + Date.now(), name: a.name, variant: a.variant, url: a.data || a.url }; M.skins.unshift(e); return e; } return null;
       case 'skins.save': { const e = { id: a.id || 's' + Date.now(), name: a.name, variant: a.variant, url: a.data }; M.skins = (M.skins || []).filter(x => x.id !== e.id); M.skins.unshift(e); return e; }
