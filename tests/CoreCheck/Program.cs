@@ -86,6 +86,50 @@ switch (mode)
         Console.WriteLine("updates: " + ups.Count);
         break;
     }
+    case "cloudfiles":
+    {
+        Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;
+        string rootA = Path.Combine(root, "fA"), rootB = Path.Combine(root, "fB");
+        void Use(string r) { Paths.Root = r; Directory.CreateDirectory(r); }
+        var user = "F_" + Random.Shared.Next(10000, 99999);
+        Use(rootA);
+        await Cloud.Login(user, "Passwort123", register: true);
+        var a = Instances.Create("Big Pack", "1.20.1", "forge", "1.20.1-47.4.22");
+        var rnd = new Random(1);
+        string W(string rel, int kb, bool text)
+        {
+            var f = Path.Combine(a.Dir, rel); Directory.CreateDirectory(Path.GetDirectoryName(f)!);
+            if (text) File.WriteAllText(f, string.Concat(Enumerable.Range(0, kb * 16).Select(n => $"key{n % 997}={rnd.Next(1000)}\n")));
+            else { var b = new byte[kb * 1024]; rnd.NextBytes(b); File.WriteAllBytes(f, b); }
+            return f;
+        }
+        for (var n = 0; n < 300; n++) W($"config/mod{n}/settings.toml", 20, true);        // ~6 MB of configs
+        W("kubejs/server_scripts/recipes.js", 200, true);
+        W("defaultconfigs/ftbquests.snbt", 300, true);
+        W("shaderpacks/Complementary.zip.txt", 2, true);
+        W("optionsof.txt", 3, true);
+        W("mods/my-own-mod.jar", 3000, false);                                           // not in any catalog
+        W("logs/latest.log", 500, true);                                                  // must not travel
+        var r1 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A push: pushed={r1.Pushed} tooBig={string.Join("; ", r1.TooBig)}");
+        var again = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A again (nothing changed): pushed={again.Pushed}");
+        Use(rootB);
+        await Cloud.Login(user, "Passwort123", register: false);
+        var r2 = await Cloud.Sync(null, null, null);
+        var b = Instances.All().Single();
+        int Count(string dir) => Directory.Exists(Path.Combine(b.Dir, dir)) ? Directory.GetFiles(Path.Combine(b.Dir, dir), "*", SearchOption.AllDirectories).Length : 0;
+        Console.WriteLine($"B pull: created={r2.Created} pulled={r2.Pulled} configs={Count("config")} kubejs={Count("kubejs")} defaultconfigs={Count("defaultconfigs")} shadertxt={File.Exists(Path.Combine(b.Dir, "shaderpacks", "Complementary.zip.txt"))} optionsof={File.Exists(Path.Combine(b.Dir, "optionsof.txt"))} ownmod={File.Exists(Path.Combine(b.Dir, "mods", "my-own-mod.jar")) && new FileInfo(Path.Combine(b.Dir, "mods", "my-own-mod.jar")).Length == 3000 * 1024} logs={Count("logs")}");
+        // B changes a config -> A gets it
+        File.WriteAllText(Path.Combine(b.Dir, "config", "mod7", "settings.toml"), "changed=on B");
+        var r3 = await Cloud.Sync(null, null, null);
+        Use(rootA);
+        var r4 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"B push={r3.Pushed} -> A pull={r4.Pulled} content={File.ReadAllText(Path.Combine(a.Dir, "config", "mod7", "settings.toml"))}");
+        var r5 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A after applying (no echo upload): pushed={r5.Pushed}");
+        break;
+    }
     case "cloud":
     {
         Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;

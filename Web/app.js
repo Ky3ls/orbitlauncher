@@ -3325,6 +3325,11 @@ function cloudUI(state) {
   p.title = c.lastSync ? 'Orbit-Cloud · zuletzt ' + ago(c.lastSync).toLowerCase() : 'Orbit-Cloud';
 }
 function cloudEvent(d) {
+  if (d.state === 'done' && d.tooBig?.length) {
+    // tell once per set of files that did not fit, not on every sync
+    const key = d.tooBig.join('|'); let seen = ''; try { seen = localStorage.getItem('cloudTooBig') || ''; } catch { }
+    if (seen !== key) { try { localStorage.setItem('cloudTooBig', key); } catch { } toast('Nicht alles passt in die Cloud', `${d.tooBig.slice(0, 3).join(' · ')}${d.tooBig.length > 3 ? ` und ${d.tooBig.length - 3} weitere` : ''}. Die 40 MB deines Kontos sind voll.`, false); }
+  }
   if (d.state === 'done') { S.cloud = { ...(S.cloud || {}), lastSync: d.at, syncing: false }; if (d.created) toast('Aus der Orbit-Cloud', `${d.created} Instanz${d.created > 1 ? 'en' : ''} von deinem Konto übernommen${d.restore ? ', Mods werden geladen' : ''}`); }
   if (d.state === 'restored') toast('Cloud-Instanzen bereit', `${d.ok} Inhalte geladen${d.failed?.length ? ' · nicht verfügbar: ' + d.failed.join(', ') : ''}`, !d.failed?.length);
   if (d.state === 'error' && S.cloud) S.cloud.lastError = d.error;
@@ -3702,7 +3707,9 @@ async function cloudSettings(b, card) {
         <div><b>Design</b><span>Akzent, HUD, Skins</span></div>
       </div>
       <div class="row" style="justify-content:center;gap:10px"><button class="btn p lg" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn lg" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
-      + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste, Configs</p></div>${ico('check')}</div>
+      + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Configs, Skripte, Shader-Einstellungen</b><p>Kompletter config-Ordner, defaultconfigs, KubeJS und weitere Modpack-Ordner. Nur Geändertes wird übertragen.</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Eigene Mods und Pakete</b><p>Dateien, die es in keinem Katalog gibt, solange Platz ist (40 MB pro Konto).</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen werden sie frisch aus dem Katalog geladen.</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Einstellungen, Orbit Client, Skins</b><p>Akzentfarbe, Standard-RAM, HUD-Layout, deine Skin-Bibliothek</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Welten</b><p>Nicht automatisch (zu groß). Nutze Welt-Backups.</p></div>${ico('x')}</div>`);

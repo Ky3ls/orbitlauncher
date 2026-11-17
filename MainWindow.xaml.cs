@@ -1127,7 +1127,7 @@ public partial class MainWindow : Window
         {
             var r = await WithTask(p => Cloud.Sync(SyncDoc, ApplySync, p));
             if (r.Created + r.Pulled + r.Deleted > 0) Emit("instances", Instances.All().Select(Dto).ToList());
-            Emit("cloud", new { state = "done", r.Pushed, r.Pulled, r.Created, r.Deleted, restore = r.ToInstall.Count, at = DateTime.UtcNow });
+            Emit("cloud", new { state = "done", r.Pushed, r.Pulled, r.Created, r.Deleted, restore = r.ToInstall.Count, at = DateTime.UtcNow, tooBig = r.TooBig });
             if (r.ToInstall.Count > 0)
             {
                 var (ok, failed) = await WithTask(p => Cloud.Restore(r.ToInstall, p));

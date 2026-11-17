@@ -30,7 +30,10 @@ public static class Cloud
         public List<string> Tombstones { get; set; } = new();
         public DateTime? LastSync { get; set; }
         public long SettingsAt { get; set; }
+        /// <summary>Per instance uid: which file bundle this PC has (uploaded or applied) and the local file signature at that moment.</summary>
+        public Dictionary<string, BundleState> Bundles { get; set; } = new();
     }
+    public class BundleState { public string Id { get; set; } = ""; public string Sig { get; set; } = ""; }
     private static readonly object L = new();
     private static string FilePath => Path.Combine(Paths.Root, "cloud.json");
     private static Store Load() => Net.LoadJson<Store>(FilePath) ?? new Store();
@@ -193,7 +196,11 @@ public static class Cloud
     /// <summary>Content of the cloud copy that is missing or older locally (to download from Modrinth / CurseForge).</summary>
     public record Missing(string Uid, string ProjectId, string VersionId, string Type, string Source, bool Enabled, string Title);
 
-    public record Result(int Pushed, int Pulled, int Created, int Deleted, List<Missing> ToInstall);
+    public record Result(int Pushed, int Pulled, int Created, int Deleted, List<Missing> ToInstall)
+    {
+        /// <summary>Files that did not fit into the cloud (name and size), shown once in the UI.</summary>
+        public List<string> TooBig { get; init; } = new();
+    }
 
     /// <summary>Two-way sync. Newer side wins per instance; content that exists in the cloud copy but not here is returned for download.</summary>
     public static async Task<Result> Sync(Func<string, JsonObject>? settingsDoc, Action<JsonObject>? applySettings, IProgress<Progress>? p, CancellationToken ct = default)
@@ -209,6 +216,10 @@ public static class Cloud
         {
             await Put("inst:" + uid, new JsonObject { ["uid"] = uid, ["deleted"] = true }.ToJsonString(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ct);
             try { await Call(HttpMethod.Delete, "/v1/sync?k=cfg:" + uid, null, ct); } catch { }
+            // and its files, so they do not use up the account's space
+            foreach (var fk in idx.Keys.Where(x => x == "fbm:" + uid || x.StartsWith($"fbp:{uid}_")).ToList())
+                try { await Call(HttpMethod.Delete, "/v1/sync?k=" + fk, null, ct); } catch { }
+            lock (L) { var s3 = Load(); s3.Bundles.Remove(uid); Save(s3); }
             lock (L) { st = Load(); st.PendingDeletes.Remove(uid); Save(st); }
             deleted++;
         }
@@ -264,10 +275,14 @@ public static class Cloud
             if (idx.TryGetValue(k, out var ru) && ru >= ms) continue;
             if (missing.Any(m => m.Uid == i.Uid)) continue;   // still being restored here
             await Put(k, InstDoc(i).ToJsonString(), ms, ct);
-            var cz = ConfigZip(i);
-            if (cz != null) try { await Put("cfg:" + i.Uid, cz, ms, ct); } catch { }
             pushed++;
         }
+
+        // ---- files: configs, scripts, shader settings, own mods and packs (everything the catalogs cannot restore)
+        var tooBig = new List<string>();
+        try { (int up, int down) = await SyncBundles(idx, missing, tooBig, p, ct); pushed += up; pulled += down; }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception e) { tooBig.Add("Dateien: " + e.Message); }
 
         // launcher settings + Orbit Client config + skins: newer side wins
         foreach (var (key, local2) in new[] { ("settings", settingsDoc?.Invoke("settings")), ("orbitcfg", settingsDoc?.Invoke("orbitcfg")), ("skins", settingsDoc?.Invoke("skins")) })
@@ -283,7 +298,177 @@ public static class Cloud
         }
 
         lock (L) { st = Load(); st.LastSync = DateTime.UtcNow; Save(st); }
-        return new Result(pushed, pulled, created, deleted, missing);
+        return new Result(pushed, pulled, created, deleted, missing) { TooBig = tooBig };
+    }
+
+    // ===================================================================== file bundles
+    // One zip per instance with everything the catalogs cannot bring back. Stored in ~950 KB parts
+    // ("fbp:<uid>_<n>") plus a manifest ("fbm:<uid>"). Only uploaded when the files changed.
+
+    private const int PartChars = 950_000;
+    private const long AccountBytes = 39_000_000;       // the server allows 40 MB per account
+    private static readonly string[] TreeDirs = { "config", "defaultconfigs", "kubejs", "scripts", "global_packs", "datapacks", "patchouli_books", "openloader", "paxi", "resources" };
+    private static readonly HashSet<string> RootSkip = new(StringComparer.OrdinalIgnoreCase) { "instance.json", "usercache.json", "usernamecache.json", "options.txt", "servers.dat", "launcher_profiles.json", "minecraftinstance.json", "profile.json" };
+
+    /// <summary>Files of the bundle: (relative path, full path, size, must = settings/scripts, false = own mods/packs).</summary>
+    private static List<(string rel, string full, long size, bool must)> BundleFiles(Instance i)
+    {
+        var r = new List<(string, string, long, bool)>();
+        void Add(string full, bool must)
+        {
+            var fi = new FileInfo(full);
+            if (!fi.Exists) return;
+            var rel = Path.GetRelativePath(i.Dir, full).Replace('\\', '/');
+            if (rel.Contains("/.cache/") || rel.Contains("/cache/") || rel.StartsWith("kubejs/exported/") || rel.EndsWith(".log") || rel.EndsWith(".lock")) return;
+            if (fi.Length > (must ? 8_000_000 : 30_000_000)) return;
+            r.Add((rel, full, fi.Length, must));
+        }
+        foreach (var d in TreeDirs)
+        {
+            var dir = Path.Combine(i.Dir, d);
+            if (Directory.Exists(dir)) foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)) Add(f, true);
+        }
+        // small settings files in the instance root (optionsof.txt, optionsshaders.txt, mod configs some packs keep there)
+        foreach (var f in Directory.EnumerateFiles(i.Dir))
+        {
+            var n = Path.GetFileName(f);
+            if (RootSkip.Contains(n) || n.StartsWith("hs_err") || new FileInfo(f).Length > 512_000) continue;
+            if (n.EndsWith(".txt") || n.EndsWith(".json") || n.EndsWith(".json5") || n.EndsWith(".properties") || n.EndsWith(".toml") || n.EndsWith(".cfg")) Add(f, true);
+        }
+        // shader settings next to the shader packs
+        var sp = Path.Combine(i.Dir, "shaderpacks");
+        if (Directory.Exists(sp)) foreach (var f in Directory.EnumerateFiles(sp, "*.txt")) Add(f, true);
+        // own mods / packs: everything not restorable from Modrinth or CurseForge
+        var known = new HashSet<string>(i.Content.Where(c => !string.IsNullOrEmpty(c.ProjectId)).Select(c => Instances.EnabledName(c.File)), StringComparer.OrdinalIgnoreCase);
+        foreach (var (type, sub) in new[] { ("mod", "mods"), ("resourcepack", "resourcepacks"), ("shader", "shaderpacks") })
+        {
+            var dir = Path.Combine(i.Dir, sub);
+            if (!Directory.Exists(dir)) continue;
+            foreach (var e in Directory.EnumerateFileSystemEntries(dir))
+            {
+                if (!Instances.IsListedContent(type, e) || known.Contains(Instances.EnabledName(e))) continue;
+                if (Directory.Exists(e)) { foreach (var f in Directory.EnumerateFiles(e, "*", SearchOption.AllDirectories)) Add(f, false); }
+                else Add(e, false);
+            }
+        }
+        return r.OrderBy(x => x.Item1, StringComparer.Ordinal).ToList();
+    }
+
+    private static string Signature(IEnumerable<(string rel, string full, long size, bool must)> files)
+    {
+        var sb = new StringBuilder();
+        foreach (var f in files) sb.Append(f.rel).Append('|').Append(f.size).Append('|').Append(File.GetLastWriteTimeUtc(f.full).Ticks).Append('\n');
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())))[..32].ToLowerInvariant();
+    }
+
+    private static byte[] Zip(IEnumerable<(string rel, string full, long size, bool must)> files)
+    {
+        using var ms = new MemoryStream();
+        using (var z = new ZipArchive(ms, ZipArchiveMode.Create, true))
+            foreach (var f in files)
+            {
+                try
+                {
+                    var ext = Path.GetExtension(f.rel).ToLowerInvariant();
+                    var e = z.CreateEntry(f.rel, ext is ".jar" or ".zip" or ".png" or ".ogg" ? CompressionLevel.NoCompression : CompressionLevel.SmallestSize);
+                    e.LastWriteTime = File.GetLastWriteTime(f.full);
+                    using var es = e.Open(); using var fs = new FileStream(f.full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); fs.CopyTo(es);
+                }
+                catch (IOException) { }
+            }
+        return ms.ToArray();
+    }
+
+    private static async Task<(int up, int down)> SyncBundles(Dictionary<string, long> idx, List<Missing> restoring, List<string> tooBig, IProgress<Progress>? p, CancellationToken ct)
+    {
+        int up = 0, down = 0;
+        Store st; lock (L) st = Load();
+        var sizes = (await Call(HttpMethod.Get, "/v1/sync", null, ct))["items"]!.AsArray().ToDictionary(x => (string)x!["k"]!, x => (long?)x!["size"] ?? 0);
+        foreach (var i in Instances.All())
+        {
+            ct.ThrowIfCancellationRequested();
+            var files = await Task.Run(() => BundleFiles(i), ct);
+            var sig = Signature(files);
+            st.Bundles.TryGetValue(i.Uid, out var have);
+            JsonNode? man = null;
+            if (idx.ContainsKey("fbm:" + i.Uid))
+            {
+                var row = (await Call(HttpMethod.Post, "/v1/sync/get", new { keys = new[] { "fbm:" + i.Uid } }, ct))["items"]!.AsArray().FirstOrDefault();
+                if (row != null) man = JsonNode.Parse((string)row["v"]!);
+            }
+            var remoteId = (string?)man?["id"];
+            var localChanged = have == null ? man == null && files.Count > 0 : have.Sig != sig;
+
+            // pull: the cloud has a newer bundle and nothing changed here since the last sync
+            if (!localChanged && remoteId != null && remoteId != have?.Id)
+            {
+                p?.Report(new Progress("Dateien werden geladen", 0, 1, i.Name));
+                var parts = (int?)man!["parts"] ?? 0;
+                var sb = new StringBuilder();
+                var keys = Enumerable.Range(0, parts).Select(n => $"fbp:{i.Uid}_{n}").ToList();
+                var got = new Dictionary<string, string>();
+                foreach (var chunk in keys.Chunk(6))
+                    foreach (var row in (await Call(HttpMethod.Post, "/v1/sync/get", new { keys = chunk }, ct))["items"]!.AsArray())
+                        got[(string)row!["k"]!] = (string)row["v"]!;
+                if (keys.All(got.ContainsKey))
+                {
+                    foreach (var k in keys) sb.Append(got[k]);
+                    var zip = Convert.FromBase64String(sb.ToString());
+                    if ((string?)man["hash"] == Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(zip)))
+                    {
+                        await Task.Run(() => Extract(i, zip), ct);
+                        st.Bundles[i.Uid] = new BundleState { Id = remoteId, Sig = Signature(BundleFiles(i)) };
+                        lock (L) { var s2 = Load(); s2.Bundles = st.Bundles; Save(s2); }
+                        down++;
+                    }
+                }
+                continue;
+            }
+            if (!localChanged || restoring.Any(m => m.Uid == i.Uid)) continue;
+
+            // push: everything that fits into the account; own mods/packs only while there is room
+            p?.Report(new Progress("Dateien werden gesichert", 0, 1, i.Name));
+            var mine = sizes.Where(x => x.Key.StartsWith($"fbp:{i.Uid}_") || x.Key == "fbm:" + i.Uid).Sum(x => x.Value);
+            var room = AccountBytes - (sizes.Values.Sum() - mine);
+            var pick = files.Where(f => f.must).ToList();
+            foreach (var f in files.Where(f => !f.must).OrderBy(f => f.size))
+                if ((pick.Sum(x => x.size) + f.size) * 4 / 3 + 200_000 < room) pick.Add(f);
+                else tooBig.Add($"{i.Name}: {Path.GetFileName(f.rel)} ({f.size / 1048576.0:0.#} MB)");
+            var data = await Task.Run(() => Zip(pick), ct);
+            var b64 = Convert.ToBase64String(data);
+            if (b64.Length + 100_000 > room) { tooBig.Add($"{i.Name}: Configs und Skripte ({data.Length / 1048576.0:0.#} MB)"); continue; }
+            var count = (b64.Length + PartChars - 1) / PartChars;
+            var at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            for (var n = 0; n < count; n++)
+            {
+                ct.ThrowIfCancellationRequested();
+                await Put($"fbp:{i.Uid}_{n}", b64.Substring(n * PartChars, Math.Min(PartChars, b64.Length - n * PartChars)), at, ct);
+            }
+            // parts of an older, bigger bundle
+            foreach (var old in sizes.Keys.Where(k => k.StartsWith($"fbp:{i.Uid}_") && int.TryParse(k[(k.LastIndexOf('_') + 1)..], out var n) && n >= count).ToList())
+                try { await Call(HttpMethod.Delete, "/v1/sync?k=" + old, null, ct); } catch { }
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data));
+            var id = sig;
+            await Put("fbm:" + i.Uid, new JsonObject { ["id"] = id, ["parts"] = count, ["hash"] = hash, ["size"] = data.Length, ["files"] = pick.Count, ["at"] = at }.ToJsonString(), at, ct);
+            st.Bundles[i.Uid] = new BundleState { Id = id, Sig = sig };
+            lock (L) { var s2 = Load(); s2.Bundles = st.Bundles; Save(s2); }
+            up++;
+        }
+        return (up, down);
+    }
+
+    private static void Extract(Instance i, byte[] zip)
+    {
+        var root = Path.GetFullPath(i.Dir);
+        using var z = new ZipArchive(new MemoryStream(zip));
+        foreach (var e in z.Entries)
+        {
+            if (e.FullName.EndsWith('/')) continue;
+            var dst = Path.GetFullPath(Path.Combine(root, e.FullName));
+            if (!dst.StartsWith(root + Path.DirectorySeparatorChar) || RootSkip.Contains(Path.GetFileName(dst)) && Path.GetDirectoryName(dst) == root) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            try { e.ExtractToFile(dst, true); File.SetLastWriteTime(dst, e.LastWriteTime.DateTime); } catch (IOException) { }
+        }
     }
 
     private static async Task Put(string k, string v, long updated, CancellationToken ct)
