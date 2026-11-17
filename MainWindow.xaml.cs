@@ -972,7 +972,7 @@ public partial class MainWindow : Window
                 Skins.Entry e;
                 if (id != null && Skins.All().FirstOrDefault(x => x.Id == id) is { } old)
                 {
-                    Skins.Validate(png); File.WriteAllBytes(Skins.FileOf(id), png); Skins.Update(id, name, variant);
+                    Skins.Validate(png, variant); File.WriteAllBytes(Skins.FileOf(id), png); Skins.Update(id, name, variant);
                     e = Skins.All().First(x => x.Id == id);
                 }
                 else e = Skins.Add(png, name, variant);

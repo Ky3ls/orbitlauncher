@@ -2744,10 +2744,45 @@ function seMirrorPx(u, v) {
   }
   return null;
 }
+/* the base layer is the body itself: it always stays fully painted, only the overlay may have gaps */
+function seBaseFaces(slim = SE.variant === 'slim') {
+  const out = [];
+  for (const k in SKP) {
+    const [u, v, w0, h, d] = SKP[k][0], w = slim && (k === 'rarm' || k === 'larm') ? 3 : w0;
+    out.push([u + d, v, w, d], [u + d + w, v, w, d], [u, v + d, d, h], [u + d, v + d, w, h], [u + d + w, v + d, d, h], [u + 2 * d + w, v + d, w, h]);
+  }
+  return out;
+}
+const seOnBase = (u, v) => seBaseFaces().some(f => u >= f[0] && u < f[0] + f[2] && v >= f[1] && v < f[1] + f[3]);
+let seBaseHintAt = 0;
+function seBaseHint() {
+  if (Date.now() - seBaseHintAt < 4000) return; seBaseHintAt = Date.now();
+  toast('Basis-Schicht bleibt ausgemalt', 'Radieren geht nur auf dem Überzug. Die Basis kannst du übermalen.', false);
+}
+/** Paints every see-through pixel of the base layer with a color from its neighbours (or grey). Returns how many. */
+function seFillHoles() {
+  const x = SE.P.x, im = x.getImageData(0, 0, 64, 64), d = im.data; let n = 0;
+  for (const [fx, fy, fw, fh] of seBaseFaces()) {
+    for (let v = fy; v < fy + fh; v++) for (let u = fx; u < fx + fw; u++) {
+      const i = (v * 64 + u) * 4; if (d[i + 3] === 255) continue;
+      let c = null;
+      for (let r = 1; r < 8 && !c; r++) for (let dv = -r; dv <= r && !c; dv++) for (let du = -r; du <= r && !c; du++) {
+        const a = u + du, b = v + dv; if (a < fx || b < fy || a >= fx + fw || b >= fy + fh) continue;
+        const j = (b * 64 + a) * 4; if (d[j + 3] === 255) c = [d[j], d[j + 1], d[j + 2]];
+      }
+      const [r, g, b] = c || [156, 163, 175];
+      if (d[i + 3]) { const al = d[i + 3] / 255; d[i] = Math.round(d[i] * al + r * (1 - al)); d[i + 1] = Math.round(d[i + 1] * al + g * (1 - al)); d[i + 2] = Math.round(d[i + 2] * al + b * (1 - al)); }
+      else { d[i] = r; d[i + 1] = g; d[i + 2] = b; }
+      d[i + 3] = 255; n++;
+    }
+  }
+  if (n) x.putImageData(im, 0, 0);
+  return n;
+}
 function sePixel(u, v, erase) {
   const x = SE.P.x, put = (a, b) => {
     if (a < 0 || b < 0 || a > 63 || b > 63) return;
-    if (erase) x.clearRect(a, b, 1, 1);
+    if (erase) { if (seOnBase(a, b)) return seBaseHint(); x.clearRect(a, b, 1, 1); }
     else if (SE.tool === 'shade' || SE.tool === 'light') {
       const p = x.getImageData(a, b, 1, 1).data; if (!p[3]) return;
       const f = SE.tool === 'shade' ? -.1 : .1; x.fillStyle = shade(rgbHex(p[0], p[1], p[2]), f); x.fillRect(a, b, 1, 1);
@@ -2913,16 +2948,22 @@ async function skEditorPage(body) {
   };
   $('#seExp').onclick = () => { const a = document.createElement('a'); a.href = seUrl(); a.download = (SE.name || 'skin') + '.png'; a.click(); };
   const save = async () => {
+    // never store a see-through body: fill the gaps first (with the player's OK)
+    const holes = seBaseFaces().reduce((n, [fx, fy, fw, fh]) => { const p = SE.P.x.getImageData(fx, fy, fw, fh).data; for (let i = 3; i < p.length; i += 4) if (p[i] < 255) n++; return n; }, 0);
+    if (holes) {
+      if (!await confirmBox('Basis-Schicht hat Lücken', `${holes} Pixel der Basis-Schicht sind durchsichtig. Unsichtbare Stellen sind nicht erlaubt. Sie werden mit der Farbe daneben gefüllt.`, 'Füllen und speichern')) throw new Error('CANCELLED');
+      sePush(); seFillHoles(); seRefresh();
+    }
     const r = await api('skins.save', { id: SE.id, data: seUrl(), name: SE.name || 'Mein Skin', variant: SE.variant });
     SE.id = r.id; SE.dirty = false;
     if (S.skins?.lib) { S.skins.lib = S.skins.lib.filter(x => x.id !== r.id); S.skins.lib.unshift(r); }
     return r;
   };
-  $('#seLib').onclick = async () => { try { await save(); toast('Gespeichert', SE.name); } catch (e) { fail('Speichern', e); } };
+  $('#seLib').onclick = async () => { try { await save(); toast('Gespeichert', SE.name); } catch (e) { if (e.message !== 'CANCELLED') fail('Speichern', e); } };
   if ($('#seApply')) $('#seApply').onclick = async () => {
     const b = $('#seApply'); b.disabled = true; b.innerHTML = ico('refresh', 'i spin') + 'Wird übernommen…';
     try { const r = await save(); await api('skin.apply', { id: r.id, variant: SE.variant }); toast('Skin übernommen', 'Im Spiel nach dem nächsten Start sichtbar'); }
-    catch (e) { fail('Skin', e); }
+    catch (e) { if (e.message !== 'CANCELLED') fail('Skin', e); }
     b.disabled = false; b.innerHTML = ico('check') + 'Als Skin übernehmen';
   };
   seBindPaint();

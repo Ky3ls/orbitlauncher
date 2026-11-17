@@ -47,6 +47,16 @@ switch (mode)
         Console.WriteLine("ram: " + Ram.Check(inst, set));
         break;
     }
+    case "skincheck":
+    {
+        foreach (var f in args.Skip(2))
+        {
+            var png = File.ReadAllBytes(f);
+            string res; try { Skins.Validate(png, "classic"); res = "ok"; } catch (Exception e) { res = "blockiert: " + e.Message; }
+            Console.WriteLine($"{Path.GetFileName(f)} holes={Skins.BaseHoles(png, "classic"):P0} -> {res}");
+        }
+        break;
+    }
     case "skins":
     {
         var pl = System.Text.Json.JsonSerializer.Serialize(await SkinSources.Player(args.ElementAtOrDefault(2) ?? "Notch"));
