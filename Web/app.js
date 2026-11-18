@@ -3432,7 +3432,7 @@ window.mcOptSettings = mcOptSettings;
 
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['mcopt', 'Spiel-Einstellungen', 'keyboard', 'Optionen und Tasten für alle'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['mcopt', 'Spiel-Einstellungen', 'keyboard', 'Optionen und Tasten für alle'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Updates']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
@@ -3464,7 +3464,7 @@ async function settingsReset(tab) {
 window.settingsReset = settingsReset;
 async function setBody() {
   const b = $('#sBody'), st = S.settings; if (!b) return;
-  b.className = ['account', 'design', 'storage'].includes(S.stab) ? 'sb1' : 'sb2';
+  b.className = ['account', 'design', 'storage', 'about'].includes(S.stab) ? 'sb1' : 'sb2';
   const rs = $('#sReset'); if (rs) rs.innerHTML = SRESET[S.stab] ? `<button class="btn sm" onclick="settingsReset('${S.stab}')" title="Diesen Bereich auf Standard setzen">${ico('refresh')}Zurücksetzen</button>` : '';
   const card = (t, h) => `<div class="card">${t ? `<h2 style="margin-bottom:6px">${t}</h2>` : ''}${h}</div>`;
   const tg = (k, on) => `<div class="tg ${on ? 'on' : ''}" data-set="${k}"></div>`;
@@ -3531,12 +3531,7 @@ async function setBody() {
     b.innerHTML = card('', `<div class="row" style="gap:16px"><span class="iic" style="width:64px;height:64px;border-radius:18px">${blockSvg('orbit')}</span><div style="flex:1"><h2 style="font-size:22px">Orbit<span class="grad">Launcher</span></h2><p class="sub">Version ${esc(S.version)} · <span id="updTxt">${S.upd?.available ? 'Version ' + esc(S.upd.latest) + ' verfügbar' : S.upd ? 'Du hast die neueste Version' : 'Updates kommen von GitHub'}</span></p></div>
         ${S.upd?.available ? `<button class="btn p" onclick="updatePrompt(S.upd)">${ico('download')}Update ${esc(S.upd.latest)}</button>` : `<button class="btn" id="updCheck">${ico('refresh')}Nach Updates suchen</button>`}</div>
       <div class="srow" style="margin-top:10px"><div><b>Automatisch nach Updates suchen</b><p>Beim Start wird geprüft, ob es eine neue Version gibt.</p></div>${tg('autoUpdate', st.autoUpdate !== false)}</div>
-      <div class="srow"><div><b>Updates automatisch installieren</b><p>Ohne Nachfrage laden und neu starten, aber nie während Minecraft läuft.</p></div>${tg('autoInstall', !!st.autoInstall)}</div>`)
-      + '<div class="mt"></div>' + card('Quellen &amp; Lizenzen', `<div class="srow"><div><b>Minecraft</b><p>Spieldateien kommen direkt von Mojang. Minecraft ist eine Marke von Mojang AB. Nicht offiziell, nicht mit Mojang oder Microsoft verbunden.</p></div></div>
-        <div class="srow"><div><b>Mods &amp; Modpacks</b><p>Kommen direkt von den Plattformen ihrer Autoren, jeweils unter deren Lizenz.</p></div></div>
-        <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
-        <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium).</p></div></div>
-        <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist, Inter und Pixelify Sans (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
+      <div class="srow"><div><b>Updates automatisch installieren</b><p>Ohne Nachfrage laden und neu starten, aber nie während Minecraft läuft.</p></div>${tg('autoInstall', !!st.autoInstall)}</div>`);
     if ($('#updCheck')) $('#updCheck').onclick = async () => { $('#updCheck').disabled = true; $('#updCheck').innerHTML = ico('refresh', 'i spin') + 'Prüfe…'; await checkUpdate(true); setBody(); };
   }
   b.querySelectorAll('[data-set]').forEach(t => t.onclick = () => { const on = !t.classList.contains('on'); t.classList.toggle('on', on); setS(t.dataset.set, on); });
