@@ -4151,16 +4151,22 @@ window.updatePrompt = updatePrompt;
 function updProgress(d) {
   if (!$('#updMeter')) return;
   $('#updMeter').classList.remove('hidden'); $('#updBar').style.width = d.pct + '%';
-  $('#updProg').textContent = d.total ? `${bytes(d.done)} / ${bytes(d.total)} · ${d.pct}%` : '';
+  // speed over the last moments, so the player sees it is their line, not the launcher
+  const now = Date.now(), U = S.updSpeed ||= { at: now, done: 0, bps: 0 };
+  if (now - U.at > 400) { U.bps = (d.done - U.done) / ((now - U.at) / 1000); U.at = now; U.done = d.done; }
+  $('#updProg').textContent = d.total ? `${bytes(d.done)} / ${bytes(d.total)} · ${d.pct}%${U.bps > 0 ? ' · ' + bytes(U.bps) + '/s' : ''}` : '';
 }
 async function installUpdate(silent) {
   if (S.updating) return; S.updating = true;
   const b = $('#updBtn'); if (b) { b.disabled = true; b.querySelector('span').textContent = 'Lädt…'; }
   if (silent) toast('Update wird geladen', 'OrbitLauncher ' + S.upd.latest + ' startet gleich neu');
   try {
+    const t0 = Date.now();
     await api('update.download');
-    if ($('#updProg')) $('#updProg').textContent = 'Installiere, OrbitLauncher startet gleich neu…';
-    await sleep(400); await api('update.install');
+    if ($('#updProg')) $('#updProg').textContent = `Geladen in ${Math.max(1, Math.round((Date.now() - t0) / 1000))} s · OrbitLauncher startet neu…`;
+    if (b) b.querySelector('span').textContent = 'Startet neu…';
+    if (silent) toast('Update installiert', 'OrbitLauncher startet neu…');
+    await api('update.install');
   } catch (e) { S.updating = false; if (b) { b.disabled = false; b.querySelector('span').textContent = 'Erneut versuchen'; } fail('Update fehlgeschlagen', e); }
 }
 window.installUpdate = installUpdate;

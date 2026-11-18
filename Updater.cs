@@ -24,6 +24,25 @@ internal static class Updater
     private static long _size;
     private static Version? _latest;
     private static string TempFile => Path.Combine(Path.GetTempPath(), "OrbitLauncher-update.exe");
+    /// <summary>Next to the running exe when possible: then installing is a rename, not a 90 MB copy that is scanned again.</summary>
+    private static string NewFile
+    {
+        get
+        {
+            try
+            {
+                if (Environment.ProcessPath is { } p)
+                {
+                    var f = p + ".new";
+                    using (File.Create(f, 1, FileOptions.DeleteOnClose)) { }
+                    return f;
+                }
+            }
+            catch { }
+            return TempFile;
+        }
+    }
+    private static string? _file;
 
     public static Version Current
     {
@@ -37,6 +56,7 @@ internal static class Updater
     {
         try { if (Environment.ProcessPath is { } p && File.Exists(p + ".old")) File.Delete(p + ".old"); } catch { }
         try { if (File.Exists(TempFile)) File.Delete(TempFile); } catch { }
+        try { if (Environment.ProcessPath is { } p && File.Exists(p + ".new")) File.Delete(p + ".new"); } catch { }
     }
 
     public static async Task<object> Check()
@@ -82,49 +102,95 @@ internal static class Updater
     public static async Task Download(Action<int, long, long> progress)
     {
         if (_url == null) throw new InvalidOperationException("Kein Update gefunden – bitte erneut prüfen.");
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        _file = NewFile;
+        using var http = new HttpClient(new SocketsHttpHandler { MaxConnectionsPerServer = 16, AutomaticDecompression = System.Net.DecompressionMethods.None }) { Timeout = TimeSpan.FromMinutes(10) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("OrbitLauncher/" + Current.ToString(3));
-        using var res = await http.GetAsync(_url, HttpCompletionOption.ResponseHeadersRead);
-        res.EnsureSuccessStatusCode();
-        var total = res.Content.Headers.ContentLength ?? _size;
-        await using (var src = await res.Content.ReadAsStreamAsync())
-        await using (var dst = File.Create(TempFile))
+        // GitHub redirects to its file server; resolve once, then fetch several parts at the same time
+        using var head = await http.GetAsync(_url, HttpCompletionOption.ResponseHeadersRead);
+        head.EnsureSuccessStatusCode();
+        var total = head.Content.Headers.ContentLength ?? _size;
+        var real = head.RequestMessage?.RequestUri ?? new Uri(_url);
+        long done = 0; int lastPct = -1; var gate = new object();
+        void Add(int n)
         {
-            var buf = new byte[81920]; long done = 0; int n, lastPct = -1;
-            while ((n = await src.ReadAsync(buf)) > 0)
+            var d = Interlocked.Add(ref done, n);
+            var pct = total > 0 ? (int)(d * 100 / total) : 0;
+            lock (gate) if (pct != lastPct) { lastPct = pct; progress(pct, d, total); }
+        }
+        var parallel = total > 8_000_000 && head.Headers.AcceptRanges.Contains("bytes");
+        if (parallel)
+        {
+            head.Dispose();
+            try
             {
-                await dst.WriteAsync(buf.AsMemory(0, n));
-                done += n;
-                var pct = total > 0 ? (int)(done * 100 / total) : 0;
-                if (pct != lastPct) { lastPct = pct; progress(pct, done, total); }
+                using (var fs = new FileStream(_file, FileMode.Create, FileAccess.Write, FileShare.ReadWrite)) fs.SetLength(total);
+                using var h = File.OpenHandle(_file, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, FileOptions.Asynchronous);
+                const int parts = 6; var size = (total + parts - 1) / parts;
+                await Task.WhenAll(Enumerable.Range(0, parts).Select(async k =>
+                {
+                    long from = k * size, to = Math.Min(total, from + size) - 1;
+                    if (from > to) return;
+                    for (var attempt = 0; ; attempt++)
+                    {
+                        try
+                        {
+                            using var req = new HttpRequestMessage(HttpMethod.Get, real);
+                            req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(from, to);
+                            using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                            if (res.StatusCode != System.Net.HttpStatusCode.PartialContent) throw new IOException("Kein Teil-Download");
+                            await using var src = await res.Content.ReadAsStreamAsync();
+                            var buf = new byte[1 << 17]; int n;
+                            while (from <= to && (n = await src.ReadAsync(buf.AsMemory(0, (int)Math.Min(buf.Length, to - from + 1)))) > 0)
+                            {
+                                await RandomAccess.WriteAsync(h, buf.AsMemory(0, n), from);
+                                from += n; Add(n);
+                            }
+                            if (from <= to) throw new IOException("Verbindung abgebrochen");
+                            return;
+                        }
+                        catch when (attempt < 3) { await Task.Delay(500 * (attempt + 1)); }
+                    }
+                }));
             }
+            catch { parallel = false; Interlocked.Exchange(ref done, 0); }
+        }
+        if (!parallel)
+        {
+            using var res = await http.GetAsync(real, HttpCompletionOption.ResponseHeadersRead);
+            res.EnsureSuccessStatusCode();
+            await using var src = await res.Content.ReadAsStreamAsync();
+            await using var dst = File.Create(_file);
+            var buf = new byte[1 << 17]; int n;
+            while ((n = await src.ReadAsync(buf)) > 0) { await dst.WriteAsync(buf.AsMemory(0, n)); Add(n); }
         }
         if (_sha != null)
         {
-            await using var fs = File.OpenRead(TempFile);
+            await using var fs = File.OpenRead(_file);
             var hash = Convert.ToHexString(await SHA256.HashDataAsync(fs));
             if (!hash.Equals(_sha, StringComparison.OrdinalIgnoreCase))
             {
-                File.Delete(TempFile);
+                File.Delete(_file);
                 throw new InvalidOperationException("Prüfsumme stimmt nicht – Download beschädigt.");
             }
         }
-        if (new FileInfo(TempFile).Length < 1_000_000) throw new InvalidOperationException("Download unvollständig.");
+        if (new FileInfo(_file).Length < 1_000_000) throw new InvalidOperationException("Download unvollständig.");
     }
 
     /// <summary>Swaps the running exe for the downloaded one and restarts.
     /// Windows allows renaming a running executable, so no helper script is needed.</summary>
-    public static void Install()
+    public static Process? Install()
     {
         var cur = Environment.ProcessPath ?? throw new InvalidOperationException("Pfad unbekannt");
-        if (!File.Exists(TempFile)) throw new InvalidOperationException("Update wurde nicht heruntergeladen.");
+        var file = _file ?? TempFile;
+        if (!File.Exists(file)) throw new InvalidOperationException("Update wurde nicht heruntergeladen.");
         var old = cur + ".old";
         if (File.Exists(old)) File.Delete(old);
         File.Move(cur, old);
-        try { File.Copy(TempFile, cur); }
+        // same folder: a rename keeps the file Windows already checked during the download
+        try { if (file == cur + ".new") File.Move(file, cur); else File.Copy(file, cur); }
         catch { File.Move(old, cur); throw; }
-        try { File.Delete(TempFile); } catch { }
-        Process.Start(new ProcessStartInfo(cur, "--updated") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(cur)! });
+        try { if (File.Exists(file)) File.Delete(file); } catch { }
+        return Process.Start(new ProcessStartInfo(cur, "--updated") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(cur)! });
         // the caller shuts the app down after answering the UI (shutting down here kills the WebView mid-call)
     }
 }

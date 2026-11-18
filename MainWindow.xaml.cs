@@ -808,9 +808,19 @@ public partial class MainWindow : Window
                 return new { ok = true };
             case "update.install":
                 if (_runner.RunningIds.Any()) throw new InvalidOperationException("Erst Minecraft beenden, dann wird das Update installiert.");
-                Updater.Install();
+                var next = Updater.Install();
                 App.Quitting = true;
-                _ = Dispatcher.InvokeAsync(async () => { await Task.Delay(400); Application.Current.Shutdown(); });
+                // stay visible ("startet neu") until the new version shows its window, so there is no gap
+                _ = Dispatcher.InvokeAsync(async () =>
+                {
+                    var until = DateTime.UtcNow.AddSeconds(30);
+                    while (next != null && DateTime.UtcNow < until)
+                    {
+                        await Task.Delay(250);
+                        try { next.Refresh(); if (next.HasExited || next.MainWindowHandle != IntPtr.Zero) break; } catch { break; }
+                    }
+                    Application.Current.Shutdown();
+                });
                 return new { ok = true };
 
             // ---------------- orbit account + cloud sync
