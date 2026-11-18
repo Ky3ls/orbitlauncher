@@ -3158,30 +3158,163 @@ function demoSkin(n) {
 
 
 /* ======================= OWN MINECRAFT SETTINGS (options.txt template for all instances) ======================= */
-// [key, label, kind, extra]: kind range [min,max,step,toFile,fromFile,fmt] | bool | choice [[value,label]]
-const MCO_FIELDS = [
-  ['renderDistance', 'Sichtweite', 'range', [2, 32, 1, v => v, v => +v, v => v + ' Chunks'], 12],
-  ['simulationDistance', 'Simulationsdistanz', 'range', [5, 32, 1, v => v, v => +v, v => v + ' Chunks'], 12],
-  ['fov', 'Sichtfeld (FOV)', 'range', [30, 110, 1, v => ((v - 70) / 40).toFixed(4).replace(/0+$/, '0'), v => Math.round(70 + parseFloat(v) * 40), v => v == 70 ? 'Normal' : v == 110 ? 'Quake Pro' : v], 70],
-  ['gamma', 'Helligkeit', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v == 0 ? 'Düster' : v == 100 ? 'Hell' : v + ' %'], 50],
-  ['guiScale', 'GUI-Größe', 'choice', [['0', 'Auto'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], '0'],
-  ['mouseSensitivity', 'Maus-Empfindlichkeit', 'range', [0, 200, 1, v => (v / 200).toString(), v => Math.round(parseFloat(v) * 200), v => v == 0 ? 'Schnarch' : v == 200 ? 'HYPERSPEED' : v + ' %'], 100],
-  ['maxFps', 'Max. Bildrate', 'range', [10, 260, 10, v => v, v => +v, v => v >= 260 ? 'Unbegrenzt' : v + ' fps'], 120],
-  ['enableVsync', 'VSync', 'bool', null, 'true'],
-  ['fullscreen', 'Vollbild', 'bool', null, 'false'],
-  ['bobView', 'Gehbewegung', 'bool', null, 'true'],
-  ['autoJump', 'Automatisch springen', 'bool', null, 'false'],
-  ['showSubtitles', 'Untertitel', 'bool', null, 'false'],
-  ['soundCategory_master', 'Gesamtlautstärke', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v + ' %'], 100],
-  ['soundCategory_music', 'Musik', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v + ' %'], 100],
-  ['lang', 'Sprache', 'choice', [['de_de', 'Deutsch'], ['en_us', 'English (US)'], ['en_gb', 'English (UK)'], ['de_at', 'Deutsch (Österreich)'], ['de_ch', 'Schwiizerdütsch'], ['fr_fr', 'Français'], ['es_es', 'Español'], ['it_it', 'Italiano'], ['nl_nl', 'Nederlands'], ['pl_pl', 'Polski'], ['tr_tr', 'Türkçe'], ['ru_ru', 'Русский']], 'en_us'],
+/* Minecraft's options, same screens and values as in the game (options.txt keys and formats) */
+const pctS = (k, n, d, zero) => ['r', k, n, d, 0, 100, 1, v => (v / 100).toString(), s => Math.round(parseFloat(s) * 100), v => v === 0 && zero ? zero : v + ' %'];
+const vol = (k, n) => pctS('soundCategory_' + k, n, '1.0', 'Aus');
+const bl = (k, n, d) => ['b', k, n, d];
+const cy = (k, n, d, opts) => ['c', k, n, d, opts];
+const go2 = (s, n) => ['go', s, n];
+const MCS_HOLD = [['false', 'Halten'], ['true', 'Umschalten']];
+const MCS_LANGS = [['de_de', 'Deutsch (Deutschland)'], ['de_at', 'Deutsch (Österreich)'], ['de_ch', 'Schwiizerdütsch (Schwiiz)'], ['en_us', 'English (US)'], ['en_gb', 'English (UK)'], ['fr_fr', 'Français (France)'], ['es_es', 'Español (España)'], ['it_it', 'Italiano (Italia)'], ['nl_nl', 'Nederlands (Nederland)'], ['pl_pl', 'Polski (Polska)'], ['pt_br', 'Português (Brasil)'], ['pt_pt', 'Português (Portugal)'], ['tr_tr', 'Türkçe (Türkiye)'], ['ru_ru', 'Русский (Россия)'], ['uk_ua', 'Українська (Україна)'], ['cs_cz', 'Čeština (Česko)'], ['da_dk', 'Dansk (Danmark)'], ['sv_se', 'Svenska (Sverige)'], ['nb_no', 'Norsk Bokmål (Norge)'], ['fi_fi', 'Suomi (Suomi)'], ['hu_hu', 'Magyar (Magyarország)'], ['ja_jp', '日本語 (日本)'], ['ko_kr', '한국어 (대한민국)'], ['zh_cn', '简体中文 (中国大陆)']];
+const MCS = {
+  main: ['Optionen', [
+    ['r', 'fov', 'Sichtfeld', '0.0', 30, 110, 1, v => ((v - 70) / 40).toString(), s => Math.round(70 + parseFloat(s) * 40), v => v === 70 ? 'Normal' : v === 110 ? 'Quake Pro' : String(v)],
+    go2('online', 'Online …'), go2('skin', 'Skin-Anpassung …'), go2('sound', 'Musik & Geräusche …'), go2('video', 'Grafikeinstellungen …'), go2('controls', 'Steuerung …'),
+    go2('lang', 'Sprache …'), go2('chat', 'Chateinstellungen …'), go2('access', 'Bedienungshilfen …')]],
+  video: ['Grafikeinstellungen', [
+    cy('graphicsMode', 'Grafik', '1', [['0', 'Schnell'], ['1', 'Schön'], ['2', 'Fabelhaft!']]),
+    ['r', 'renderDistance', 'Sichtweite', '12', 2, 32, 1, v => String(v), s => +s, v => v + ' Chunks'],
+    cy('prioritizeChunkUpdates', 'Chunk-Aktualisierung', '0', [['0', 'Gleichzeitig'], ['1', 'Spielerbeeinflusst'], ['2', 'In der Nähe']]),
+    ['r', 'simulationDistance', 'Simulationsdistanz', '12', 5, 32, 1, v => String(v), s => +s, v => v + ' Chunks'],
+    bl('ao', 'Weiche Beleuchtung', 'true'),
+    ['r', 'maxFps', 'Max. Bildrate', '120', 10, 260, 10, v => String(v), s => +s, v => v >= 260 ? 'Unbegrenzt' : v + ' fps'],
+    bl('enableVsync', 'VSync', 'true'), bl('bobView', 'Gehbewegung', 'true'),
+    cy('guiScale', 'GUI-Größe', '0', [['0', 'Auto'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']]),
+    cy('attackIndicator', 'Angriffsindikator', '1', [['0', 'Aus'], ['1', 'Fadenkreuz'], ['2', 'Schnellzugriffsleiste']]),
+    ['r', 'gamma', 'Helligkeit', '0.5', 0, 100, 1, v => (v / 100).toString(), s => Math.round(parseFloat(s) * 100), v => v === 0 ? 'Düster' : v === 100 ? 'Hell' : '+' + v + ' %'],
+    cy('renderClouds', 'Wolken', '"true"', [['"true"', 'Schön'], ['"fast"', 'Schnell'], ['"false"', 'Aus']]),
+    bl('fullscreen', 'Vollbild', 'false'),
+    cy('particles', 'Partikel', '0', [['0', 'Alle'], ['1', 'Verringert'], ['2', 'Minimal']]),
+    ['r', 'mipmapLevels', 'Mipmap-Stufen', '4', 0, 4, 1, v => String(v), s => +s, v => v === 0 ? 'Aus' : String(v)],
+    bl('entityShadows', 'Objektschatten', 'true'),
+    pctS('screenEffectScale', 'Verzerrungseffekte', '1.0', 'Aus'),
+    ['r', 'entityDistanceScaling', 'Objektentfernung', '1.0', 50, 500, 25, v => (v / 100).toString(), s => Math.round(parseFloat(s) * 100), v => v + ' %'],
+    pctS('fovEffectScale', 'Sichtfeldeffekte', '1.0', 'Aus'),
+    bl('showAutosaveIndicator', 'Autospeicher-Anzeige', 'true'),
+    pctS('glintSpeed', 'Schimmergeschwindigkeit', '0.5', 'Aus'), pctS('glintStrength', 'Schimmerstärke', '0.75', 'Aus'),
+    ['r', 'menuBackgroundBlurriness', 'Menühintergrund-Unschärfe', '5', 0, 10, 1, v => String(v), s => +s, v => v === 0 ? 'Aus' : String(v)],
+    ['r', 'biomeBlendRadius', 'Biomübergang', '2', 0, 7, 1, v => String(v), s => +s, v => v === 0 ? 'Aus' : `${2 * v + 1}×${2 * v + 1}`]]],
+  sound: ['Musik & Geräusche', [
+    vol('master', 'Gesamtlautstärke'), vol('music', 'Musik'), vol('record', 'Plattenspieler/Notenblöcke'), vol('weather', 'Wetter'), vol('block', 'Blöcke'), vol('hostile', 'Feindliche Kreaturen'),
+    vol('neutral', 'Friedliche Kreaturen'), vol('player', 'Spieler'), vol('ambient', 'Umgebung/Atmosphäre'), vol('voice', 'Stimme/Sprache'),
+    bl('showSubtitles', 'Untertitel anzeigen', 'false'), bl('directionalAudio', 'Richtungsabhängiger Ton', 'false')]],
+  controls: ['Steuerung', [go2('mouse', 'Maus-Einstellungen …'), go2('keys', 'Tastenbelegung …'), cy('toggleCrouch', 'Schleichen', 'false', MCS_HOLD), cy('toggleSprint', 'Sprinten', 'false', MCS_HOLD), bl('autoJump', 'Automatisch springen', 'false'), bl('operatorItemsTab', 'Operator-Gegenstände', 'false')]],
+  mouse: ['Maus-Einstellungen', [
+    ['r', 'mouseSensitivity', 'Empfindlichkeit', '0.5', 0, 200, 1, v => (v / 200).toString(), s => Math.round(parseFloat(s) * 200), v => v === 0 ? 'Schnarch' : v === 200 ? 'HYPERSPEED!!!' : v + ' %'],
+    bl('invertYMouse', 'Maus umkehren', 'false'),
+    ['r', 'mouseWheelSensitivity', 'Scrollempfindlichkeit', '1.0', 1, 100, 1, v => (v / 10).toString(), s => Math.round(parseFloat(s) * 10), v => (v / 10).toFixed(1)],
+    bl('discrete_mouse_scroll', 'Diskretes Scrollen', 'false'), bl('touchscreen', 'Touchscreen-Modus', 'false'), bl('rawMouseInput', 'Direkte Eingabe', 'true')]],
+  chat: ['Chateinstellungen', [
+    cy('chatVisibility', 'Chat', '0', [['0', 'Angezeigt'], ['1', 'Nur Befehle'], ['2', 'Versteckt']]),
+    bl('chatColors', 'Farben', 'true'), bl('chatLinks', 'Weblinks', 'true'), bl('chatLinksPrompt', 'Links bestätigen', 'true'),
+    pctS('chatOpacity', 'Chat-Deckkraft', '1.0'), pctS('textBackgroundOpacity', 'Hintergrund-Deckkraft', '0.5'),
+    pctS('chatScale', 'Textgröße', '1.0', 'Aus'), pctS('chatLineSpacing', 'Zeilenabstand', '0.0'),
+    ['r', 'chatDelay', 'Chatverzögerung', '0.0', 0, 60, 1, v => (v / 10).toString(), s => Math.round(parseFloat(s) * 10), v => v === 0 ? 'Keine' : (v / 10).toFixed(1) + ' s'],
+    pctS('chatWidth', 'Breite', '1.0'), pctS('chatHeightFocused', 'Höhe (geöffnet)', '1.0'), pctS('chatHeightUnfocused', 'Höhe (geschlossen)', '0.4375'),
+    cy('narrator', 'Sprachausgabe', '0', [['0', 'Aus'], ['1', 'Alles'], ['2', 'Chat'], ['3', 'System']]),
+    bl('autoSuggestions', 'Befehlsvorschläge', 'true'), bl('hideMatchedNames', 'Passende Namen ausblenden', 'true'),
+    bl('reducedDebugInfo', 'Reduzierte Debug-Infos', 'false'), bl('onlyShowSecureChat', 'Nur sicheren Chat anzeigen', 'false')]],
+  skin: ['Skin-Anpassung', [
+    bl('modelPart_cape', 'Umhang', 'true'), bl('modelPart_jacket', 'Jacke', 'true'), bl('modelPart_left_sleeve', 'Linker Ärmel', 'true'), bl('modelPart_right_sleeve', 'Rechter Ärmel', 'true'),
+    bl('modelPart_left_pants_leg', 'Linkes Hosenbein', 'true'), bl('modelPart_right_pants_leg', 'Rechtes Hosenbein', 'true'), bl('modelPart_hat', 'Hut', 'true'),
+    cy('mainHand', 'Haupthand', '"right"', [['"right"', 'Rechts'], ['"left"', 'Links']])]],
+  access: ['Bedienungshilfen', [
+    cy('narrator', 'Sprachausgabe', '0', [['0', 'Aus'], ['1', 'Alles'], ['2', 'Chat'], ['3', 'System']]),
+    bl('showSubtitles', 'Untertitel anzeigen', 'false'), bl('highContrast', 'Hoher Kontrast', 'false'), bl('autoJump', 'Automatisch springen', 'false'),
+    pctS('textBackgroundOpacity', 'Hintergrund-Deckkraft', '0.5'), cy('backgroundForChatOnly', 'Text-Hintergrund', 'true', [['true', 'Chat'], ['false', 'Überall']]),
+    pctS('chatOpacity', 'Chat-Deckkraft', '1.0'), pctS('chatLineSpacing', 'Zeilenabstand', '0.0'),
+    ['r', 'chatDelay', 'Chatverzögerung', '0.0', 0, 60, 1, v => (v / 10).toString(), s => Math.round(parseFloat(s) * 10), v => v === 0 ? 'Keine' : (v / 10).toFixed(1) + ' s'],
+    ['r', 'notificationDisplayTime', 'Benachrichtigungsdauer', '1.0', 50, 1000, 10, v => (v / 100).toString(), s => Math.round(parseFloat(s) * 100), v => (v / 100).toFixed(1) + '×'],
+    cy('toggleCrouch', 'Schleichen', 'false', MCS_HOLD), cy('toggleSprint', 'Sprinten', 'false', MCS_HOLD),
+    pctS('screenEffectScale', 'Verzerrungseffekte', '1.0', 'Aus'), pctS('fovEffectScale', 'Sichtfeldeffekte', '1.0', 'Aus'),
+    pctS('darknessEffectScale', 'Dunkelheitspulsieren', '1.0', 'Aus'), pctS('damageTiltStrength', 'Schadensneigung', '1.0', 'Aus'),
+    pctS('glintSpeed', 'Schimmergeschwindigkeit', '0.5', 'Aus'), pctS('glintStrength', 'Schimmerstärke', '0.75', 'Aus'),
+    bl('hideLightningFlashes', 'Blitze ausblenden', 'false'), bl('darkMojangStudiosBackground', 'Einfarbiges Logo', 'false'),
+    pctS('panoramaScrollSpeed', 'Panorama-Geschwindigkeit', '1.0', 'Aus'), bl('hideSplashTexts', 'Splash-Texte ausblenden', 'false'),
+    bl('narratorHotkey', 'Sprachausgabe-Tastenkürzel', 'true')]],
+  langx: ['Sprache', [bl('forceUnicodeFont', 'Unicode-Schrift erzwingen', 'false'), bl('japaneseGlyphVariants', 'Japanische Glyphenvarianten', 'false')]],
+  online: ['Online-Optionen', [bl('realmsNotifications', 'Realms-Neuigkeiten & Einladungen', 'true'), bl('allowServerListing', 'Serverauflistung erlauben', 'true')]],
+};
+// key bindings exactly as the game's controls screen (options.txt: key_key.<id>)
+const MCS_KEYS = [
+  ['Bewegung', [['jump', 'Springen', 'key.keyboard.space'], ['sneak', 'Schleichen', 'key.keyboard.left.shift'], ['sprint', 'Sprinten', 'key.keyboard.left.control'], ['left', 'Links', 'key.keyboard.a'], ['right', 'Rechts', 'key.keyboard.d'], ['back', 'Rückwärts', 'key.keyboard.s'], ['forward', 'Vorwärts', 'key.keyboard.w']]],
+  ['Spielmechanik', [['attack', 'Angreifen/Zerstören', 'key.mouse.left'], ['pickItem', 'Block auswählen', 'key.mouse.middle'], ['use', 'Benutzen/Platzieren', 'key.mouse.right']]],
+  ['Inventar', [['drop', 'Gegenstand fallen lassen', 'key.keyboard.q'], ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ['hotbar.' + n, 'Schnellzugriffsleiste ' + n, 'key.keyboard.' + n]), ['inventory', 'Inventar öffnen/schließen', 'key.keyboard.e'], ['swapOffhand', 'Mit Zweithand tauschen', 'key.keyboard.f']]],
+  ['Kreativmodus', [['saveToolbarActivator', 'Schnellzugriffsleiste speichern', 'key.keyboard.c'], ['loadToolbarActivator', 'Schnellzugriffsleiste laden', 'key.keyboard.x']]],
+  ['Mehrspieler', [['chat', 'Chat öffnen', 'key.keyboard.t'], ['playerlist', 'Spieler auflisten', 'key.keyboard.tab'], ['command', 'Befehlszeile öffnen', 'key.keyboard.slash'], ['socialInteractions', 'Soziale Interaktionen', 'key.keyboard.p']]],
+  ['Verschiedenes', [['advancements', 'Fortschritte', 'key.keyboard.l'], ['spectatorOutlines', 'Spieler hervorheben (Zuschauer)', 'key.keyboard.unknown'], ['screenshot', 'Screenshot aufnehmen', 'key.keyboard.f2'], ['smoothCamera', 'Filmische Kamera', 'key.keyboard.unknown'], ['fullscreen', 'Vollbild wechseln', 'key.keyboard.f11'], ['togglePerspective', 'Perspektive wechseln', 'key.keyboard.f5']]],
 ];
-const MCO_KEYS = [
-  ['Bewegung', [['forward', 'Vorwärts', 'key.keyboard.w'], ['left', 'Links', 'key.keyboard.a'], ['back', 'Rückwärts', 'key.keyboard.s'], ['right', 'Rechts', 'key.keyboard.d'], ['jump', 'Springen', 'key.keyboard.space'], ['sneak', 'Schleichen', 'key.keyboard.left.shift'], ['sprint', 'Sprinten', 'key.keyboard.left.control']]],
-  ['Spielen', [['attack', 'Angreifen / Abbauen', 'key.mouse.left'], ['use', 'Benutzen / Platzieren', 'key.mouse.right'], ['pickItem', 'Block auswählen', 'key.mouse.middle'], ['drop', 'Gegenstand fallen lassen', 'key.keyboard.q'], ['swapOffhand', 'Mit Zweithand tauschen', 'key.keyboard.f'], ['inventory', 'Inventar', 'key.keyboard.e']]],
-  ['Schnellleiste', [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ['hotbar.' + n, 'Platz ' + n, 'key.keyboard.' + n])],
-  ['Sonstiges', [['chat', 'Chat', 'key.keyboard.t'], ['command', 'Befehl', 'key.keyboard.slash'], ['playerlist', 'Spielerliste', 'key.keyboard.tab'], ['togglePerspective', 'Perspektive', 'key.keyboard.f5'], ['screenshot', 'Screenshot', 'key.keyboard.f2'], ['fullscreen', 'Vollbild', 'key.keyboard.f11'], ['smoothCamera', 'Filmische Kamera', 'key.keyboard.unknown'], ['advancements', 'Fortschritte', 'key.keyboard.l'], ['socialInteractions', 'Soziale Interaktionen', 'key.keyboard.p'], ['spectatorOutlines', 'Spieler hervorheben', 'key.keyboard.unknown']]],
-];
+const MCS_VANILLA = new Set(MCS_KEYS.flatMap(([, l]) => l.map(x => 'key_key.' + x[0])));
+const MCV = { screen: 'main', back: [] };
+const mcsVal = (k, d) => MCO?.[k] ?? d;
+async function mcoPut(patch) {
+  try { MCO = (await api('mcopt.set', { patch })).map; } catch (e) { fail('Speichern', e); }
+  const c = $('#mcoCount'); if (c) { const ks = Object.keys(MCO), nk = ks.filter(k => k.startsWith('key_')).length; c.textContent = `${ks.length - nk} Einstellungen · ${nk} Tasten`; }
+}
+function mcsBtn(o) {
+  const [t, k, n, d] = o;
+  if (t === 'go') return `<button class="mcb" data-go="${k}">${esc(n)}</button>`;
+  const set = MCO && k in MCO, v = mcsVal(k, d);
+  if (t === 'b') return `<button class="mcb ${set ? 'set' : ''}" data-k="${k}" title="${set ? 'Eigene Einstellung · Rechtsklick: Standard' : 'Spiel-Standard'}">${esc(n)}: ${v === 'true' ? 'An' : 'Aus'}</button>`;
+  if (t === 'c') { const opts = o[4], cur = opts.find(x => x[0] === v) || opts[0]; return `<button class="mcb ${set ? 'set' : ''}" data-k="${k}" title="${set ? 'Eigene Einstellung · Rechtsklick: Standard' : 'Spiel-Standard'}">${esc(n)}: ${esc(cur[1])}</button>`; }
+  const [, , , , min, max, step, , from, fmt] = o, num = Math.max(min, Math.min(max, from(v)));
+  return `<div class="mcsl ${set ? 'set' : ''}" title="${set ? 'Eigene Einstellung · Rechtsklick: Standard' : 'Spiel-Standard'}"><input type="range" min="${min}" max="${max}" step="${step}" value="${num}" data-k="${k}" style="--p:${(num - min) / (max - min)}"><span>${esc(n)}: ${esc(fmt(num))}</span></div>`;
+}
+function mcsRender() {
+  const el = $('#mcs'); if (!el) return;
+  const scr = MCV.screen, find = k => Object.values(MCS).flatMap(([, l]) => l).find(o => o[1] === k && o[0] !== 'go');
+  let body;
+  if (scr === 'keys') {
+    const val = id => mcsVal('key_key.' + id, null);
+    const all = [...MCS_KEYS, ...(Object.keys(MCO || {}).some(k => k.startsWith('key_') && !MCS_VANILLA.has(k)) ? [['Mods', Object.keys(MCO).filter(k => k.startsWith('key_') && !MCS_VANILLA.has(k)).sort().map(k => [k.slice(8), k.slice(8).replace(/^key\./, '').replace(/[._]/g, ' '), MCO[k]])]] : [])];
+    const used = {}; all.forEach(([, l]) => l.forEach(([id, , d]) => { const v = val(id) || d; if (v && v !== 'key.keyboard.unknown') used[v] = (used[v] || 0) + 1; }));
+    body = `<div class="mcklist">${all.map(([g, l]) => `<div class="mckg">${esc(g)}</div>${l.map(([id, n, d]) => { const v = val(id) || d, dup = used[v] > 1; return `<div class="mckr"><span class="mckl">${esc(n)}</span><button class="mcb kb ${dup ? 'dup' : ''} ${MCO && ('key_key.' + id) in MCO ? 'set' : ''}" data-key="key_key.${esc(id)}" data-def="${esc(d)}">${dup ? '[ ' : ''}${esc(mcoKeyName(v))}${dup ? ' ]' : ''}</button><button class="mcb sm" data-kreset="key_key.${esc(id)}" ${MCO && ('key_key.' + id) in MCO && MCS_VANILLA.has('key_key.' + id) ? '' : 'disabled'}>Zurücksetzen</button></div>`; }).join('')}`).join('')}</div>
+      <div class="mcfoot"><button class="mcb" id="mcsKeysReset">Alle Tasten zurücksetzen</button><button class="mcb" data-done>Fertig</button></div>`;
+  } else if (scr === 'lang') {
+    const cur = mcsVal('lang', 'en_us');
+    body = `<div class="mclang">${MCS_LANGS.map(([c, n]) => `<button class="mcl ${c === cur ? 'on' : ''}" data-lang="${c}">${esc(n)}</button>`).join('')}</div>
+      <div class="mcgrid">${MCS.langx[1].map(mcsBtn).join('')}</div>
+      <div class="mcfoot"><button class="mcb" data-done>Fertig</button></div>`;
+  } else {
+    const [, items] = MCS[scr];
+    body = `<div class="mcgrid">${items.map(mcsBtn).join('')}</div><div class="mcfoot">${scr !== 'main' ? '<button class="mcb" id="mcsScrReset">Standard</button>' : ''}<button class="mcb" data-done>Fertig</button></div>`;
+  }
+  const title = scr === 'keys' ? 'Tastenbelegung' : scr === 'lang' ? 'Sprache' : MCS[scr][0];
+  el.innerHTML = `<div class="mchead">${MCV.back.length ? '<button class="mcback" data-done title="Zurück">‹</button>' : ''}<b>${esc(title)}</b></div><div class="mcbody">${body}</div>`;
+  // ---- events
+  el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { MCV.back.push(MCV.screen); MCV.screen = b.dataset.go; mcsRender(); });
+  el.querySelectorAll('[data-done]').forEach(b => b.onclick = () => { MCV.screen = MCV.back.pop() || 'main'; mcsRender(); });
+  const step = async (b, dir) => {
+    const o = find(b.dataset.k); if (!o) return;
+    const v = mcsVal(o[1], o[3]);
+    const nv = o[0] === 'b' ? (v === 'true' ? 'false' : 'true') : (() => { const l = o[4], i = Math.max(0, l.findIndex(x => x[0] === v)); return l[(i + dir + l.length) % l.length][0]; })();
+    await mcoPut({ [o[1]]: nv }); mcsRender();
+  };
+  el.querySelectorAll('button.mcb[data-k]').forEach(b => { b.onclick = () => step(b, 1); b.oncontextmenu = async e => { e.preventDefault(); if (MCO && b.dataset.k in MCO) { await mcoPut({ [b.dataset.k]: null }); mcsRender(); } else step(b, -1); }; });
+  el.querySelectorAll('.mcsl input').forEach(r => {
+    const o = find(r.dataset.k), [, k, n, , min, max, , to, , fmt] = o; let t = 0;
+    r.oninput = () => { const v = +r.value; r.style.setProperty('--p', (v - min) / (max - min)); r.nextElementSibling.textContent = `${n}: ${fmt(v)}`; r.parentElement.classList.add('set'); clearTimeout(t); t = setTimeout(() => mcoPut({ [k]: to(v) }), 250); };
+    r.parentElement.oncontextmenu = async e => { e.preventDefault(); if (MCO && k in MCO) { await mcoPut({ [k]: null }); mcsRender(); } };
+  });
+  el.querySelectorAll('[data-lang]').forEach(b => b.onclick = async () => { await mcoPut({ lang: b.dataset.lang }); mcsRender(); });
+  if ($('#mcsScrReset')) $('#mcsScrReset').onclick = async () => { const ks = MCS[scr][1].filter(o => o[0] !== 'go').map(o => o[1]).filter(k => MCO && k in MCO); if (!ks.length) return; await mcoPut(Object.fromEntries(ks.map(k => [k, null]))); mcsRender(); };
+  if ($('#mcsKeysReset')) $('#mcsKeysReset').onclick = async () => { const ks = [...MCS_VANILLA].filter(k => MCO && k in MCO); if (!ks.length) return; await mcoPut(Object.fromEntries(ks.map(k => [k, null]))); mcsRender(); };
+  el.querySelectorAll('[data-kreset]').forEach(b => b.onclick = async () => { await mcoPut({ [b.dataset.kreset]: null }); mcsRender(); });
+  el.querySelectorAll('.mcb.kb[data-key]').forEach(k => k.onclick = () => {
+    if (k.classList.contains('wait')) return;
+    k.classList.add('wait'); k.textContent = '> ' + k.textContent.replace(/^\[ | \]$/g, '') + ' <';
+    const eat = ev => { ev.preventDefault(); ev.stopPropagation(); };
+    const done = async v => {
+      window.removeEventListener('keydown', kd, true); window.removeEventListener('mousedown', md, true);
+      if (v !== undefined) await mcoPut({ [k.dataset.key]: v });
+      mcsRender();
+    };
+    const kd = e => { eat(e); if (e.code === 'Escape') return done('key.keyboard.unknown'); const v = mcoKeyFromEvent(e); if (v) done(v); };
+    const md = e => { eat(e); window.addEventListener('click', eat, { capture: true, once: true }); window.addEventListener('contextmenu', eat, { capture: true, once: true }); done(MCO_MOUSE[e.button]); };
+    window.addEventListener('keydown', kd, true); window.addEventListener('mousedown', md, true);
+  });
+}
+window.mcsRender = mcsRender;
 const MCO_CODE = { Space: 'space', ShiftLeft: 'left.shift', ShiftRight: 'right.shift', ControlLeft: 'left.control', ControlRight: 'right.control', AltLeft: 'left.alt', AltRight: 'right.alt', Tab: 'tab', Enter: 'enter', Escape: 'escape', Backspace: 'backspace', CapsLock: 'caps.lock', Delete: 'delete', Insert: 'insert', Home: 'home', End: 'end', PageUp: 'page.up', PageDown: 'page.down', ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Minus: 'minus', Equal: 'equal', BracketLeft: 'left.bracket', BracketRight: 'right.bracket', Backslash: 'backslash', Semicolon: 'semicolon', Quote: 'apostrophe', Backquote: 'grave.accent', Comma: 'comma', Period: 'period', Slash: 'slash', IntlBackslash: 'world.2', MetaLeft: 'left.win', MetaRight: 'right.win', ContextMenu: 'menu', NumpadAdd: 'keypad.add', NumpadSubtract: 'keypad.subtract', NumpadMultiply: 'keypad.multiply', NumpadDivide: 'keypad.divide', NumpadDecimal: 'keypad.decimal', NumpadEnter: 'keypad.enter', NumLock: 'num.lock', ScrollLock: 'scroll.lock', Pause: 'pause', PrintScreen: 'print.screen' };
 function mcoKeyFromEvent(e) {
   const c = e.code;
@@ -3213,18 +3346,8 @@ async function mcOptSettings(b, card, tg) {
       <div class="srow ${on ? '' : 'dim'}"><div><b>Bestehende Instanzen</b><p>Ob Instanzen, die es schon gibt, mitmachen.</p></div><div class="seg" id="mcoEx">${[['ask', 'Fragen'], ['all', 'Alle'], ['none', 'Keine']].map(([k, n]) => `<button data-v="${k}" class="${(st.mcOptionsExisting || 'ask') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
       <div class="srow ${on ? '' : 'dim'}"><div><b>Änderungen im Spiel übernehmen</b><p>Stellst du im Spiel etwas um, gilt es danach für alle Instanzen.</p></div>${tg('mcOptionsLearn', st.mcOptionsLearn !== false)}</div>
       <div class="srow ${on ? '' : 'dim'}"><div><b>Instanzen</b><p id="mcoCnt">${S.instances.filter(i => i.optSync === true).length} von ${S.instances.filter(i => i.optModern !== false).length} machen mit.</p></div><button class="btn sm" id="mcoPick">${ico('list')}Auswählen</button></div>`)
-    + '<div class="mt"></div>' + card('Vorlage', `<div class="srow"><div><b>${nSet} Einstellungen · ${nKeys} Tasten</b><p>Am einfachsten: In einer Instanz alles im Spiel einstellen und hier übernehmen.</p></div><span class="row" style="gap:6px"><button class="btn sm" id="mcoFrom">${ico('download')}Aus Instanz</button>${keys.length ? `<button class="btn sm d" id="mcoReset">${ico('trash')}Leeren</button>` : ''}</span></div>`)
-    + '<div class="mt"></div>' + card('Grafik, Steuerung, Ton', `<div class="mcof">${MCO_FIELDS.map(([k, n, kind, x, d]) => {
-      const have = k in MCO, v = val(k, null);
-      let ctl = '';
-      if (kind === 'range') { const cur = have ? x[4](v) : d; ctl = `<input type="range" min="${x[0]}" max="${x[1]}" step="${x[2]}" value="${cur}" data-k="${k}"><em>${have ? esc(String(x[5](cur))) : 'Spiel-Standard'}</em>`; }
-      if (kind === 'bool') ctl = `<div class="seg sm" data-k="${k}">${[['', 'Standard'], ['true', 'An'], ['false', 'Aus']].map(([w, l]) => `<button data-v="${w}" class="${(have ? v : '') === w ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-      if (kind === 'choice') ctl = `<select class="sel" data-k="${k}"><option value="">Spiel-Standard</option>${x.map(([w, l]) => `<option value="${w}" ${have && v === w ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-      return `<div class="mcorow ${have ? 'set' : ''}"><b>${n}</b><div class="mcoc">${ctl}</div>${have ? `<button class="ib sm" data-clr="${k}" title="Auf Spiel-Standard">${ico('x')}</button>` : '<i class="mph"></i>'}</div>`;
-    }).join('')}</div>`)
-    + '<div class="mt"></div>' + card('Tastenbelegung', `<p class="sub" style="margin:2px 0 10px;max-width:none">Klick auf eine Taste und drück die neue. Esc bricht ab, Entf entfernt die Belegung.</p>
-      ${MCO_KEYS.map(([g, l]) => `<div class="mcokg"><small>${g}</small>${l.map(([id, n, d]) => { const k = 'key_key.' + id, v = MCO[k]; return `<div class="mcok ${v ? 'set' : ''}"><span>${n}</span><button class="kbd" data-key="${k}" data-def="${d}">${esc(mcoKeyName(v || d))}</button>${v ? `<button class="ib sm" data-clr="${k}" title="Standard (${esc(mcoKeyName(d))})">${ico('x')}</button>` : '<i class="mph"></i>'}</div>`; }).join('')}</div>`).join('')}`);
-  const put = async patch => { try { MCO = (await api('mcopt.set', { patch })).map; } catch (e) { fail('Speichern', e); } };
+    + '<div class="mt"></div>' + card('Vorlage', `<div class="srow"><div><b id="mcoCount">${nSet} Einstellungen · ${nKeys} Tasten</b><p>Am einfachsten: In einer Instanz alles im Spiel einstellen und hier übernehmen.</p></div><span class="row" style="gap:6px"><button class="btn sm" id="mcoFrom">${ico('download')}Aus Instanz</button>${keys.length ? `<button class="btn sm d" id="mcoReset">${ico('trash')}Leeren</button>` : ''}</span></div>`)
+    + `<div class="mt"></div><div class="mcs" id="mcs"></div><p class="fine">Genau wie im Spiel. Links-/Rechtsklick blättert, Rechtsklick auf eine eigene Einstellung setzt sie auf den Spiel-Standard zurück.</p>`;
   b.querySelectorAll('[data-set]').forEach(t => t.onclick = async () => {
     const v = !t.classList.contains('on'); t.classList.toggle('on', v); await setS(t.dataset.set, v);
     if (t.dataset.set === 'mcOptionsOn' && v) await mcoExisting(true);
@@ -3235,29 +3358,7 @@ async function mcOptSettings(b, card, tg) {
   $('#mcoPick').onclick = () => mcoPick(false).then(setBody);
   $('#mcoFrom').onclick = () => mcoFrom();
   if ($('#mcoReset')) $('#mcoReset').onclick = async () => { if (!await confirmBox('Vorlage leeren?', 'Deine eigenen Einstellungen und Tasten werden gelöscht. Die Instanzen behalten, was sie gerade haben.', 'Leeren', true)) return; MCO = (await api('mcopt.reset')).map; setBody(); };
-  b.querySelectorAll('.mcof input[type=range]').forEach(r => {
-    const f = MCO_FIELDS.find(x => x[0] === r.dataset.k), x = f[3]; setRange(r); let t = 0;
-    r.oninput = () => { setRange(r); r.nextElementSibling.textContent = x[5](+r.value); r.closest('.mcorow').classList.add('set'); clearTimeout(t); t = setTimeout(() => put({ [f[0]]: String(x[3](+r.value)) }), 300); };
-  });
-  b.querySelectorAll('.mcof .seg[data-k]').forEach(s => s.onclick = async e => { const x = e.target.closest('[data-v]'); if (!x) return; await put({ [s.dataset.k]: x.dataset.v || null }); setBody(); });
-  b.querySelectorAll('.mcof select[data-k]').forEach(s => s.onchange = async () => { await put({ [s.dataset.k]: s.value || null }); setBody(); });
-  b.querySelectorAll('[data-clr]').forEach(x => x.onclick = async () => { await put({ [x.dataset.clr]: null }); setBody(); });
-  b.querySelectorAll('.kbd[data-key]').forEach(k => k.onclick = () => {
-    if (k.classList.contains('wait')) return;
-    $$('.kbd.wait').forEach(x => x.classList.remove('wait'));
-    k.classList.add('wait'); k.textContent = 'Taste drücken…';
-    const done = async v => {
-      window.removeEventListener('keydown', kd, true); window.removeEventListener('mousedown', md, true);
-      k.classList.remove('wait');
-      if (v === undefined) { k.textContent = mcoKeyName(MCO[k.dataset.key] || k.dataset.def); return; }
-      await put({ [k.dataset.key]: v }); setBody();
-    };
-    const kd = e => { e.preventDefault(); e.stopPropagation(); if (e.code === 'Escape') return done(); if (e.code === 'Delete') return done('key.keyboard.unknown'); const v = mcoKeyFromEvent(e); if (v) done(v); };
-    // a mouse button is a binding too; swallow the click / menu that follows it
-    const eat = ev => { ev.preventDefault(); ev.stopPropagation(); };
-    const md = e => { eat(e); window.addEventListener('click', eat, { capture: true, once: true }); window.addEventListener('contextmenu', eat, { capture: true, once: true }); done(MCO_MOUSE[e.button]); };
-    window.addEventListener('keydown', kd, true); window.addEventListener('mousedown', md, true);
-  });
+  mcsRender();
 }
 /** Template from an instance the player already set up in the game. */
 async function mcoFrom() {
@@ -3389,7 +3490,7 @@ async function setBody() {
         <div class="srow"><div><b>Mods &amp; Modpacks</b><p>Kommen direkt von den Plattformen ihrer Autoren, jeweils unter deren Lizenz.</p></div></div>
         <div class="srow"><div><b>Mod-Loader</b><p>Fabric, Quilt, Forge und NeoForge über ihre offiziellen Meta-APIs und Installer.</p></div></div>
         <div class="srow"><div><b>Java</b><p>Mojang Java Runtime bzw. Eclipse Temurin (Adoptium).</p></div></div>
-        <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist und Inter (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
+        <div class="srow"><div><b>Schriften &amp; Icons</b><p>Geist, Inter und Pixelify Sans (SIL Open Font License), Icons im Stil von Lucide (ISC).</p></div></div>`);
     if ($('#updCheck')) $('#updCheck').onclick = async () => { $('#updCheck').disabled = true; $('#updCheck').innerHTML = ico('refresh', 'i spin') + 'Prüfe…'; await checkUpdate(true); setBody(); };
   }
   b.querySelectorAll('[data-set]').forEach(t => t.onclick = () => { const on = !t.classList.contains('on'); t.classList.toggle('on', on); setS(t.dataset.set, on); });

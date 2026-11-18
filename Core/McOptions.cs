@@ -12,7 +12,7 @@ public static class McOptions
     {
         "version", "resourcePacks", "incompatibleResourcePacks", "lastServer", "tutorialStep", "joinedFirstServer",
         "skipMultiplayerWarning", "skipRealms32bitWarning", "onboardAccessibility", "hideBundleTutorial", "syncChunkWrites",
-        "hasShownBundleTutorial", "realmsNotifications",
+        "hasShownBundleTutorial",
     };
 
     public static bool IsKey(string k) => k.StartsWith("key_", StringComparison.Ordinal);
