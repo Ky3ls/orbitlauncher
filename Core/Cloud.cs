@@ -308,6 +308,7 @@ public static class Cloud
     private const int PartChars = 950_000;
     private const long AccountBytes = 39_000_000;       // the server allows 40 MB per account
     private static readonly string[] TreeDirs = { "config", "defaultconfigs", "kubejs", "scripts", "global_packs", "datapacks", "patchouli_books", "openloader", "paxi", "resources" };
+    private static readonly HashSet<string> JunkFiles = new(StringComparer.OrdinalIgnoreCase) { ".gitignore", ".gitattributes", ".gitmodules", ".DS_Store", "Thumbs.db", "desktop.ini", ".editorconfig" };
     private static readonly HashSet<string> RootSkip = new(StringComparer.OrdinalIgnoreCase) { "instance.json", "usercache.json", "usernamecache.json", "options.txt", "servers.dat", "launcher_profiles.json", "minecraftinstance.json", "profile.json" };
 
     /// <summary>Files of the bundle: (relative path, full path, size, must = settings/scripts, false = own mods/packs).</summary>
@@ -320,6 +321,8 @@ public static class Cloud
             if (!fi.Exists) return;
             var rel = Path.GetRelativePath(i.Dir, full).Replace('\\', '/');
             if (rel.Contains("/.cache/") || rel.Contains("/cache/") || rel.StartsWith("kubejs/exported/") || rel.EndsWith(".log") || rel.EndsWith(".lock")) return;
+            var fn = Path.GetFileName(rel);
+            if (JunkFiles.Contains(fn) || rel.Contains("/.git/") || rel.Contains("/.github/") || rel.Contains("/__MACOSX/")) return;
             if (fi.Length > (must ? 8_000_000 : 30_000_000)) return;
             r.Add((rel, full, fi.Length, must));
         }
@@ -431,9 +434,15 @@ public static class Cloud
             var mine = sizes.Where(x => x.Key.StartsWith($"fbp:{i.Uid}_") || x.Key == "fbm:" + i.Uid).Sum(x => x.Value);
             var room = AccountBytes - (sizes.Values.Sum() - mine);
             var pick = files.Where(f => f.must).ToList();
-            foreach (var f in files.Where(f => !f.must).OrderBy(f => f.size))
-                if ((pick.Sum(x => x.size) + f.size) * 4 / 3 + 200_000 < room) pick.Add(f);
-                else tooBig.Add($"{i.Name}: {Path.GetFileName(f.rel)} ({f.size / 1048576.0:0.#} MB)");
+            // a folder pack (e.g. an unpacked shader) only works complete: treat it as one unit
+            static string Unit(string rel) { var parts = rel.Split('/'); return parts.Length > 2 ? parts[0] + "/" + parts[1] : rel; }
+            var units = files.Where(f => !f.must).GroupBy(f => Unit(f.rel)).Select(g => (key: g.Key, files: g.ToList(), size: g.Sum(x => x.size))).OrderBy(u => u.size);
+            foreach (var u in units)
+            {
+                if ((pick.Sum(x => x.size) + u.size) * 4 / 3 + 200_000 < room) { pick.AddRange(u.files); continue; }
+                var kind = u.key.StartsWith("shaderpacks/") ? "Shader" : u.key.StartsWith("resourcepacks/") ? "Ressourcenpaket" : "Mod";
+                tooBig.Add($"{i.Name}: {kind} „{Path.GetFileName(u.key)}“ ({u.size / 1048576.0:0.#} MB)");
+            }
             var data = await Task.Run(() => Zip(pick), ct);
             var b64 = Convert.ToBase64String(data);
             if (b64.Length + 100_000 > room) { tooBig.Add($"{i.Name}: Configs und Skripte ({data.Length / 1048576.0:0.#} MB)"); continue; }

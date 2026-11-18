@@ -665,7 +665,7 @@ function runUI() {
 }
 async function play(id, extra = {}) {
   const i = instById(id); if (!i) return;
-  if (S.running.has(id)) { toast('Minecraft wird beendet', `${i.name} · Welt wird gespeichert`); try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
+  if (S.running.has(id)) { toast('Minecraft wird beendet', i.name); try { await api('stop', { id }); } catch (e) { fail('Beenden fehlgeschlagen', e); } return; }
   const mode = S.settings.playMode || 'auto';
   if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
   if (!S.accounts.length) return playChoice(id, extra);
@@ -3737,7 +3737,7 @@ function cloudEvent(d) {
   if (d.state === 'done' && d.tooBig?.length) {
     // tell once per set of files that did not fit, not on every sync
     const key = d.tooBig.join('|'); let seen = ''; try { seen = localStorage.getItem('cloudTooBig') || ''; } catch { }
-    if (seen !== key) { try { localStorage.setItem('cloudTooBig', key); } catch { } toast('Nicht alles passt in die Cloud', `${d.tooBig.slice(0, 3).join(' · ')}${d.tooBig.length > 3 ? ` und ${d.tooBig.length - 3} weitere` : ''}. Die 40 MB deines Kontos sind voll.`, false); }
+    if (seen !== key) { try { localStorage.setItem('cloudTooBig', key); } catch { } const n = d.tooBig.length; toast('Nicht alles passt in die Cloud', `${d.tooBig.slice(0, 2).join(' · ')}${n > 2 ? ` und ${n - 2} weitere` : ''} ${n === 1 ? 'passt' : 'passen'} nicht mehr in deine 40 MB Cloud und ${n === 1 ? 'bleibt' : 'bleiben'} nur auf diesem PC. Alles andere ist gesichert.`, false); }
   }
   if (d.state === 'done') { S.cloud = { ...(S.cloud || {}), lastSync: d.at, syncing: false }; if (d.created) toast('Aus der Orbit-Cloud', `${d.created} Instanz${d.created > 1 ? 'en' : ''} von deinem Konto übernommen${d.restore ? ', Mods werden geladen' : ''}`); }
   if (d.state === 'restored') toast('Cloud-Instanzen bereit', `${d.ok} Inhalte geladen${d.failed?.length ? ' · nicht verfügbar: ' + d.failed.join(', ') : ''}`, !d.failed?.length);

@@ -124,21 +124,18 @@ public class Runner
     public void Kill(string id) { if (_running.TryGetValue(id, out var p)) try { p.Kill(true); } catch { } }
 
     private readonly ConcurrentDictionary<string, byte> _stopping = new();
-    /// <summary>Ends the game like the player would: closes its window so Minecraft saves and shuts down normally.
-    /// Only if it does not react (still loading, hanging) it is ended hard after a while.</summary>
+    /// <summary>Ends the game immediately (no save dialog, no waiting). Marked as "stopping" so it is not reported as a crash.</summary>
     public async Task Stop(string id)
     {
         if (!_running.TryGetValue(id, out var p)) return;
         _stopping[id] = 1;
-        var asked = false;
-        try { p.Refresh(); asked = p.CloseMainWindow(); } catch { }
+        try { p.Kill(true); } catch { }
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(asked ? 25 : 3));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await p.WaitForExitAsync(cts.Token);
         }
         catch { }
-        if (!p.HasExited) try { p.Kill(true); } catch { }
     }
 
     /// <summary>Newest crash report of an instance (if the game crashed).</summary>
