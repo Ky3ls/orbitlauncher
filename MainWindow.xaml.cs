@@ -365,6 +365,19 @@ public partial class MainWindow : Window
                 }
                 return new { applied = n };
             }
+            case "settings.reset":
+            {
+                // back to the built-in defaults, through settings.set so themes, keys and sync react as usual
+                var def = new Settings();
+                foreach (var k in (a["keys"] as JsonArray ?? new()).Select(x => (string?)x).Where(x => x != null))
+                {
+                    var prop = typeof(Settings).GetProperties().FirstOrDefault(p => string.Equals(p.Name, k, StringComparison.OrdinalIgnoreCase));
+                    if (prop == null) continue;
+                    if (prop.Name == nameof(Settings.McOptions)) { SetOptions(null); continue; }
+                    await Handle("settings.set", new JsonObject { ["key"] = prop.Name, ["value"] = JsonNode.Parse(JsonSerializer.Serialize(prop.GetValue(def))) });
+                }
+                return S;
+            }
             case "settings.set":
             {
                 var key = Str(a, "key");

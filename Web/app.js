@@ -1628,7 +1628,28 @@ const isPatch = async patch => { try { await api('instance.update', { id: S.iset
 const isDeb = (() => { let t = 0; return f => { clearTimeout(t); t = setTimeout(f, 400); }; })();
 const isTg = (id, on) => `<div class="tg sm ${on ? 'on' : ''}" id="${id}"></div>`;
 const isOpt = (k, title, desc, ctl) => `<div class="srow"><div><b>${title}</b><p>${desc}</p></div>${ctl}</div>`;
+/* reset per instance settings tab (values meaning "use the launcher's default") */
+const ISRESET = {
+  java: [{ ramMb: 0, javaPath: null, jvmArgs: null, ramNoAsk: false, envVars: null }, 'Arbeitsspeicher, Java, JVM-Argumente und Umgebungsvariablen'],
+  window: [{ width: 0, height: 0, fullscreen: false, autoJoin: null, onLaunch: null }, 'Fenstergröße, Vollbild, Auto-Beitritt und Verhalten beim Start'],
+  hooks: [{ preLaunch: null, wrapper: null, postExit: null }, 'die Befehle vor, um und nach dem Start'],
+};
+async function instReset(tab) {
+  const E = S.iset, i = instById(E?.id); if (!i) return;
+  const all = tab === 'all', parts = all ? Object.keys(ISRESET) : [tab];
+  const what = all ? 'alle Einstellungen dieser Instanz (Speicher, Java, Fenster, Start, Befehle). Name, Mods und Welten bleiben' : ISRESET[tab][1];
+  if (!await confirmBox(all ? 'Alle Einstellungen zurücksetzen?' : 'Zurücksetzen?', `Setzt ${what} auf die Standardwerte des Launchers zurück.`, 'Zurücksetzen', true)) return;
+  const patch = Object.assign({}, ...parts.map(k => ISRESET[k][0]));
+  await isPatch(patch); toast('Zurückgesetzt', i.name); isRender();
+}
+window.instReset = instReset;
 async function isRender() {
+  await isRender0();
+  // reset button in the tab's title
+  const E = S.iset, h = $('#mMain > h2');
+  if (h && (ISRESET[E.tab] || E.tab === 'general') && !h.querySelector('.isrst')) h.insertAdjacentHTML('beforeend', `<button class="btn sm isrst" onclick="instReset('${E.tab === 'general' ? 'all' : E.tab}')">${ico('refresh')}${E.tab === 'general' ? 'Alles zurücksetzen' : 'Zurücksetzen'}</button>`);
+}
+async function isRender0() {
   const E = S.iset, i = instById(E.id), m = $('#mMain'); if (!i || !m) return;
   m.onclick = null;
   if (E.tab === 'general') {
@@ -3413,13 +3434,35 @@ const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
-  el.innerHTML = `<div class="ph"><div><div class="kicker">OrbitLauncher</div><h1>Einstellungen</h1></div></div>
+  el.innerHTML = `<div class="ph"><div><div class="kicker">OrbitLauncher</div><h1>Einstellungen</h1></div><div class="ph-r" id="sReset"></div></div>
     <div class="sgrid"><div class="snav" id="sNav">${STABS.map(([k, n, ic, d]) => `<button class="tab ${S.stab === k ? 'on' : ''}" data-k="${k}">${ico(ic)}<span>${n}<small>${d}</small></span></button>`).join('')}</div><div id="sBody"></div></div>`;
   $('#sNav').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; S.stab = b.dataset.k; S.hist[S.hi].a = { tab: S.stab }; $$('#sNav .tab').forEach(x => x.classList.toggle('on', x === b)); setBody(); };
   setBody();
 };
+/* reset per settings area: [keys, what the player is told] */
+const SRESET = {
+  design: [['accent', 'mode', 'fx', 'onLaunch', 'autoUpdateMods', 'showSnapshots', 'playMode', 'discordRpc'], 'Farben, Darstellung, Hintergrund-Effekt und Verhalten'],
+  java: [['javaPath'], 'das eigene Java für alle Instanzen'],
+  defaults: [['ramMb', 'width', 'height', 'jvmArgs'], 'Arbeitsspeicher, Fenstergröße und JVM-Argumente'],
+  mcopt: [['mcOptionsOn', 'mcOptionsScope', 'mcOptionsExisting', 'mcOptionsLearn', 'mcOptions'], 'deine eigenen Minecraft-Einstellungen und Tasten samt Optionen (die Instanzen behalten, was sie gerade haben)'],
+  sources: [['curseForgeKey'], 'den eigenen API-Schlüssel (der eingebaute wird wieder genutzt)'],
+  about: [['autoUpdate', 'autoInstall'], 'die Update-Optionen'],
+};
+async function settingsReset(tab) {
+  const r = SRESET[tab]; if (!r) return;
+  const name = STABS.find(x => x[0] === tab)?.[1] || 'Bereich';
+  if (!await confirmBox(`${name} zurücksetzen?`, `Setzt ${r[1]} auf die Standardwerte zurück.`, 'Zurücksetzen', true)) return;
+  try {
+    const st = await api('settings.reset', { keys: r[0] });
+    S.settings = st; applyTheme(st.accent || 'ember'); applyMode(st.mode); fxSet(st.fx); S.heroSvg = null;
+    if (tab === 'mcopt') { MCO = null; MCV.screen = 'main'; MCV.back = []; }
+    toast('Zurückgesetzt', name); setBody();
+  } catch (e) { fail('Zurücksetzen', e); }
+}
+window.settingsReset = settingsReset;
 async function setBody() {
   const b = $('#sBody'), st = S.settings; if (!b) return;
+  const rs = $('#sReset'); if (rs) rs.innerHTML = SRESET[S.stab] ? `<button class="btn sm" onclick="settingsReset('${S.stab}')" title="Diesen Bereich auf Standard setzen">${ico('refresh')}Zurücksetzen</button>` : '';
   const card = (t, h) => `<div class="card">${t ? `<h2 style="margin-bottom:6px">${t}</h2>` : ''}${h}</div>`;
   const tg = (k, on) => `<div class="tg ${on ? 'on' : ''}" data-set="${k}"></div>`;
   if (S.stab === 'account') {
@@ -4471,6 +4514,7 @@ const Mock = {
       }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
+      case 'settings.reset': { const D = { accent: 'ember', mode: 'dark', fx: 'snow', onLaunch: 'minimize', autoUpdateMods: false, showSnapshots: false, playMode: 'auto', discordRpc: true, javaPath: null, ramMb: 4096, width: 0, height: 0, jvmArgs: null, mcOptionsOn: false, mcOptionsScope: 'all', mcOptionsExisting: 'ask', mcOptionsLearn: true, mcOptions: null, curseForgeKey: null, autoUpdate: true, autoInstall: false }; for (const k of a.keys) { M.settings[k] = D[k]; if (k === 'mcOptions') M.mco = {}; } return { ...M.settings }; }
       case 'mcopt.get': M.instances.forEach(i => { if (!('optModern' in i)) i.optModern = !/^(1\.([0-9]|1[0-2])(\.|$)|b|a)/.test(i.mcVersion); }); return { map: M.mco || (M.mco = {}) };
       case 'mcopt.set': M.mco = M.mco || {}; for (const [k, v] of Object.entries(a.patch)) { if (v == null) delete M.mco[k]; else M.mco[k] = v; } M.settings.mcOptions = Object.keys(M.mco).length ? 'x' : null; return { map: M.mco };
       case 'mcopt.import': M.mco = { renderDistance: '16', fov: '0.25', gamma: '1.0', guiScale: '3', lang: 'de_de', 'key_key.sprint': 'key.keyboard.r', 'key_key.drop': 'key.keyboard.g', 'key_key.swapOffhand': 'key.mouse.5', 'key_key.jei.showRecipe': 'key.keyboard.r', ...Object.fromEntries(Array.from({ length: 40 }, (_, n) => ['opt' + n, '1'])) }; M.settings.mcOptions = 'x'; return { map: M.mco };

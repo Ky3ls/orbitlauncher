@@ -2091,3 +2091,8 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .mcl.on{border-color:#fff;background:#000}
 .mcsl input::-webkit-slider-thumb,.mcsl input::-webkit-slider-thumb:hover{border-radius:0;width:14px;height:36px;margin-top:0;box-shadow:inset 2px 2px 0 rgba(255,255,255,.35),inset -2px -3px 0 rgba(0,0,0,.4)}
 .mcsl input{border-radius:0;height:100%!important;background:transparent!important}
+
+/* reset buttons */
+#mMain > h2{display:flex;align-items:center;gap:10px}
+#mMain > h2 .isrst{margin-left:auto;font-size:12.5px;font-weight:500;letter-spacing:0}
+#mMain > h2 .isrst{margin-right:40px}
