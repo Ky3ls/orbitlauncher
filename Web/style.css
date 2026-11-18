@@ -2154,3 +2154,4 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .snav .tab{flex:1 1 0;min-width:max-content;padding:8px 10px}
 .dsg2 .srow>div:first-child{flex:1;min-width:0}
 .dsg2 .srow .seg{flex:none}
+.sacc small:empty{display:none}
