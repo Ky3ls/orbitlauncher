@@ -30,7 +30,7 @@ public partial class MainWindow : Window
     private readonly DiscordRpc _rpc = new("1571553631818219580");
     private List<Transfer.Found> _found = new();
     private int _syncing; private CancellationTokenSource? _syncDue;
-    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx", "Mode", "McOptions", "McOptionsOn", "McOptionsScope", "McOptionsExisting", "McOptionsLearn" };
+    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx", "Mode", "McOptions", "McOptionsOn", "McOptionsScope", "McOptionsExisting", "McOptionsLearn", "Lang" };
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);

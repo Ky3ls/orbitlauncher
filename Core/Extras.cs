@@ -52,6 +52,8 @@ public class Settings
     public string? OrbitPacks { get; set; } = "perf,shaders,qol";
     /// <summary>Own Minecraft settings and key bindings (options.txt lines) that instances take over.</summary>
     public string? McOptions { get; set; }
+    /// <summary>Interface language: de | en (empty: system language).</summary>
+    public string? Lang { get; set; }
     /// <summary>Use the own settings at all (new instances take them automatically).</summary>
     public bool McOptionsOn { get; set; }
     /// <summary>all | settings | keys</summary>

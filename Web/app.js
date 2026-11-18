@@ -6,7 +6,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const jsq = s => esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 const ico = (id, cls = 'i') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
-const bytes = b => { if (b == null || b < 0) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return (i ? b.toFixed(1).replace('.', ',') : b) + ' ' + u[i]; };
+const bytes = b => { if (b == null || b < 0) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return (i ? (window.I18N?.lang === 'en' ? b.toFixed(1) : b.toFixed(1).replace('.', ',')) : b) + ' ' + u[i]; };
 const plain = s => String(s ?? '').replace(/§./g, '').replace(/ {2,}/g, ' ').trim();
 const contentName = x => {
   const file = plain(x.file);
@@ -16,17 +16,26 @@ const contentName = x => {
   return t;
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const num = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' Mio.' : n >= 1e3 ? Math.round(n / 1e3) + ' Tsd.' : String(n ?? 0);
+const EN = () => window.I18N?.lang === 'en';
+const num = n => EN() ? (n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n ?? 0))
+  : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' Mio.' : n >= 1e3 ? Math.round(n / 1e3) + ' Tsd.' : String(n ?? 0);
 const ago = d => {
-  if (!d) return 'Nie gespielt';
+  if (!d) return EN() ? 'Never played' : 'Nie gespielt';
   const s = (Date.now() - new Date(d)) / 1000;
+  if (EN()) {
+    const u = (n, w) => `${n} ${w}${n > 1 ? 's' : ''} ago`;
+    if (s < 90) return 'Just now'; if (s < 3600) return `${Math.round(s / 60)} min ago`; if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    if (s < 86400 * 30) return u(Math.round(s / 86400), 'day'); if (s < 86400 * 365) return u(Math.round(s / 86400 / 30), 'month');
+    return u(Math.round(s / 86400 / 365), 'year');
+  }
   if (s < 90) return 'Gerade eben'; if (s < 3600) return `Vor ${Math.round(s / 60)} Min.`; if (s < 86400) return `Vor ${Math.round(s / 3600)} Std.`;
   if (s < 86400 * 30) { const n = Math.round(s / 86400); return `Vor ${n} Tag${n > 1 ? 'en' : ''}`; }
   if (s < 86400 * 365) { const n = Math.round(s / 86400 / 30); return `Vor ${n} Monat${n > 1 ? 'en' : ''}`; }
   const n = Math.round(s / 86400 / 365); return `Vor ${n} Jahr${n > 1 ? 'en' : ''}`;
 };
-const ptime = s => !s ? '0 Std.' : s < 3600 ? Math.max(1, Math.round(s / 60)) + ' Min.' : (s / 3600).toFixed(s < 36000 ? 1 : 0).replace('.', ',') + ' Std.';
-const dateDe = d => d ? new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+const ptime = s => EN() ? (!s ? '0 h' : s < 3600 ? Math.max(1, Math.round(s / 60)) + ' min' : (s / 3600).toFixed(s < 36000 ? 1 : 0) + ' h')
+  : !s ? '0 Std.' : s < 3600 ? Math.max(1, Math.round(s / 60)) + ' Min.' : (s / 3600).toFixed(s < 36000 ? 1 : 0).replace('.', ',') + ' Std.';
+const dateDe = d => d ? new Date(d).toLocaleDateString(window.I18N?.locale || 'de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 
 const HOST = !!(window.chrome && window.chrome.webview);
 let rid = 0; const pending = {};
@@ -3477,7 +3486,7 @@ async function setBody() {
     // compact: colours and look on the left, behaviour on the right, effects as one row below
     b.innerHTML = '<div class="dsg2"><div class="dcol">' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div>`)
       + card('Darstellung', `<div class="modes" id="sMode">${MODES.map(([k, n, d]) => `<button class="${(st.mode || 'dark') === k ? 'on' : ''}" data-v="${k}"><span class="mprev ${k}"><i></i><i></i><i></i></span><b>${n}</b><small>${d}</small></button>`).join('')}</div>`)
-      + '</div>' + card('Verhalten', `<div class="srows1"><div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      + '</div>' + card('Verhalten', `<div class="srows1"><div class="srow"><div><b>Sprache · Language</b><p>Für den ganzen Launcher.</p></div><div class="seg" id="sLang">${Object.entries(I18N.langs).map(([k, [n]]) => `<button data-v="${k}" class="${I18N.lang === k ? 'on' : ''} notr">${n}</button>`).join('')}</div></div><div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
         <div class="srow"><div><b>Spielen über</b><p>Offiziell: Anmeldung im Minecraft Launcher.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'Orbit'], ['official', 'Offiziell']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
@@ -3486,6 +3495,7 @@ async function setBody() {
     $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
     $('#sMode').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; applyMode(x.dataset.v); setS('mode', x.dataset.v); $$('#sMode button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sFx').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('fx', x.dataset.v); fxSet(x.dataset.v); $$('#sFx button').forEach(y => y.classList.toggle('on', y === x)); };
+    $('#sLang').onclick = async e => { const x = e.target.closest('[data-v]'); if (!x || x.dataset.v === I18N.lang) return; await setS('lang', x.dataset.v); I18N.set(x.dataset.v); };
     $('#sPlay').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('playMode', x.dataset.v); $$('#sPlay button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
   }
@@ -4428,6 +4438,7 @@ async function boot() {
   let init;
   try { init = await api('init'); } catch (e) { fail('Start fehlgeschlagen', e); init = { settings: {}, instances: [], accounts: [] }; }
   S.settings = init.settings || {}; S.instances = init.instances || []; S.accounts = init.accounts || []; S.active = init.active; S.version = init.version || S.version; S.root = init.root || '';
+  if (S.settings.lang && S.settings.lang !== I18N.lang && I18N.set(S.settings.lang)) return;
   (init.running || []).forEach(id => S.running.add(id));
   S.needAppId = !!init.needAppId;
   S.user = init.user || '';
