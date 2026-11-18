@@ -10,7 +10,7 @@ using OrbitLauncher.Core;
 namespace OrbitLauncher;
 
 /// <summary>
-/// In-app updates via GitHub Releases.
+/// In-app updates: GitHub Releases of a private repository, handed out by the Orbit server only to PCs with access.
 /// Release flow: bump &lt;Version&gt; in OrbitLauncher.csproj, build, then create a GitHub release
 /// tagged "v&lt;version&gt;" with OrbitLauncher.exe attached. Each bullet line ("- ...") in the
 /// release text is shown as a changelog entry in the app.
@@ -65,34 +65,31 @@ internal static class Updater
         if (!Configured) return new { configured = false, current, available = false };
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/releases/latest");
-            req.Headers.Accept.ParseAdd("application/vnd.github+json");
+            using var req = new HttpRequestMessage(HttpMethod.Get, Cloud.Api.TrimEnd('/') + "/v1/app/latest");
+            Access.Sign(req);
             using var res = await Net.Http.SendAsync(req);
             if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return new { configured = true, current, available = false, noRelease = true };
             res.EnsureSuccessStatusCode();
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
             var r = doc.RootElement;
-            var tag = (r.GetProperty("tag_name").GetString() ?? "0.0.0").TrimStart('v', 'V');
+            var tag = (r.GetProperty("tag").GetString() ?? "0.0.0").TrimStart('v', 'V');
             if (!Version.TryParse(tag, out var latest)) latest = new Version(0, 0, 0);
             _latest = new Version(latest.Major, latest.Minor, Math.Max(0, latest.Build));
 
             _url = null; _sha = null; _size = 0;
-            foreach (var a in r.GetProperty("assets").EnumerateArray())
+            if (r.TryGetProperty("has", out var has) && has.GetBoolean())
             {
-                var name = a.GetProperty("name").GetString() ?? "";
-                if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
-                _url = a.GetProperty("browser_download_url").GetString();
-                _size = a.GetProperty("size").GetInt64();
-                if (a.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String && d.GetString()!.StartsWith("sha256:"))
+                _url = Cloud.Api.TrimEnd('/') + "/v1/app/download";
+                _size = r.GetProperty("size").GetInt64();
+                if (r.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String && d.GetString()!.StartsWith("sha256:"))
                     _sha = d.GetString()![7..];
-                break;
             }
 
             var body = r.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
             var notes = body.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("- ") || l.StartsWith("* "))
                             .Select(l => l[2..].Trim()).Take(12).ToArray();
-            var date = r.TryGetProperty("published_at", out var p) && p.TryGetDateTime(out var dt) ? dt.ToLocalTime().ToString("dd.MM.yyyy") : "";
+            var date = r.TryGetProperty("published", out var p) && p.TryGetDateTime(out var dt) ? dt.ToLocalTime().ToString("dd.MM.yyyy") : "";
 
             return new { configured = true, current, latest = _latest.ToString(3), available = _latest > Current && _url != null, notes, date, size = _size };
         }
@@ -105,6 +102,7 @@ internal static class Updater
         _file = NewFile;
         using var http = new HttpClient(new SocketsHttpHandler { MaxConnectionsPerServer = 16, AutomaticDecompression = System.Net.DecompressionMethods.None }) { Timeout = TimeSpan.FromMinutes(10) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("OrbitLauncher/" + Current.ToString(3));
+        if (Access.Token() is string acc) http.DefaultRequestHeaders.Add("X-Orbit-Access", acc);
         // GitHub redirects to its file server; resolve once, then fetch several parts at the same time
         using var head = await http.GetAsync(_url, HttpCompletionOption.ResponseHeadersRead);
         head.EnsureSuccessStatusCode();

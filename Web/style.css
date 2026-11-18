@@ -2155,3 +2155,19 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .dsg2 .srow>div:first-child{flex:1;min-width:0}
 .dsg2 .srow .seg{flex:none}
 .sacc small:empty{display:none}
+
+/* ===== private access ===== */
+.agate{z-index:95}
+.acode{width:100%;max-width:300px;margin:14px auto 10px;display:block;text-align:center;font-family:var(--mono);font-size:20px;letter-spacing:.12em;height:52px;text-transform:uppercase}
+.adhead{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.adhead .sub{margin:4px 0 0;max-width:520px;font-size:13px}
+.adnew{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.adnew .in{width:200px}
+.adlist{display:flex;flex-direction:column;gap:8px}
+.adc{display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;padding:12px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(var(--ov),.02)}
+.adc.off{opacity:.6}
+.adcode{display:flex;align-items:center;gap:6px}
+.adcode code{font-family:var(--mono);font-size:14px;letter-spacing:.06em;padding:6px 10px;border-radius:8px;background:rgba(var(--ov),.05)}
+.adinfo{min-width:0}.adinfo b{display:block;font-size:13.5px}.adinfo small{font-size:12px;color:var(--sub);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adchips,.adact{display:flex;gap:6px;align-items:center}
+.snav .tab{padding:8px 8px;gap:6px}.snav .tab span{font-size:12.5px}

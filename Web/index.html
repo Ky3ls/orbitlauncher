@@ -173,6 +173,18 @@
     <small>Dein Passwort gibst du nur bei Microsoft ein. OrbitLauncher speichert es nie.</small>
   </div>
 </div>
+<div class="gate agate hidden" id="agate">
+  <div class="g-bg" id="agateBg"></div><div class="g-shade"></div>
+  <div class="g-box">
+    <svg class="g-logo" viewBox="0 0 64 64"><path d="M32 13 49 22.5 32 32 15 22.5Z" fill="url(#rg)"/><path d="M15 22.5 32 32v19L15 41.5Z" fill="var(--a)" opacity=".55"/><path d="M49 22.5 32 32v19l17-9.5Z" fill="var(--b)" opacity=".8"/><ellipse cx="32" cy="32" rx="30" ry="10" fill="none" stroke="url(#rg)" stroke-width="3.2" transform="rotate(-28 32 32)"/><circle cx="54" cy="12" r="4" fill="#fff"/></svg>
+    <div class="g-name">Orbit<span>Launcher</span></div>
+    <p>OrbitLauncher ist privat. Gib den Zugangscode ein, den du bekommen hast.</p>
+    <input class="in acode" id="acode" placeholder="XXXX-XXXX-XXXX" maxlength="14" autocomplete="off" spellcheck="false">
+    <button class="g-ms" id="acodeGo" onclick="accessActivate()">Freischalten</button>
+    <div class="g-err" id="acodeErr"></div>
+    <small>Der Code wird an diesen PC gebunden.</small>
+  </div>
+</div>
 <div id="toasts"></div>
 <div class="pop hidden" id="pop"></div>
 <div class="ctx hidden" id="ctx"></div>

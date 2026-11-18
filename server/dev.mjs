@@ -29,6 +29,9 @@ const FILES = {
   async get(k) { const b = blobs.get(k); return b ? { body: b, size: b.length } : null; },
   async delete(k) { blobs.delete(k); },
 };
+// a first admin code for local tests (on Cloudflare it is created once by hand)
+db.exec("CREATE TABLE IF NOT EXISTS access_codes (code TEXT PRIMARY KEY, note TEXT, max_devices INTEGER NOT NULL DEFAULT 2, admin INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)");
+db.prepare('INSERT OR IGNORE INTO access_codes (code, note, max_devices, admin, created) VALUES (?, ?, 2, 1, ?)').run(process.env.DEV_ADMIN || 'TEST-TEST-TEST', 'Admin', Date.now());
 const port = +(process.argv[2] || 8787);
 http.createServer(async (req, res) => {
   const chunks = []; for await (const c of req) chunks.push(c);

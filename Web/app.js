@@ -3439,14 +3439,55 @@ async function mcoAskOne(i) {
 }
 window.mcOptSettings = mcOptSettings;
 
+/* ======================= ACCESS CODES (owner only) ======================= */
+async function adminCodes(b, card) {
+  b.className = 'sb1';
+  b.innerHTML = card('Zugänge', '<div class="spinner"></div>');
+  let r; try { r = await api('admin.codes'); } catch (e) { b.innerHTML = card('Zugänge', `<div class="note w">${esc(e.message)}</div>`); return; }
+  if (S.stab !== 'admin') return;
+  const codes = r.codes || [];
+  b.innerHTML = card('', `<div class="adhead"><div><h2>Zugänge</h2><p class="sub">Nur wer einen Code von dir hat, kann OrbitLauncher starten, Updates laden und ein Orbit-Konto nutzen. Ein Code gilt für die PCs, auf denen er eingegeben wurde.</p></div>
+      <div class="adnew"><input class="in" id="adNote" placeholder="Für wen? z. B. Max" maxlength="60"><div class="seg sm" id="adMax">${[1, 2, 3, 5].map(n => `<button data-v="${n}" class="${n === 2 ? 'on' : ''}">${n} PC${n > 1 ? 's' : ''}</button>`).join('')}</div><button class="btn p" id="adGo">${ico('plus')}Code erstellen</button></div></div>
+    <div id="adNewCode"></div>`)
+    + '<div class="mt"></div>' + card('', `<div class="adlist">${codes.map(c => `<div class="adc ${c.revoked ? 'off' : ''}" data-c="${esc(c.code)}">
+        <div class="adcode notr"><code>${esc(c.code)}</code><button class="ib sm" data-a="copy" title="Kopieren">${ico('copy')}</button></div>
+        <div class="adinfo"><b>${esc(c.note || 'Ohne Notiz')}</b><small>${c.devices} von ${c.max_devices} PC${c.max_devices > 1 ? 's' : ''}${c.last ? ' · zuletzt ' + esc(ago(c.last)) : ' · noch nicht benutzt'}${c.pcs.length ? ' · ' + c.pcs.map(p => esc(p.device || 'PC')).join(', ') : ''}</small></div>
+        <div class="adchips">${c.admin ? '<span class="chip a">Admin</span>' : ''}${c.mine ? '<span class="chip g">Dieser PC</span>' : ''}${c.revoked ? '<span class="chip w">Gesperrt</span>' : ''}</div>
+        <div class="adact">${c.mine ? '' : `<button class="btn sm" data-a="${c.revoked ? 'unlock' : 'lock'}">${ico(c.revoked ? 'check' : 'shield')}${c.revoked ? 'Entsperren' : 'Sperren'}</button>`}${c.devices && !c.mine ? `<button class="btn sm" data-a="reset" title="Alle PCs abmelden, der Code kann neu eingegeben werden">${ico('refresh')}PCs zurücksetzen</button>` : ''}${c.mine ? '' : `<button class="ib sm d" data-a="del" title="Löschen">${ico('trash')}</button>`}</div>
+      </div>`).join('') || '<div class="empty">Noch keine Codes.</div>'}</div>`);
+  let max = 2;
+  $('#adMax').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; max = +x.dataset.v; $$('#adMax button').forEach(y => y.classList.toggle('on', y === x)); };
+  $('#adGo').onclick = async () => {
+    try {
+      const n = await api('admin.create', { note: $('#adNote').value.trim(), maxDevices: max, admin: false });
+      try { await navigator.clipboard.writeText(n.code); } catch { }
+      toast('Code erstellt', `${n.code} · kopiert`);
+      await adminCodes(b, card);
+      $('#adNewCode').innerHTML = `<div class="note" style="margin-top:12px">Neuer Code: <b class="notr" style="font-family:var(--mono);font-size:15px;letter-spacing:.06em">${esc(n.code)}</b> ist in der Zwischenablage. Schick ihn an die Person, sie gibt ihn beim Start ein.</div>`;
+    } catch (e) { fail('Code', e); }
+  };
+  b.querySelector('.adlist').onclick = async e => {
+    const x = e.target.closest('[data-a]'); if (!x) return;
+    const code = x.closest('[data-c]').dataset.c, a = x.dataset.a;
+    try {
+      if (a === 'copy') { try { await navigator.clipboard.writeText(code); } catch { } return toast('Kopiert', code); }
+      if (a === 'lock' && !await confirmBox('Code sperren?', 'Auf allen PCs mit diesem Code startet OrbitLauncher nicht mehr. Du kannst ihn später wieder entsperren.', 'Sperren', true)) return;
+      if (a === 'del' && !await confirmBox('Code löschen?', 'Der Code und alle seine PCs werden entfernt.', 'Löschen', true)) return;
+      await api('admin.update', a === 'lock' ? { code, revoked: true } : a === 'unlock' ? { code, revoked: false } : a === 'reset' ? { code, resetDevices: true } : { code, delete: true });
+      adminCodes(b, card);
+    } catch (er) { fail('Zugänge', er); }
+  };
+}
+
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['mcopt', 'Spiel-Einstellungen', 'keyboard', 'Optionen und Tasten für alle'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Updates']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['mcopt', 'Spiel-Einstellungen', 'keyboard', 'Optionen und Tasten für alle'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['admin', 'Zugänge', 'key', 'Wer den Launcher nutzen darf'], ['about', 'Über', 'info', 'Version und Updates']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
+  if (S.stab === 'admin' && !S.access?.admin) S.stab = 'account';
   crumbs([['Einstellungen']]);
   el.innerHTML = `<div class="ph"><div><div class="kicker">OrbitLauncher</div><h1>Einstellungen</h1></div><div class="ph-r" id="sReset"></div></div>
-    <div class="sgrid"><div class="snav" id="sNav">${STABS.map(([k, n, ic, d]) => `<button class="tab ${S.stab === k ? 'on' : ''}" data-k="${k}">${ico(ic)}<span>${n}<small>${d}</small></span></button>`).join('')}</div><div id="sBody"></div></div>`;
+    <div class="sgrid"><div class="snav" id="sNav">${STABS.filter(t => t[0] !== 'admin' || S.access?.admin).map(([k, n, ic, d]) => `<button class="tab ${S.stab === k ? 'on' : ''}" data-k="${k}">${ico(ic)}<span>${n}<small>${d}</small></span></button>`).join('')}</div><div id="sBody"></div></div>`;
   $('#sNav').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; S.stab = b.dataset.k; S.hist[S.hi].a = { tab: S.stab }; $$('#sNav .tab').forEach(x => x.classList.toggle('on', x === b)); setBody(); };
   setBody();
 };
@@ -3501,6 +3542,7 @@ async function setBody() {
   }
   if (S.stab === 'cloud') return cloudSettings(b, card);
   if (S.stab === 'mcopt') return mcOptSettings(b, card, tg);
+  if (S.stab === 'admin') return adminCodes(b, card);
   if (S.stab === 'sources') {
     let cfs = { ready: false }; try { cfs = await api('cf.status'); } catch { }
     if (S.stab !== 'sources') return;
@@ -4433,8 +4475,30 @@ document.addEventListener('scroll', e => { if (!e.target.closest?.('#selpop')) c
 cselEnhance();
 
 /* ======================= BOOT ======================= */
+/* ---------- private access: code entry before anything else ---------- */
+async function accessGate(st) {
+  $('#agateBg').innerHTML = bannerSvg(false, 675);
+  $('#agate').classList.remove('hidden');
+  if (st?.error) $('#acodeErr').textContent = st.error;
+  $('#splash')?.classList.add('out');
+  const i = $('#acode');
+  i.oninput = () => { let v = i.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); i.value = v.match(/.{1,4}/g)?.join('-') || ''; $('#acodeErr').textContent = ''; };
+  i.onkeydown = e => { if (e.key === 'Enter') accessActivate(); };
+  setTimeout(() => i.focus(), 300);
+}
+async function accessActivate() {
+  const b = $('#acodeGo'), v = $('#acode').value.trim();
+  if (v.replace(/-/g, '').length !== 12) return $('#acodeErr').textContent = 'Der Code hat 12 Zeichen.';
+  b.disabled = true; b.textContent = 'Wird geprüft…';
+  try { await api('access.activate', { code: v }); location.reload(); }
+  catch (e) { $('#acodeErr').textContent = e.message; b.disabled = false; b.textContent = 'Freischalten'; }
+}
+window.accessActivate = accessActivate;
+
 async function boot() {
   const t0 = performance.now();
+  try { S.access = await api('access.status'); } catch (e) { S.access = { ok: false, error: e.message }; }
+  if (!S.access.ok) return accessGate(S.access);
   let init;
   try { init = await api('init'); } catch (e) { fail('Start fehlgeschlagen', e); init = { settings: {}, instances: [], accounts: [] }; }
   S.settings = init.settings || {}; S.instances = init.instances || []; S.accounts = init.accounts || []; S.active = init.active; S.version = init.version || S.version; S.root = init.root || '';
@@ -4523,6 +4587,11 @@ const Mock = {
       }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
+      case 'access.status': return /agate/.test(location.search) && !sessionStorage.getItem('acc') ? { ok: false } : { ok: true, admin: true };
+      case 'access.activate': await sleep(500); if (a.code !== 'TEST-TEST-TEST') throw new Error('Dieser Code ist ungültig oder gesperrt.'); sessionStorage.setItem('acc', '1'); return { ok: true };
+      case 'admin.codes': return { codes: M.codes || (M.codes = [{ code: 'K7QX-2MRT-9VNA', note: 'Ich', max_devices: 2, admin: true, created: Date.now() - 9e8, revoked: false, devices: 2, last: Date.now() - 6e4, mine: true, pcs: [{ device: 'GAMING-PC' }, { device: 'LAPTOP' }] }, { code: 'P4HD-8WZE-3LCK', note: 'Max', max_devices: 2, admin: false, created: Date.now() - 4e8, revoked: false, devices: 1, last: Date.now() - 3 * 864e5, mine: false, pcs: [{ device: 'MAX-PC' }] }, { code: 'B2NV-6TQS-YH5R', note: 'Lena', max_devices: 1, admin: false, created: Date.now() - 2e8, revoked: true, devices: 1, last: Date.now() - 20 * 864e5, mine: false, pcs: [{ device: 'DESKTOP-L3' }] }]) };
+      case 'admin.create': { const c = 'N3W' + Math.random().toString(36).slice(2, 3).toUpperCase() + '-AB12-CD34'; M.codes.unshift({ code: c, note: a.note, max_devices: a.maxDevices, admin: false, created: Date.now(), revoked: false, devices: 0, last: null, mine: false, pcs: [] }); return { code: c }; }
+      case 'admin.update': { const c = M.codes.find(x => x.code === a.code); if (a.delete) M.codes = M.codes.filter(x => x !== c); if ('revoked' in a) c.revoked = a.revoked; if (a.resetDevices) { c.devices = 0; c.pcs = []; } return { ok: true }; }
       case 'settings.reset': { const D = { accent: 'ember', mode: 'dark', fx: 'snow', onLaunch: 'keep', autoUpdateMods: false, showSnapshots: false, playMode: 'auto', discordRpc: true, javaPath: null, ramMb: 4096, width: 0, height: 0, jvmArgs: null, mcOptionsOn: false, mcOptionsScope: 'all', mcOptionsExisting: 'ask', mcOptionsLearn: true, mcOptions: null, curseForgeKey: null, autoUpdate: true, autoInstall: false }; for (const k of a.keys) { M.settings[k] = D[k]; if (k === 'mcOptions') M.mco = {}; } return { ...M.settings }; }
       case 'mcopt.get': M.instances.forEach(i => { if (!('optModern' in i)) i.optModern = !/^(1\.([0-9]|1[0-2])(\.|$)|b|a)/.test(i.mcVersion); }); return { map: M.mco || (M.mco = {}) };
       case 'mcopt.set': M.mco = M.mco || {}; for (const [k, v] of Object.entries(a.patch)) { if (v == null) delete M.mco[k]; else M.mco[k] = v; } M.settings.mcOptions = Object.keys(M.mco).length ? 'x' : null; return { map: M.mco };

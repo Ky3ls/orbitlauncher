@@ -33,6 +33,9 @@ async function ready(env) {
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS passkeys (id TEXT PRIMARY KEY, uid INTEGER NOT NULL, cose TEXT NOT NULL, alg INTEGER NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, name TEXT, created INTEGER NOT NULL)').run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS passkeys_uid ON passkeys(uid)').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS files (uid INTEGER NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (uid, name))').run();
+  // private access: only people with a code from the owner can use the launcher
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS access_codes (code TEXT PRIMARY KEY, note TEXT, max_devices INTEGER NOT NULL DEFAULT 2, admin INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS access_devices (tok TEXT PRIMARY KEY, code TEXT NOT NULL, hwid TEXT NOT NULL, device TEXT, created INTEGER NOT NULL, last INTEGER NOT NULL, UNIQUE (code, hwid))').run();
   for (const sql of ['ALTER TABLE users ADD COLUMN totp TEXT', 'ALTER TABLE users ADD COLUMN totp_on INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE users ADD COLUMN totp_step INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE users ADD COLUMN recovery TEXT']) {
     try { await env.DB.prepare(sql).run(); } catch { /* column already there */ }
   }
@@ -208,6 +211,30 @@ async function auth(req, env) {
 
 async function body(req) { try { return await req.json(); } catch { return {}; } }
 
+// ---- access codes
+const CODE_RE = /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/, HWID_RE = /^[0-9a-f]{64}$/;
+function newCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', b = new Uint8Array(12); crypto.getRandomValues(b);
+  const s = [...b].map(x => A[x % A.length]).join('');
+  return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8)}`;
+}
+/** The device's access (header X-Orbit-Access), or null. */
+async function access(req, env) {
+  const t = req.headers.get('x-orbit-access') || '';
+  if (t.length < 20) return null;
+  const tk = await sha256(t);
+  const d = await env.DB.prepare('SELECT d.tok, d.code, d.last, c.admin, c.revoked FROM access_devices d JOIN access_codes c ON c.code = d.code WHERE d.tok = ?').bind(tk).first();
+  if (!d || d.revoked) return null;
+  if (now() - d.last > 3600e3) await env.DB.prepare('UPDATE access_devices SET last = ? WHERE tok = ?').bind(now(), tk).run();
+  return { code: d.code, admin: !!d.admin, tok: tk };
+}
+const REPO = 'Ky3ls/orbitlauncher';
+function gh(env, url, accept = 'application/vnd.github+json', extra = {}) {
+  const h = { accept, 'user-agent': 'orbitlauncher-api', ...extra };
+  if (env.GITHUB_TOKEN) h.authorization = 'Bearer ' + env.GITHUB_TOKEN;
+  return fetch(url, { headers: h, redirect: 'follow' });
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url), p = url.pathname, m = req.method;
@@ -216,6 +243,73 @@ export default {
       await ready(env);
       if (p === '/' || p === '/v1') return json({ name: 'orbitlauncher-api', ok: true });
 
+      if (p === '/v1/access/activate' && m === 'POST') {
+        const b = await body(req), code = String(b.code || '').trim().toUpperCase();
+        if (await limited(env, 'acc:' + ip, 10, 3600e3)) return err('Zu viele Versuche. Warte eine Stunde.', 429);
+        if (!CODE_RE.test(code) || !HWID_RE.test(b.hwid || '')) return err('Dieser Code ist ungültig.', 403);
+        const c = await env.DB.prepare('SELECT * FROM access_codes WHERE code = ?').bind(code).first();
+        if (!c || c.revoked) return err('Dieser Code ist ungültig oder gesperrt.', 403);
+        const known = await env.DB.prepare('SELECT tok FROM access_devices WHERE code = ? AND hwid = ?').bind(code, b.hwid).first();
+        if (!known) {
+          const n = await env.DB.prepare('SELECT COUNT(*) c FROM access_devices WHERE code = ?').bind(code).first();
+          if (n.c >= c.max_devices) return err(`Dieser Code ist schon auf ${c.max_devices} PC${c.max_devices === 1 ? '' : 's'} aktiv.`, 403);
+        }
+        const t = randomToken();
+        await env.DB.prepare('DELETE FROM access_devices WHERE code = ? AND hwid = ?').bind(code, b.hwid).run();
+        await env.DB.prepare('INSERT INTO access_devices (tok, code, hwid, device, created, last) VALUES (?, ?, ?, ?, ?, ?)').bind(await sha256(t), code, b.hwid, String(b.device || '').slice(0, 60), now(), now()).run();
+        return json({ token: t, admin: !!c.admin, note: c.note || '' });
+      }
+      const acc = await access(req, env);
+      if (p === '/v1/access/check' && m === 'POST') return acc ? json({ ok: true, admin: acc.admin }) : err('Kein Zugang', 403);
+
+      // admin: manage codes
+      if (p.startsWith('/v1/admin/')) {
+        if (!acc?.admin) return err('Kein Zugang', 403);
+        if (p === '/v1/admin/codes' && m === 'GET') {
+          const r = await env.DB.prepare('SELECT c.code, c.note, c.max_devices, c.admin, c.created, c.revoked, COUNT(d.tok) devices, MAX(d.last) last FROM access_codes c LEFT JOIN access_devices d ON d.code = c.code GROUP BY c.code ORDER BY c.created DESC').all();
+          const devs = await env.DB.prepare('SELECT code, device, last FROM access_devices ORDER BY last DESC').all();
+          return json({ codes: r.results.map(x => ({ ...x, admin: !!x.admin, revoked: !!x.revoked, mine: x.code === acc.code, pcs: devs.results.filter(d => d.code === x.code).map(d => ({ device: d.device, last: d.last })) })) });
+        }
+        if (p === '/v1/admin/codes' && m === 'POST') {
+          const b = await body(req), code = newCode();
+          await env.DB.prepare('INSERT INTO access_codes (code, note, max_devices, admin, created) VALUES (?, ?, ?, ?, ?)').bind(code, String(b.note || '').slice(0, 60), Math.max(1, Math.min(10, b.maxDevices | 0 || 2)), b.admin ? 1 : 0, now()).run();
+          return json({ code });
+        }
+        if (p === '/v1/admin/codes/update' && m === 'POST') {
+          const b = await body(req);
+          if (!CODE_RE.test(b.code || '')) return err('Ungültiger Code');
+          if (b.code === acc.code && b.revoked) return err('Deinen eigenen Code kannst du nicht sperren.');
+          if ('revoked' in b) await env.DB.prepare('UPDATE access_codes SET revoked = ? WHERE code = ?').bind(b.revoked ? 1 : 0, b.code).run();
+          if ('note' in b) await env.DB.prepare('UPDATE access_codes SET note = ? WHERE code = ?').bind(String(b.note || '').slice(0, 60), b.code).run();
+          if ('maxDevices' in b) await env.DB.prepare('UPDATE access_codes SET max_devices = ? WHERE code = ?').bind(Math.max(1, Math.min(10, b.maxDevices | 0)), b.code).run();
+          if (b.resetDevices) await env.DB.prepare('DELETE FROM access_devices WHERE code = ? AND tok != ?').bind(b.code, acc.tok).run();
+          if (b.delete && b.code !== acc.code) { await env.DB.prepare('DELETE FROM access_devices WHERE code = ?').bind(b.code).run(); await env.DB.prepare('DELETE FROM access_codes WHERE code = ?').bind(b.code).run(); }
+          return json({ ok: true });
+        }
+        return err('Nicht gefunden', 404);
+      }
+
+      // the launcher itself: only for devices with access (the GitHub repository is private)
+      if (p === '/v1/app/latest' && m === 'GET') {
+        if (!acc) return err('Kein Zugang', 403);
+        const r = await gh(env, `https://api.github.com/repos/${REPO}/releases/latest`);
+        if (!r.ok) return err('Kein Release gefunden', 404);
+        const j = await r.json(), a = (j.assets || []).find(x => /\.exe$/i.test(x.name));
+        return json({ tag: j.tag_name, body: j.body || '', published: j.published_at, size: a?.size || 0, digest: a?.digest || null, has: !!a });
+      }
+      if (p === '/v1/app/download' && m === 'GET') {
+        if (!acc) return err('Kein Zugang', 403);
+        const r = await gh(env, `https://api.github.com/repos/${REPO}/releases/latest`);
+        const a = r.ok ? ((await r.json()).assets || []).find(x => /\.exe$/i.test(x.name)) : null;
+        if (!a) return err('Kein Release gefunden', 404);
+        const range = req.headers.get('range');
+        const f = await gh(env, a.url, 'application/octet-stream', range ? { range } : {});
+        const h = new Headers({ 'content-type': 'application/octet-stream', 'cache-control': 'no-store', 'accept-ranges': 'bytes' });
+        for (const k of ['content-length', 'content-range']) if (f.headers.get(k)) h.set(k, f.headers.get(k));
+        return new Response(f.body, { status: f.status, headers: h });
+      }
+
+      if (['/v1/register', '/v1/login', '/v1/login/totp', '/v1/passkey/begin', '/v1/passkey/finish'].includes(p) && !acc) return err('Für ein Orbit-Konto brauchst du einen Zugang zum Launcher.', 403);
       if (p === '/v1/register' && m === 'POST') {
         const b = await body(req);
         if (!NAME_RE.test(b.name || '')) return err('Name: 3–20 Zeichen, nur Buchstaben, Zahlen und _');

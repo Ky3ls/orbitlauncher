@@ -59,6 +59,7 @@ public static class Cloud
         using var req = new HttpRequestMessage(m, Api.TrimEnd('/') + path);
         if (body != null) req.Content = new StringContent(body is string s ? s : JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         if (auth) { var t = Token() ?? throw new InvalidOperationException("Nicht bei Orbit angemeldet."); req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", t); }
+        Access.Sign(req);
         using var r = await Net.Http.SendAsync(req, ct);
         var txt = await r.Content.ReadAsStringAsync(ct);
         JsonNode? j = null; try { j = JsonNode.Parse(txt); } catch { }
@@ -399,6 +400,7 @@ public static class Cloud
     {
         using var req = new HttpRequestMessage(m, Api.TrimEnd('/') + path) { Content = body };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token() ?? throw new InvalidOperationException("Nicht bei Orbit angemeldet."));
+        Access.Sign(req);
         var r = await Net.Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!r.IsSuccessStatusCode)
         {

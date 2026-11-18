@@ -145,7 +145,7 @@ switch (mode)
         void Use(string r) { Paths.Root = r; Directory.CreateDirectory(r); }
         var user = "B_" + Random.Shared.Next(10000, 99999);
         Use(rootA);
-        await Cloud.Login(user, "Passwort123", register: true);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: true);
         var a = Instances.Create("Legendary Edition", "1.20.1", "forge", "47.4.0");
         var rnd = new Random(3);
         void W(string rel, int kb) { var f = Path.Combine(a.Dir, rel); Directory.CreateDirectory(Path.GetDirectoryName(f)!); var b = new byte[kb * 1024]; rnd.NextBytes(b); File.WriteAllBytes(f, b); }
@@ -158,7 +158,7 @@ switch (mode)
         var r1 = await Cloud.Sync(null, null, null);
         Console.WriteLine($"A push: pushed={r1.Pushed} tooBig={string.Join("; ", r1.TooBig)}");
         Use(rootB);
-        await Cloud.Login(user, "Passwort123", register: false);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: false);
         var r2 = await Cloud.Sync(null, null, null);
         var b = Instances.All().Single();
         bool Same(string rel) { var x = Path.Combine(a.Dir, rel); var y = Path.Combine(b.Dir, rel); return File.Exists(y) && File.ReadAllBytes(x).AsSpan().SequenceEqual(File.ReadAllBytes(y)); }
@@ -180,7 +180,7 @@ switch (mode)
         void Use(string r) { Paths.Root = r; Directory.CreateDirectory(r); }
         var user = "F_" + Random.Shared.Next(10000, 99999);
         Use(rootA);
-        await Cloud.Login(user, "Passwort123", register: true);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: true);
         var a = Instances.Create("Big Pack", "1.20.1", "forge", "1.20.1-47.4.22");
         var rnd = new Random(1);
         string W(string rel, int kb, bool text)
@@ -202,7 +202,7 @@ switch (mode)
         var again = await Cloud.Sync(null, null, null);
         Console.WriteLine($"A again (nothing changed): pushed={again.Pushed}");
         Use(rootB);
-        await Cloud.Login(user, "Passwort123", register: false);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: false);
         var r2 = await Cloud.Sync(null, null, null);
         var b = Instances.All().Single();
         int Count(string dir) => Directory.Exists(Path.Combine(b.Dir, dir)) ? Directory.GetFiles(Path.Combine(b.Dir, dir), "*", SearchOption.AllDirectories).Length : 0;
@@ -225,7 +225,7 @@ switch (mode)
         var user = "E2E_" + Random.Shared.Next(10000, 99999);
         // PC A: register, create a Fabric instance with Sodium, a group and options
         Use(rootA);
-        await Cloud.Login(user, "Passwort123", register: true);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: true);
         var a = Instances.Create("Cloud Test", "1.21.1", "fabric", null);
         a.Group = "PvP"; a.RamMb = 3072; Instances.Save(a);
         File.WriteAllText(Path.Combine(a.Dir, "options.txt"), "fov:0.75\nrenderDistance:16\n");
@@ -235,7 +235,7 @@ switch (mode)
         Console.WriteLine($"A push: pushed={r1.Pushed} pulled={r1.Pulled}");
         // PC B: login, sync -> instance appears, mods restored from Modrinth
         Use(rootB);
-        await Cloud.Login(user, "Passwort123", register: false);
+        await Access.Activate("TEST-TEST-TEST"); await Cloud.Login(user, "Passwort123", register: false);
         var r2 = await Cloud.Sync(null, null, null);
         Console.WriteLine($"B pull: created={r2.Created} pulled={r2.Pulled} toInstall={string.Join(",", r2.ToInstall.Select(m => m.Title))}");
         var res = await Cloud.Restore(r2.ToInstall, null);

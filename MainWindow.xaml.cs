@@ -305,10 +305,31 @@ public partial class MainWindow : Window
     // =====================================================================
     //  COMMANDS
     // =====================================================================
+    private bool _accessOk;
     private async Task<object?> Handle(string cmd, JsonObject a)
     {
+        // private launcher: without access only the window and the code entry work
+        if (!_accessOk && !cmd.StartsWith("access.") && !cmd.StartsWith("win.") && cmd != "open.url")
+            throw new InvalidOperationException("Kein Zugang. Gib zuerst deinen Zugangscode ein.");
         switch (cmd)
         {
+            // ---------------- private access
+            case "access.status":
+            {
+                var st = await Access.Check();
+                _accessOk = st.Ok;
+                return new { ok = st.Ok, admin = st.Admin, offline = st.Offline, error = st.Error };
+            }
+            case "access.activate":
+            {
+                var st = await Access.Activate(Str(a, "code"));
+                _accessOk = st.Ok;
+                return new { ok = st.Ok, admin = st.Admin };
+            }
+            case "admin.codes": return await Access.AdminCall(HttpMethod.Get, "codes", null);
+            case "admin.create": return await Access.AdminCall(HttpMethod.Post, "codes", new { note = StrN(a, "note"), maxDevices = Int(a, "maxDevices"), admin = Bool(a, "admin") });
+            case "admin.update": return await Access.AdminCall(HttpMethod.Post, "codes/update", a);
+
             // ---------------- window
             case "win.drag": ReleaseCapture(); SendMessage(new WindowInteropHelper(this).Handle, 0xA1, (IntPtr)2, IntPtr.Zero); return null;
             case "win.min": WindowState = WindowState.Minimized; return null;
