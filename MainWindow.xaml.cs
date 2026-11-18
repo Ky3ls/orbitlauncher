@@ -43,6 +43,7 @@ public partial class MainWindow : Window
         Updater.CleanupOld();
         if (!string.IsNullOrWhiteSpace(S.CloudApi)) Cloud.Api = S.CloudApi!;
         Instances.Deleted += uid => { if (Cloud.LoggedIn) Cloud.MarkDeleted(uid); };
+        if (!S.OnLaunchKeepDefault) { S.OnLaunchKeepDefault = true; if (S.OnLaunch == "minimize") S.OnLaunch = "keep"; S.Save(); }
         Instances.Changed += _ => ScheduleSync();
         Instances.NewOptSync = () => S.McOptionsOn ? true : null;
         _runner.OptionsLearned += t => Dispatcher.Invoke(() => { SetOptions(t); Emit("settings", S); });

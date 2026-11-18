@@ -3361,13 +3361,15 @@ async function mcOptSettings(b, card, tg) {
   const keys = Object.keys(MCO), nKeys = keys.filter(k => k.startsWith('key_')).length, nSet = keys.length - nKeys;
   const on = !!st.mcOptionsOn;
   const val = (k, d) => MCO[k] ?? d;
-  b.innerHTML = card('Eigene Minecraft-Einstellungen', `<p class="sub" style="margin:4px 0 6px;max-width:none">Einmal einstellen, überall gleich: Grafik, Steuerung und Tastenbelegung kommen in jede Instanz, die mitmacht. Wirkt ab Minecraft 1.13.</p>
-      <div class="srow"><div><b>Eigene Einstellungen verwenden</b><p>Neue Instanzen übernehmen sie automatisch.</p></div>${tg('mcOptionsOn', on)}</div>
-      <div class="srow ${on ? '' : 'dim'}"><div><b>Was übernehmen</b><p>Grafik und Ton, Tasten oder beides.</p></div><div class="seg" id="mcoScope">${[['all', 'Alles'], ['settings', 'Einstellungen'], ['keys', 'Tasten']].map(([k, n]) => `<button data-v="${k}" class="${(st.mcOptionsScope || 'all') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-      <div class="srow ${on ? '' : 'dim'}"><div><b>Bestehende Instanzen</b><p>Ob Instanzen, die es schon gibt, mitmachen.</p></div><div class="seg" id="mcoEx">${[['ask', 'Fragen'], ['all', 'Alle'], ['none', 'Keine']].map(([k, n]) => `<button data-v="${k}" class="${(st.mcOptionsExisting || 'ask') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-      <div class="srow ${on ? '' : 'dim'}"><div><b>Änderungen im Spiel übernehmen</b><p>Stellst du im Spiel etwas um, gilt es danach für alle Instanzen.</p></div>${tg('mcOptionsLearn', st.mcOptionsLearn !== false)}</div>
-      <div class="srow ${on ? '' : 'dim'}"><div><b>Instanzen</b><p id="mcoCnt">${S.instances.filter(i => i.optSync === true).length} von ${S.instances.filter(i => i.optModern !== false).length} machen mit.</p></div><button class="btn sm" id="mcoPick">${ico('list')}Auswählen</button></div>`)
-    + '<div class="mt"></div>' + card('Vorlage', `<div class="srow"><div><b id="mcoCount">${nSet} Einstellungen · ${nKeys} Tasten</b><p>Am einfachsten: In einer Instanz alles im Spiel einstellen und hier übernehmen.</p></div><span class="row" style="gap:6px"><button class="btn sm" id="mcoFrom">${ico('download')}Aus Instanz</button>${keys.length ? `<button class="btn sm d" id="mcoReset">${ico('trash')}Leeren</button>` : ''}</span></div>`)
+  const seg = (id, cur, opts) => `<div class="seg sm" id="${id}">${opts.map(([k, n]) => `<button data-v="${k}" class="${cur === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+  b.innerHTML = `<div class="card span2 mcotop"><div class="mcohead"><div><h2>Eigene Minecraft-Einstellungen</h2><p class="sub">Einmal einstellen, überall gleich: Grafik, Steuerung und Tasten kommen in jede Instanz, die mitmacht. Ab Minecraft 1.13.</p></div>${tg('mcOptionsOn', on)}</div>
+    <div class="mcotiles ${on ? '' : 'dim'}">
+      <div class="mcot"><b>Was übernehmen</b>${seg('mcoScope', st.mcOptionsScope || 'all', [['all', 'Alles'], ['settings', 'Einstellungen'], ['keys', 'Tasten']])}</div>
+      <div class="mcot"><b>Bestehende Instanzen</b>${seg('mcoEx', st.mcOptionsExisting || 'ask', [['ask', 'Fragen'], ['all', 'Alle'], ['none', 'Keine']])}</div>
+      <div class="mcot"><b>Änderungen im Spiel übernehmen</b><div class="row" style="gap:10px"><small>Gilt danach für alle</small>${tg('mcOptionsLearn', st.mcOptionsLearn !== false)}</div></div>
+      <div class="mcot"><b>Instanzen</b><div class="row" style="gap:10px"><small id="mcoCnt">${S.instances.filter(i => i.optSync === true).length} von ${S.instances.filter(i => i.optModern !== false).length} machen mit</small><button class="btn sm" id="mcoPick">${ico('list')}Auswählen</button></div></div>
+      <div class="mcot"><b>Vorlage</b><div class="row" style="gap:10px"><small id="mcoCount">${nSet} Einstellungen · ${nKeys} Tasten</small><button class="btn sm" id="mcoFrom" title="In einer Instanz alles im Spiel einstellen und hier übernehmen">${ico('download')}Aus Instanz</button>${keys.length ? `<button class="btn sm d" id="mcoReset" title="Vorlage leeren">${ico('trash')}</button>` : ''}</div></div>
+    </div></div>`
     + `<div class="mt"></div><div class="mcs" id="mcs"></div><p class="fine">Genau wie im Spiel. Links-/Rechtsklick blättert, Rechtsklick auf eine eigene Einstellung setzt sie auf den Spiel-Standard zurück.</p>`;
   b.querySelectorAll('[data-set]').forEach(t => t.onclick = async () => {
     const v = !t.classList.contains('on'); t.classList.toggle('on', v); await setS(t.dataset.set, v);
@@ -3462,6 +3464,7 @@ async function settingsReset(tab) {
 window.settingsReset = settingsReset;
 async function setBody() {
   const b = $('#sBody'), st = S.settings; if (!b) return;
+  b.className = ['account', 'design', 'storage'].includes(S.stab) ? 'sb1' : 'sb2';
   const rs = $('#sReset'); if (rs) rs.innerHTML = SRESET[S.stab] ? `<button class="btn sm" onclick="settingsReset('${S.stab}')" title="Diesen Bereich auf Standard setzen">${ico('refresh')}Zurücksetzen</button>` : '';
   const card = (t, h) => `<div class="card">${t ? `<h2 style="margin-bottom:6px">${t}</h2>` : ''}${h}</div>`;
   const tg = (k, on) => `<div class="tg ${on ? 'on' : ''}" data-set="${k}"></div>`;
@@ -3471,15 +3474,15 @@ async function setBody() {
       + `<div class="row" style="margin-top:14px"><button class="btn p" onclick="login()">${ico('plus')}Konto hinzufügen</button></div><p class="fine">Die Anmeldung läuft über das offizielle Microsoft-Fenster. OrbitLauncher sieht dein Passwort nie und speichert nur ein Refresh-Token, verschlüsselt mit Windows (DPAPI).</p>`);
   }
   if (S.stab === 'design') {
-    b.innerHTML = '<div class="dsg3">' + card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['aurora', 'Polarlicht', 'Wehende Nordlichter in deiner Farbe'], ['rain', 'Regen', 'Ruhiger, schräger Regen'], ['fireflies', 'Glühwürmchen', 'Leuchtende Punkte, die umherschwirren'], ['sakura', 'Kirschblüten', 'Fallende Blütenblätter'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`)
-      + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div>`)
+    // compact: colours and look on the left, behaviour on the right, effects as one row below
+    b.innerHTML = '<div class="dsg2"><div class="dcol">' + card('Akzentfarbe', `<div class="themes" id="sThemes" style="margin-top:12px">${Object.entries(THEMES).map(([k, [n, c1, c2]]) => `<div class="sw ${st.accent === k ? 'on' : ''}" data-th="${k}"><i style="background:linear-gradient(135deg,${c1},${c2})"></i>${n}</div>`).join('')}</div>`)
       + card('Darstellung', `<div class="modes" id="sMode">${MODES.map(([k, n, d]) => `<button class="${(st.mode || 'dark') === k ? 'on' : ''}" data-v="${k}"><span class="mprev ${k}"><i></i><i></i><i></i></span><b>${n}</b><small>${d}</small></button>`).join('')}</div>`)
-      + '</div>'
-      + `<div class="mt"></div>` + card('Verhalten', `<div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      + '</div>' + card('Verhalten', `<div class="srows1"><div class="srow"><div><b>Beim Spielstart</b><p>Was der Launcher macht, wenn Minecraft startet.</p></div><div class="seg" id="sOnL">${[['keep', 'Offen lassen'], ['minimize', 'Minimieren'], ['close', 'Schließen']].map(([k, n]) => `<button data-v="${k}" class="${st.onLaunch === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="srow"><div><b>Mods automatisch aktualisieren</b><p>Vor jedem Start nach neuen Versionen suchen.</p></div>${tg('autoUpdateMods', st.autoUpdateMods)}</div>
         <div class="srow"><div><b>Snapshots anzeigen</b><p>Vorabversionen in Versionslisten.</p></div>${tg('showSnapshots', st.showSnapshots)}</div>
-        <div class="srow"><div><b>Spielen über</b><p>Offizieller Launcher: Anmeldung dort, OrbitLauncher bereitet alles vor.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'OrbitLauncher'], ['official', 'Minecraft Launcher']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-        <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div>`);
+        <div class="srow"><div><b>Spielen über</b><p>Offiziell: Anmeldung im Minecraft Launcher.</p></div><div class="seg" id="sPlay">${[['auto', 'Automatisch'], ['orbit', 'Orbit'], ['official', 'Offiziell']].map(([k, n]) => `<button data-v="${k}" class="${(st.playMode || 'auto') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+        <div class="srow"><div><b>Discord-Status</b><p>Zeigt in Discord „Spielt …“ mit Instanz und Version.</p></div>${tg('discordRpc', st.discordRpc !== false)}</div></div>`)
+      + '</div>' + card('Hintergrund-Effekt', `<div class="fxpick" id="sFx">${[['snow', 'Schnee', 'Winterlich, sanft fallend'], ['embers', 'Funken', 'Glühende Funken in deiner Farbe'], ['stars', 'Sterne', 'Funkeln und Sternschnuppen'], ['aurora', 'Polarlicht', 'Wehende Nordlichter in deiner Farbe'], ['rain', 'Regen', 'Ruhiger, schräger Regen'], ['fireflies', 'Glühwürmchen', 'Leuchtende Punkte, die umherschwirren'], ['sakura', 'Kirschblüten', 'Fallende Blütenblätter'], ['off', 'Aus', 'Ruhiger Hintergrund']].map(([k, n, d]) => `<button class="${(st.fx || 'snow') === k ? 'on' : ''}" data-v="${k}"><span class="fxi ${k}"></span><b>${n}</b><small>${d}</small></button>`).join('')}</div><p class="fine">Pausiert automatisch, während Minecraft läuft.</p>`);
     $('#sThemes').onclick = e => { const s = e.target.closest('[data-th]'); if (!s) return; applyTheme(s.dataset.th); setS('accent', s.dataset.th); $$('#sThemes .sw').forEach(x => x.classList.toggle('on', x === s)); S.heroSvg = null; };
     $('#sMode').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; applyMode(x.dataset.v); setS('mode', x.dataset.v); $$('#sMode button').forEach(y => y.classList.toggle('on', y === x)); };
     $('#sFx').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('fx', x.dataset.v); fxSet(x.dataset.v); $$('#sFx button').forEach(y => y.classList.toggle('on', y === x)); };
@@ -4457,7 +4460,7 @@ async function boot() {
 const H = 3600e3, DAY = 86400e3, iso = ms => new Date(Date.now() - ms).toISOString();
 const Mock = {
   cloud: /[?&]cloud=1/.test(location.search) ? 'Ky3ls' : null,
-  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'minimize', clientId: '', firstRun: false, orbitPacks: 'perf,shaders,qol' },
+  settings: { accent: 'ember', ramMb: 4096, onLaunch: 'keep', clientId: '', firstRun: false, orbitPacks: 'perf,shaders,qol' },
   accounts: [{ uuid: '4a6f9e2c1b7d4e8f9a0b1c2d3e4f5a6b', name: 'Ky3ls', skin: null }],
   instances: [
     { id: 'orbit-client-26-3', name: 'Orbit Client 26.3', mcVersion: '26.3', loader: 'fabric', loaderVersion: '0.20.1', kind: 'orbit', icon: 'orbit', ramMb: 3072, playSeconds: 46800, lastPlayed: iso(H), created: iso(DAY * 20), mods: 19, group: 'PvP', content: [] },
@@ -4514,7 +4517,7 @@ const Mock = {
       }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
-      case 'settings.reset': { const D = { accent: 'ember', mode: 'dark', fx: 'snow', onLaunch: 'minimize', autoUpdateMods: false, showSnapshots: false, playMode: 'auto', discordRpc: true, javaPath: null, ramMb: 4096, width: 0, height: 0, jvmArgs: null, mcOptionsOn: false, mcOptionsScope: 'all', mcOptionsExisting: 'ask', mcOptionsLearn: true, mcOptions: null, curseForgeKey: null, autoUpdate: true, autoInstall: false }; for (const k of a.keys) { M.settings[k] = D[k]; if (k === 'mcOptions') M.mco = {}; } return { ...M.settings }; }
+      case 'settings.reset': { const D = { accent: 'ember', mode: 'dark', fx: 'snow', onLaunch: 'keep', autoUpdateMods: false, showSnapshots: false, playMode: 'auto', discordRpc: true, javaPath: null, ramMb: 4096, width: 0, height: 0, jvmArgs: null, mcOptionsOn: false, mcOptionsScope: 'all', mcOptionsExisting: 'ask', mcOptionsLearn: true, mcOptions: null, curseForgeKey: null, autoUpdate: true, autoInstall: false }; for (const k of a.keys) { M.settings[k] = D[k]; if (k === 'mcOptions') M.mco = {}; } return { ...M.settings }; }
       case 'mcopt.get': M.instances.forEach(i => { if (!('optModern' in i)) i.optModern = !/^(1\.([0-9]|1[0-2])(\.|$)|b|a)/.test(i.mcVersion); }); return { map: M.mco || (M.mco = {}) };
       case 'mcopt.set': M.mco = M.mco || {}; for (const [k, v] of Object.entries(a.patch)) { if (v == null) delete M.mco[k]; else M.mco[k] = v; } M.settings.mcOptions = Object.keys(M.mco).length ? 'x' : null; return { map: M.mco };
       case 'mcopt.import': M.mco = { renderDistance: '16', fov: '0.25', gamma: '1.0', guiScale: '3', lang: 'de_de', 'key_key.sprint': 'key.keyboard.r', 'key_key.drop': 'key.keyboard.g', 'key_key.swapOffhand': 'key.mouse.5', 'key_key.jei.showRecipe': 'key.keyboard.r', ...Object.fromEntries(Array.from({ length: 40 }, (_, n) => ['opt' + n, '1'])) }; M.settings.mcOptions = 'x'; return { map: M.mco };

@@ -2096,3 +2096,61 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 #mMain > h2{display:flex;align-items:center;gap:10px}
 #mMain > h2 .isrst{margin-left:auto;font-size:12.5px;font-weight:500;letter-spacing:0}
 #mMain > h2 .isrst{margin-right:40px}
+
+/* ===== settings: cards side by side instead of one long column ===== */
+#sBody.sb2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+#sBody.sb2>.mt{display:none}
+#sBody.sb2>.card{margin:0}
+#sBody.sb2>.mcs,#sBody.sb2>.fine,#sBody.sb2>.span2,#sBody.sb2>.dsg3{grid-column:1/-1}
+#sBody.sb2>.fine{margin-top:-8px}
+.srows2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px}
+.srows2>.srow{border-bottom:1px solid var(--line)}
+@media (max-width:1180px){#sBody.sb2,.srows2{grid-template-columns:1fr}}
+/* options screen: one fixed size like in the game, long lists scroll inside */
+.mcs .mcbody{height:430px;display:flex;flex-direction:column;padding:16px 18px 0}
+.mcs .mcbody>.mcgrid{width:100%;flex:1;min-height:0;overflow:auto;align-content:start;padding:2px 4px 6px;scrollbar-color:#6b6b6b #000}
+.mcs .mcbody>.mclang{flex:1;min-height:0;max-height:none;width:100%}
+.mcs .mcbody>.mclang+.mcgrid{flex:none;overflow:visible}
+.mcs .mcbody>.mcklist{flex:1;min-height:0;max-height:none}
+.mcs .mcfoot{margin-top:0}
+/* design area: two columns, effects as one row */
+.dsg2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch;margin-bottom:16px}
+.dsg2 .dcol{display:flex;flex-direction:column;gap:16px}
+.dsg2 .dcol>.card{flex:1}
+.dsg2 .themes{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px 4px}
+.dsg2 .sw{font-size:11px;gap:6px}
+.dsg2 .sw i{width:34px;height:34px}
+.dsg2 .modes{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dsg2 .mprev{height:40px}
+.dsg2 .srow{padding:11px 0}
+.dsg2 .srow .seg button{padding:0 10px}
+.fxpick{grid-template-columns:repeat(8,minmax(0,1fr))!important;gap:8px}
+#sBody.sb1 .fxpick button{padding:8px;min-width:0}
+#sBody.sb1 .fxi{height:56px}
+#sBody.sb1 .fxpick b{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sBody.sb1 .fxpick small{display:none}
+@media (max-width:1180px){.dsg2{grid-template-columns:1fr}.fxpick{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+#sBody.sb2 .card .row{flex-wrap:wrap}
+/* own Minecraft settings: one compact card */
+.mcotop{padding-bottom:16px}
+.mcohead{display:flex;align-items:flex-start;gap:16px;justify-content:space-between}
+.mcohead h2{margin-bottom:4px}.mcohead .sub{margin:0;max-width:none;font-size:13px}
+.mcotiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:14px}
+.mcotiles.dim{opacity:.45;pointer-events:none}
+.mcot{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(var(--ov),.025);min-width:0}
+.mcot>b{font-size:13px}
+.mcot small{font-size:12px;color:var(--sub);flex:1;min-width:0}
+.mcot .seg{align-self:flex-start}
+/* settings navigation as one bar on top: the cards get the full width */
+.sgrid{display:block}
+.snav{flex-direction:row;flex-wrap:wrap;gap:4px;position:sticky;top:0;z-index:5;margin-bottom:16px;padding:5px}
+.snav .tab{padding:8px 12px;gap:8px;flex:1 1 auto;justify-content:center}
+.snav .tab>svg.i{width:16px;height:16px}
+.snav .tab span{font-size:13px;white-space:nowrap}
+.snav .tab small{display:none}
+.mcotiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1100px){.mcotiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.snav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.snav .tab{flex:1 1 0;min-width:max-content;padding:8px 10px}
+.dsg2 .srow>div:first-child{flex:1;min-width:0}
+.dsg2 .srow .seg{flex:none}

@@ -12,7 +12,9 @@ public class Settings
     public int Width { get; set; } = 0;
     public int Height { get; set; } = 0;
     /// <summary>keep | minimize | close</summary>
-    public string OnLaunch { get; set; } = "minimize";
+    public string OnLaunch { get; set; } = "keep";
+    /// <summary>Once: "keep the launcher open" became the default.</summary>
+    public bool OnLaunchKeepDefault { get; set; }
     public bool ShowSnapshots { get; set; }
     public bool ShowOld { get; set; }
     /// <summary>Azure app (client) id approved for the Minecraft API. Users register their own app.</summary>
