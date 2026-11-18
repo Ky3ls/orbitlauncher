@@ -64,6 +64,8 @@ public class Instance
     public string? ImportedFrom { get; set; }
     /// <summary>The player keeps their own RAM value: do not suggest more before launching.</summary>
     public bool RamNoAsk { get; set; }
+    /// <summary>Takes the player's own Minecraft settings: true yes, false no, null not asked yet.</summary>
+    public bool? OptSync { get; set; }
 
     public string Dir => Path.Combine(Paths.Instances, Id);
     public string LaunchId => VersionId ?? McVersion;
@@ -117,6 +119,8 @@ public static class Instances
     }
     /// <summary>Raised after an instance was saved or deleted (cloud sync hooks in here).</summary>
     public static event Action<string>? Changed;
+    /// <summary>Whether a new instance takes the player's own Minecraft settings.</summary>
+    public static Func<bool?>? NewOptSync { get; set; }
     public static event Action<string>? Deleted;
 
     public static Instance Create(string name, string mc, string loader = "vanilla", string? loaderVersion = null, string kind = "custom")
@@ -125,7 +129,7 @@ public static class Instances
         if (slug.Length == 0) slug = "instanz";
         var id = slug; int n = 2;
         while (Directory.Exists(Path.Combine(Paths.Instances, id))) id = $"{slug}-{n++}";
-        var i = new Instance { Id = id, Name = name, McVersion = mc, Loader = loader, LoaderVersion = loaderVersion, Kind = kind };
+        var i = new Instance { Id = id, Name = name, McVersion = mc, Loader = loader, LoaderVersion = loaderVersion, Kind = kind, OptSync = NewOptSync?.Invoke() };
         foreach (var sub in new[] { "mods", "resourcepacks", "shaderpacks", "saves", "screenshots" }) Directory.CreateDirectory(Path.Combine(i.Dir, sub));
         Save(i);
         return i;

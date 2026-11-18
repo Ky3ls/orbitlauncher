@@ -52,6 +52,8 @@ public class Runner
         p?.Report(new Progress("Minecraft startet", 1, 1, inst.Name));
         Log?.Invoke(inst.Id, "[OrbitLauncher] " + (string.IsNullOrWhiteSpace(inst.Wrapper) ? "" : inst.Wrapper + " ") + LaunchBuilder.Pretty(java, args, s));
 
+        var ownOpts = set.McOptionsOn && inst.OptSync == true && !string.IsNullOrWhiteSpace(set.McOptions);
+        if (ownOpts) try { if (McOptions.ApplyTo(inst, set.McOptions, set.McOptionsScope)) Log?.Invoke(inst.Id, "[OrbitLauncher] Eigene Minecraft-Einstellungen übernommen"); } catch { }
         var proc = LaunchBuilder.Start(java, args, inst.Dir, inst.Wrapper, env);
         var started = DateTime.UtcNow;
         _running[inst.Id] = proc;
@@ -75,6 +77,8 @@ public class Runner
             var stopped = _stopping.TryRemove(inst.Id, out _);
             State?.Invoke(inst.Id, false, stopped || code is null or 0 || !Crashed(inst, started) ? 0 : code);
             if (!string.IsNullOrWhiteSpace(inst.PostExit)) _ = Hook(inst, inst.PostExit!, env, false, default);
+            // what the player changed in the game becomes the new own settings for all instances
+            if (ownOpts && set.McOptionsLearn) try { if (McOptions.Learn(inst, set.McOptions, set.McOptionsScope) is string nt) OptionsLearned?.Invoke(nt); } catch { }
         };
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
@@ -113,6 +117,9 @@ public class Runner
         }
         catch (Exception) when (!wait) { return 0; }
     }
+
+    /// <summary>New own Minecraft settings learned from a game that just ended.</summary>
+    public event Action<string>? OptionsLearned;
 
     public void Kill(string id) { if (_running.TryGetValue(id, out var p)) try { p.Kill(true); } catch { } }
 

@@ -48,6 +48,16 @@ public class Settings
     public string? OrbitVersion { get; set; }
     /// <summary>Performance packs for new Orbit instances, comma separated (perf,shaders,qol,visual).</summary>
     public string? OrbitPacks { get; set; } = "perf,shaders,qol";
+    /// <summary>Own Minecraft settings and key bindings (options.txt lines) that instances take over.</summary>
+    public string? McOptions { get; set; }
+    /// <summary>Use the own settings at all (new instances take them automatically).</summary>
+    public bool McOptionsOn { get; set; }
+    /// <summary>all | settings | keys</summary>
+    public string McOptionsScope { get; set; } = "all";
+    /// <summary>Existing instances: ask | all | none</summary>
+    public string McOptionsExisting { get; set; } = "ask";
+    /// <summary>Changes made in the game go back into the own settings.</summary>
+    public bool McOptionsLearn { get; set; } = true;
 
     private static string FilePath => Path.Combine(Paths.Root, "settings.json");
     public static Settings Load() => Net.LoadJson<Settings>(FilePath) ?? new Settings();

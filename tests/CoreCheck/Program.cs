@@ -47,6 +47,26 @@ switch (mode)
         Console.WriteLine("ram: " + Ram.Check(inst, set));
         break;
     }
+    case "mcopt":
+    {
+        Paths.Root = root; Directory.CreateDirectory(root);
+        Instances.NewOptSync = () => true;
+        var a = Instances.Create("Neu 1.21", "1.21.1", "fabric");
+        var old = Instances.Create("PvP", "1.8.9");
+        var pack = Instances.Create("Pack", "1.20.1", "forge");
+        File.WriteAllText(Path.Combine(pack.Dir, "options.txt"), "version:3465\nrenderDistance:6\nkey_key.jei.showRecipe:key.keyboard.r\nkey_key.jump:key.keyboard.space\nresourcePacks:[\"vanilla\",\"file/x.zip\"]\n");
+        var t = "renderDistance:16\nfov:0.25\nkey_key.jump:key.keyboard.v\nresourcePacks:[\"bad\"]\n";
+        Console.WriteLine($"optSync neu={a.OptSync} modern: neu={McOptions.Modern(a)} 1.8.9={McOptions.Modern(old)} 26.3={McOptions.Modern(new Instance { McVersion = "26.3" })} 24w14a={McOptions.Modern(new Instance { McVersion = "24w14a" })} b1.7.3={McOptions.Modern(new Instance { McVersion = "b1.7.3" })}");
+        McOptions.ApplyTo(a, t, "all"); Console.WriteLine("neu: " + File.ReadAllText(Path.Combine(a.Dir, "options.txt")).Replace("\n", " | "));
+        Console.WriteLine("1.8.9 angefasst: " + McOptions.ApplyTo(old, t, "all"));
+        McOptions.ApplyTo(pack, t, "keys"); Console.WriteLine("pack nur Tasten: " + File.ReadAllText(Path.Combine(pack.Dir, "options.txt")).Replace("\n", " | "));
+        // player changes things in the game
+        File.WriteAllText(Path.Combine(a.Dir, "options.txt"), File.ReadAllText(Path.Combine(a.Dir, "options.txt")).Replace("renderDistance:16", "renderDistance:20") + "key_key.sprint:key.keyboard.r\nversion:3953\n");
+        Console.WriteLine("gelernt: " + (McOptions.Learn(a, t, "all") ?? "nichts").Replace("\n", " | "));
+        Console.WriteLine("nichts geändert: " + (McOptions.Learn(a, McOptions.Learn(a, t, "all"), "all") ?? "null"));
+        Console.WriteLine("aus pack: " + McOptions.From(pack)!.Replace("\n", " | "));
+        break;
+    }
     case "skinold":
     {
         Paths.Root = root; Directory.CreateDirectory(root);

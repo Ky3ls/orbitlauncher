@@ -2012,3 +2012,39 @@ textarea.in.ta{height:auto;min-height:72px;padding:10px 14px;resize:vertical;lin
 .tuck{width:20px;height:20px;border-radius:6px;flex:none;margin-top:1px;display:grid;place-items:center;border:1.5px solid var(--line2);color:transparent}
 .tuck svg{width:13px;height:13px}
 .tuck.on{background:var(--a);border-color:var(--a);color:var(--on)}
+
+/* ===== own Minecraft settings ===== */
+.srow.dim{opacity:.45;pointer-events:none}
+.mcof{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.mcorow{display:grid;grid-template-columns:190px 1fr 30px;gap:12px;align-items:center;padding:8px 10px;border-radius:12px}
+.mcorow:hover{background:rgba(var(--ov),.03)}
+.mcorow b{font-size:13px;font-weight:600;color:var(--sub)}
+.mcorow.set b{color:var(--tx)}
+.mcoc{display:flex;align-items:center;gap:12px;min-width:0}
+.mcoc input[type=range]{flex:1;min-width:0}
+.mcoc em{font-style:normal;font-size:12px;color:var(--sub);min-width:86px;text-align:right;font-variant-numeric:tabular-nums}
+.mcorow:not(.set) .mcoc em{color:var(--mute)}
+.mcoc .sel{height:34px;min-width:200px}
+.ib.ph{visibility:hidden}
+.mcokg{margin-top:10px}
+.mcokg>small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:0 0 4px 10px}
+.mcok{display:grid;grid-template-columns:1fr 150px 30px;gap:10px;align-items:center;padding:5px 10px;border-radius:10px}
+.mcok:hover{background:rgba(var(--ov),.03)}
+.mcok span{font-size:13px;color:var(--sub)}
+.mcok.set span{color:var(--tx)}
+.kbd{height:32px;border-radius:9px;border:1px solid var(--line2);background:rgba(var(--ov),.04);color:var(--tx);font:600 12.5px var(--mono);cursor:pointer;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25);transition:border-color .15s,background .15s}
+.kbd:hover{border-color:rgba(var(--a-rgb),.5)}
+.kbd.wait{border-color:var(--a);background:rgba(var(--a-rgb),.12);color:var(--a);animation:tbPulse 1.2s ease-in-out infinite}
+.mcok.set .kbd{border-color:rgba(var(--a-rgb),.45)}
+.mcolist{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto;margin-top:12px}
+.mcoi{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:13px;border:1px solid var(--line);background:rgba(var(--ov),.025);color:var(--tx);text-align:left;cursor:pointer}
+.mcoi:hover{border-color:var(--line2)}
+.mcoi .tx{flex:1;min-width:0}.mcoi b{display:block;font-size:13.5px}.mcoi small{font-size:12px;color:var(--sub)}
+.mcolist .tuopt{align-items:center}
+.mcolist .tuopt .iic{width:34px;height:34px;flex:none}
+.mcorow,.mcok{min-height:44px}
+.mcorow{padding:5px 10px}
+.mcoc .seg{padding:3px}
+.mcoc .seg button{height:28px;padding:0 12px}
+.mcorow .ib.ph,.mcok .ib.ph{display:inline-block;width:30px;height:30px;padding:0}
+.mph{display:block;width:30px;height:30px}

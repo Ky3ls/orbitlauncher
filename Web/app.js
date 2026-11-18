@@ -403,7 +403,7 @@ function onEvent(ev, d) {
   if (ev === 'orbitcfg') orbitCfgEvent(d);
   if (ev === 'update') updProgress(d);
   if (ev === 'cloud') cloudEvent(d);
-  if (ev === 'settings') { S.settings = d; applyTheme(d.accent || 'ember'); applyMode(d.mode); fxSet(d.fx); }
+  if (ev === 'settings') { MCO = null; if (S.page === 'settings' && S.stab === 'mcopt') setTimeout(setBody, 0); S.settings = d; applyTheme(d.accent || 'ember'); applyMode(d.mode); fxSet(d.fx); }
 }
 
 /* progress tasks (several can run at once, the newest is shown) */
@@ -661,6 +661,7 @@ async function play(id, extra = {}) {
   if (mode === 'official' || (mode === 'auto' && !S.accounts.length && S.needAppId)) return playOfficial(id);
   if (!S.accounts.length) return playChoice(id, extra);
   await ramAdvice(i);
+  await mcoAskOne(i);
   S.launching.set(id, { phase: 'prep', at: Date.now(), what: extra.world ? 'Welt ' + extra.worldName : extra.server || '' }); tbanRefresh();
   try {
     await api('launch', { id, ...extra });
@@ -1744,6 +1745,7 @@ async function isRender() {
   const onl = i.onLaunch || '';
   m.innerHTML = `<h2>Fenster &amp; Start</h2><p class="sub">Wie das Spiel startet. 0 = Standard aus den Einstellungen.</p>
     ${isOpt('', 'Vollbild', 'Startet Minecraft direkt im Vollbild.', isTg('isFs', i.fullscreen))}
+    ${i.optModern !== false ? isOpt('', 'Eigene Minecraft-Einstellungen', S.settings.mcOptionsOn ? 'Deine Einstellungen und Tasten aus den Launcher-Einstellungen gelten hier.' : 'Erst in Einstellungen → Spiel-Einstellungen einschalten.', isTg('isMco', i.optSync === true)) : ''}
     <div class="${i.fullscreen ? 'dim' : ''}" id="isWin"><div class="vrow2"><div><label class="fl">Breite</label><input class="in" id="isW" type="number" min="0" value="${i.width || 0}"></div><div><label class="fl">Höhe</label><input class="in" id="isH" type="number" min="0" value="${i.height || 0}"></div></div>
     <div class="row" style="margin-top:10px;gap:6px">${[[0, 0, 'Standard'], [1280, 720, '1280×720'], [1600, 900, '1600×900'], [1920, 1080, '1920×1080'], [2560, 1440, '2560×1440']].map(([w, h, n]) => `<button class="fchip" data-wh="${w},${h}">${n}</button>`).join('')}</div></div>
     <label class="fl">Server automatisch betreten</label><div class="inline"><input class="in" id="isJoin" placeholder="z. B. play.hypixel.net" value="${esc(i.autoJoin || '')}"><button class="btn" id="isPing">${ico('activity')}Testen</button></div>
@@ -1752,6 +1754,7 @@ async function isRender() {
   const save = () => isPatch({ width: +$('#isW').value || 0, height: +$('#isH').value || 0 });
   $('#isW').onchange = save; $('#isH').onchange = save;
   m.querySelectorAll('[data-wh]').forEach(b => b.onclick = () => { const [w, h] = b.dataset.wh.split(','); $('#isW').value = w; $('#isH').value = h; save(); });
+  if ($('#isMco')) $('#isMco').onclick = async e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); try { await api('mcopt.apply', on ? { ids: [i.id] } : { no: [i.id] }); i.optSync = on; } catch (er) { fail('Speichern', er); } };
   $('#isFs').onclick = e => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); $('#isWin').classList.toggle('dim', on); isPatch({ fullscreen: on }); };
   $('#isJoin').oninput = e => isDeb(() => isPatch({ autoJoin: e.target.value.trim() || null }));
   $('#isPing').onclick = async () => {
@@ -3153,9 +3156,159 @@ function demoSkin(n) {
   return demoCache[n] = c.toDataURL();
 }
 
+
+/* ======================= OWN MINECRAFT SETTINGS (options.txt template for all instances) ======================= */
+// [key, label, kind, extra]: kind range [min,max,step,toFile,fromFile,fmt] | bool | choice [[value,label]]
+const MCO_FIELDS = [
+  ['renderDistance', 'Sichtweite', 'range', [2, 32, 1, v => v, v => +v, v => v + ' Chunks'], 12],
+  ['simulationDistance', 'Simulationsdistanz', 'range', [5, 32, 1, v => v, v => +v, v => v + ' Chunks'], 12],
+  ['fov', 'Sichtfeld (FOV)', 'range', [30, 110, 1, v => ((v - 70) / 40).toFixed(4).replace(/0+$/, '0'), v => Math.round(70 + parseFloat(v) * 40), v => v == 70 ? 'Normal' : v == 110 ? 'Quake Pro' : v], 70],
+  ['gamma', 'Helligkeit', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v == 0 ? 'Düster' : v == 100 ? 'Hell' : v + ' %'], 50],
+  ['guiScale', 'GUI-Größe', 'choice', [['0', 'Auto'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], '0'],
+  ['mouseSensitivity', 'Maus-Empfindlichkeit', 'range', [0, 200, 1, v => (v / 200).toString(), v => Math.round(parseFloat(v) * 200), v => v == 0 ? 'Schnarch' : v == 200 ? 'HYPERSPEED' : v + ' %'], 100],
+  ['maxFps', 'Max. Bildrate', 'range', [10, 260, 10, v => v, v => +v, v => v >= 260 ? 'Unbegrenzt' : v + ' fps'], 120],
+  ['enableVsync', 'VSync', 'bool', null, 'true'],
+  ['fullscreen', 'Vollbild', 'bool', null, 'false'],
+  ['bobView', 'Gehbewegung', 'bool', null, 'true'],
+  ['autoJump', 'Automatisch springen', 'bool', null, 'false'],
+  ['showSubtitles', 'Untertitel', 'bool', null, 'false'],
+  ['soundCategory_master', 'Gesamtlautstärke', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v + ' %'], 100],
+  ['soundCategory_music', 'Musik', 'range', [0, 100, 1, v => (v / 100).toString(), v => Math.round(parseFloat(v) * 100), v => v + ' %'], 100],
+  ['lang', 'Sprache', 'choice', [['de_de', 'Deutsch'], ['en_us', 'English (US)'], ['en_gb', 'English (UK)'], ['de_at', 'Deutsch (Österreich)'], ['de_ch', 'Schwiizerdütsch'], ['fr_fr', 'Français'], ['es_es', 'Español'], ['it_it', 'Italiano'], ['nl_nl', 'Nederlands'], ['pl_pl', 'Polski'], ['tr_tr', 'Türkçe'], ['ru_ru', 'Русский']], 'en_us'],
+];
+const MCO_KEYS = [
+  ['Bewegung', [['forward', 'Vorwärts', 'key.keyboard.w'], ['left', 'Links', 'key.keyboard.a'], ['back', 'Rückwärts', 'key.keyboard.s'], ['right', 'Rechts', 'key.keyboard.d'], ['jump', 'Springen', 'key.keyboard.space'], ['sneak', 'Schleichen', 'key.keyboard.left.shift'], ['sprint', 'Sprinten', 'key.keyboard.left.control']]],
+  ['Spielen', [['attack', 'Angreifen / Abbauen', 'key.mouse.left'], ['use', 'Benutzen / Platzieren', 'key.mouse.right'], ['pickItem', 'Block auswählen', 'key.mouse.middle'], ['drop', 'Gegenstand fallen lassen', 'key.keyboard.q'], ['swapOffhand', 'Mit Zweithand tauschen', 'key.keyboard.f'], ['inventory', 'Inventar', 'key.keyboard.e']]],
+  ['Schnellleiste', [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ['hotbar.' + n, 'Platz ' + n, 'key.keyboard.' + n])],
+  ['Sonstiges', [['chat', 'Chat', 'key.keyboard.t'], ['command', 'Befehl', 'key.keyboard.slash'], ['playerlist', 'Spielerliste', 'key.keyboard.tab'], ['togglePerspective', 'Perspektive', 'key.keyboard.f5'], ['screenshot', 'Screenshot', 'key.keyboard.f2'], ['fullscreen', 'Vollbild', 'key.keyboard.f11'], ['smoothCamera', 'Filmische Kamera', 'key.keyboard.unknown'], ['advancements', 'Fortschritte', 'key.keyboard.l'], ['socialInteractions', 'Soziale Interaktionen', 'key.keyboard.p'], ['spectatorOutlines', 'Spieler hervorheben', 'key.keyboard.unknown']]],
+];
+const MCO_CODE = { Space: 'space', ShiftLeft: 'left.shift', ShiftRight: 'right.shift', ControlLeft: 'left.control', ControlRight: 'right.control', AltLeft: 'left.alt', AltRight: 'right.alt', Tab: 'tab', Enter: 'enter', Escape: 'escape', Backspace: 'backspace', CapsLock: 'caps.lock', Delete: 'delete', Insert: 'insert', Home: 'home', End: 'end', PageUp: 'page.up', PageDown: 'page.down', ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Minus: 'minus', Equal: 'equal', BracketLeft: 'left.bracket', BracketRight: 'right.bracket', Backslash: 'backslash', Semicolon: 'semicolon', Quote: 'apostrophe', Backquote: 'grave.accent', Comma: 'comma', Period: 'period', Slash: 'slash', IntlBackslash: 'world.2', MetaLeft: 'left.win', MetaRight: 'right.win', ContextMenu: 'menu', NumpadAdd: 'keypad.add', NumpadSubtract: 'keypad.subtract', NumpadMultiply: 'keypad.multiply', NumpadDivide: 'keypad.divide', NumpadDecimal: 'keypad.decimal', NumpadEnter: 'keypad.enter', NumLock: 'num.lock', ScrollLock: 'scroll.lock', Pause: 'pause', PrintScreen: 'print.screen' };
+function mcoKeyFromEvent(e) {
+  const c = e.code;
+  if (/^Key[A-Z]$/.test(c)) return 'key.keyboard.' + c.slice(3).toLowerCase();
+  if (/^Digit\d$/.test(c)) return 'key.keyboard.' + c.slice(5);
+  if (/^F\d{1,2}$/.test(c)) return 'key.keyboard.' + c.toLowerCase();
+  if (/^Numpad\d$/.test(c)) return 'key.keyboard.keypad.' + c.slice(6);
+  return MCO_CODE[c] ? 'key.keyboard.' + MCO_CODE[c] : null;
+}
+const MCO_MOUSE = ['key.mouse.left', 'key.mouse.middle', 'key.mouse.right', 'key.mouse.4', 'key.mouse.5'];
+function mcoKeyName(k) {
+  if (!k || k === 'key.keyboard.unknown') return '—';
+  const m = { 'key.mouse.left': 'Linksklick', 'key.mouse.right': 'Rechtsklick', 'key.mouse.middle': 'Mausrad', 'key.mouse.4': 'Maus 4', 'key.mouse.5': 'Maus 5' }[k]; if (m) return m;
+  const n = k.replace(/^key\.(keyboard|mouse)\./, '');
+  const de = { space: 'Leertaste', 'left.shift': 'Shift links', 'right.shift': 'Shift rechts', 'left.control': 'Strg links', 'right.control': 'Strg rechts', 'left.alt': 'Alt links', 'right.alt': 'Alt Gr', tab: 'Tab', enter: 'Enter', escape: 'Esc', backspace: 'Rücktaste', 'caps.lock': 'Feststell', delete: 'Entf', insert: 'Einfg', up: '↑', down: '↓', left: '←', right: '→', 'page.up': 'Bild ↑', 'page.down': 'Bild ↓', slash: '-', 'grave.accent': '^', 'left.bracket': 'Ü', 'right.bracket': '+', semicolon: 'Ö', apostrophe: 'Ä', minus: 'ß', equal: '´', backslash: '#', 'world.2': '<', comma: ',', period: '.' };
+  return de[n] || n.replace(/^keypad\./, 'Num ').toUpperCase();
+}
+let MCO = null;
+async function mcOptSettings(b, card, tg) {
+  const st = S.settings;
+  if (!MCO) { try { MCO = (await api('mcopt.get')).map || {}; } catch { MCO = {}; } }
+  if (S.stab !== 'mcopt') return;
+  const keys = Object.keys(MCO), nKeys = keys.filter(k => k.startsWith('key_')).length, nSet = keys.length - nKeys;
+  const on = !!st.mcOptionsOn;
+  const val = (k, d) => MCO[k] ?? d;
+  b.innerHTML = card('Eigene Minecraft-Einstellungen', `<p class="sub" style="margin:4px 0 6px;max-width:none">Einmal einstellen, überall gleich: Grafik, Steuerung und Tastenbelegung kommen in jede Instanz, die mitmacht. Wirkt ab Minecraft 1.13.</p>
+      <div class="srow"><div><b>Eigene Einstellungen verwenden</b><p>Neue Instanzen übernehmen sie automatisch.</p></div>${tg('mcOptionsOn', on)}</div>
+      <div class="srow ${on ? '' : 'dim'}"><div><b>Was übernehmen</b><p>Grafik und Ton, Tasten oder beides.</p></div><div class="seg" id="mcoScope">${[['all', 'Alles'], ['settings', 'Einstellungen'], ['keys', 'Tasten']].map(([k, n]) => `<button data-v="${k}" class="${(st.mcOptionsScope || 'all') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      <div class="srow ${on ? '' : 'dim'}"><div><b>Bestehende Instanzen</b><p>Ob Instanzen, die es schon gibt, mitmachen.</p></div><div class="seg" id="mcoEx">${[['ask', 'Fragen'], ['all', 'Alle'], ['none', 'Keine']].map(([k, n]) => `<button data-v="${k}" class="${(st.mcOptionsExisting || 'ask') === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      <div class="srow ${on ? '' : 'dim'}"><div><b>Änderungen im Spiel übernehmen</b><p>Stellst du im Spiel etwas um, gilt es danach für alle Instanzen.</p></div>${tg('mcOptionsLearn', st.mcOptionsLearn !== false)}</div>
+      <div class="srow ${on ? '' : 'dim'}"><div><b>Instanzen</b><p id="mcoCnt">${S.instances.filter(i => i.optSync === true).length} von ${S.instances.filter(i => i.optModern !== false).length} machen mit.</p></div><button class="btn sm" id="mcoPick">${ico('list')}Auswählen</button></div>`)
+    + '<div class="mt"></div>' + card('Vorlage', `<div class="srow"><div><b>${nSet} Einstellungen · ${nKeys} Tasten</b><p>Am einfachsten: In einer Instanz alles im Spiel einstellen und hier übernehmen.</p></div><span class="row" style="gap:6px"><button class="btn sm" id="mcoFrom">${ico('download')}Aus Instanz</button>${keys.length ? `<button class="btn sm d" id="mcoReset">${ico('trash')}Leeren</button>` : ''}</span></div>`)
+    + '<div class="mt"></div>' + card('Grafik, Steuerung, Ton', `<div class="mcof">${MCO_FIELDS.map(([k, n, kind, x, d]) => {
+      const have = k in MCO, v = val(k, null);
+      let ctl = '';
+      if (kind === 'range') { const cur = have ? x[4](v) : d; ctl = `<input type="range" min="${x[0]}" max="${x[1]}" step="${x[2]}" value="${cur}" data-k="${k}"><em>${have ? esc(String(x[5](cur))) : 'Spiel-Standard'}</em>`; }
+      if (kind === 'bool') ctl = `<div class="seg sm" data-k="${k}">${[['', 'Standard'], ['true', 'An'], ['false', 'Aus']].map(([w, l]) => `<button data-v="${w}" class="${(have ? v : '') === w ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      if (kind === 'choice') ctl = `<select class="sel" data-k="${k}"><option value="">Spiel-Standard</option>${x.map(([w, l]) => `<option value="${w}" ${have && v === w ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+      return `<div class="mcorow ${have ? 'set' : ''}"><b>${n}</b><div class="mcoc">${ctl}</div>${have ? `<button class="ib sm" data-clr="${k}" title="Auf Spiel-Standard">${ico('x')}</button>` : '<i class="mph"></i>'}</div>`;
+    }).join('')}</div>`)
+    + '<div class="mt"></div>' + card('Tastenbelegung', `<p class="sub" style="margin:2px 0 10px;max-width:none">Klick auf eine Taste und drück die neue. Esc bricht ab, Entf entfernt die Belegung.</p>
+      ${MCO_KEYS.map(([g, l]) => `<div class="mcokg"><small>${g}</small>${l.map(([id, n, d]) => { const k = 'key_key.' + id, v = MCO[k]; return `<div class="mcok ${v ? 'set' : ''}"><span>${n}</span><button class="kbd" data-key="${k}" data-def="${d}">${esc(mcoKeyName(v || d))}</button>${v ? `<button class="ib sm" data-clr="${k}" title="Standard (${esc(mcoKeyName(d))})">${ico('x')}</button>` : '<i class="mph"></i>'}</div>`; }).join('')}</div>`).join('')}`);
+  const put = async patch => { try { MCO = (await api('mcopt.set', { patch })).map; } catch (e) { fail('Speichern', e); } };
+  b.querySelectorAll('[data-set]').forEach(t => t.onclick = async () => {
+    const v = !t.classList.contains('on'); t.classList.toggle('on', v); await setS(t.dataset.set, v);
+    if (t.dataset.set === 'mcOptionsOn' && v) await mcoExisting(true);
+    setBody();
+  });
+  $('#mcoScope').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('mcOptionsScope', x.dataset.v); $$('#mcoScope button').forEach(y => y.classList.toggle('on', y === x)); };
+  $('#mcoEx').onclick = async e => { const x = e.target.closest('[data-v]'); if (!x) return; await setS('mcOptionsExisting', x.dataset.v); $$('#mcoEx button').forEach(y => y.classList.toggle('on', y === x)); if (S.settings.mcOptionsOn && x.dataset.v !== 'none') { await mcoExisting(true); setBody(); } };
+  $('#mcoPick').onclick = () => mcoPick(false).then(setBody);
+  $('#mcoFrom').onclick = () => mcoFrom();
+  if ($('#mcoReset')) $('#mcoReset').onclick = async () => { if (!await confirmBox('Vorlage leeren?', 'Deine eigenen Einstellungen und Tasten werden gelöscht. Die Instanzen behalten, was sie gerade haben.', 'Leeren', true)) return; MCO = (await api('mcopt.reset')).map; setBody(); };
+  b.querySelectorAll('.mcof input[type=range]').forEach(r => {
+    const f = MCO_FIELDS.find(x => x[0] === r.dataset.k), x = f[3]; setRange(r); let t = 0;
+    r.oninput = () => { setRange(r); r.nextElementSibling.textContent = x[5](+r.value); r.closest('.mcorow').classList.add('set'); clearTimeout(t); t = setTimeout(() => put({ [f[0]]: String(x[3](+r.value)) }), 300); };
+  });
+  b.querySelectorAll('.mcof .seg[data-k]').forEach(s => s.onclick = async e => { const x = e.target.closest('[data-v]'); if (!x) return; await put({ [s.dataset.k]: x.dataset.v || null }); setBody(); });
+  b.querySelectorAll('.mcof select[data-k]').forEach(s => s.onchange = async () => { await put({ [s.dataset.k]: s.value || null }); setBody(); });
+  b.querySelectorAll('[data-clr]').forEach(x => x.onclick = async () => { await put({ [x.dataset.clr]: null }); setBody(); });
+  b.querySelectorAll('.kbd[data-key]').forEach(k => k.onclick = () => {
+    if (k.classList.contains('wait')) return;
+    $$('.kbd.wait').forEach(x => x.classList.remove('wait'));
+    k.classList.add('wait'); k.textContent = 'Taste drücken…';
+    const done = async v => {
+      window.removeEventListener('keydown', kd, true); window.removeEventListener('mousedown', md, true);
+      k.classList.remove('wait');
+      if (v === undefined) { k.textContent = mcoKeyName(MCO[k.dataset.key] || k.dataset.def); return; }
+      await put({ [k.dataset.key]: v }); setBody();
+    };
+    const kd = e => { e.preventDefault(); e.stopPropagation(); if (e.code === 'Escape') return done(); if (e.code === 'Delete') return done('key.keyboard.unknown'); const v = mcoKeyFromEvent(e); if (v) done(v); };
+    // a mouse button is a binding too; swallow the click / menu that follows it
+    const eat = ev => { ev.preventDefault(); ev.stopPropagation(); };
+    const md = e => { eat(e); window.addEventListener('click', eat, { capture: true, once: true }); window.addEventListener('contextmenu', eat, { capture: true, once: true }); done(MCO_MOUSE[e.button]); };
+    window.addEventListener('keydown', kd, true); window.addEventListener('mousedown', md, true);
+  });
+}
+/** Template from an instance the player already set up in the game. */
+async function mcoFrom() {
+  const list = S.instances.filter(i => i.optModern !== false);
+  modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Vorlage</div><h1>Aus Instanz übernehmen</h1><p class="sub" style="max-width:none;text-align:left">Die Einstellungen und Tasten dieser Instanz werden deine eigenen.</p>
+    <div class="mcolist">${list.map(i => `<button class="mcoi" data-id="${esc(i.id)}">${instIcon(i)}<span class="tx"><b class="ell">${esc(i.name)}</b><small>${esc(instSub(i))}</small></span>${ico('right')}</button>`).join('') || '<div class="empty">Keine passende Instanz (ab 1.13).</div>'}</div>`, 'form');
+  $('.mcolist').onclick = async e => {
+    const x = e.target.closest('[data-id]'); if (!x) return;
+    try { MCO = (await api('mcopt.import', { id: x.dataset.id })).map; closeModal(); toast('Vorlage übernommen', `${Object.keys(MCO).length} Einträge aus ${instById(x.dataset.id)?.name}`); setBody(); }
+    catch (er) { fail('Übernehmen', er); }
+  };
+}
+/** Which instances take the own settings. onlyNew: just the ones not asked yet. Resolves when closed. */
+function mcoPick(onlyNew) {
+  const list = S.instances.filter(i => i.optModern !== false && (!onlyNew || i.optSync == null));
+  if (!list.length) return Promise.resolve();
+  return new Promise(res => {
+    S.modalClose = res;
+    modal(`<button class="ib x" onclick="closeModal()">${ico('x')}</button><div class="kicker">Eigene Einstellungen</div><h1>${onlyNew ? 'Auch für bestehende Instanzen?' : 'Welche Instanzen machen mit?'}</h1>
+      <p class="sub" style="max-width:none;text-align:left">Ausgewählte Instanzen bekommen deine Einstellungen und Tasten, ab jetzt bei jedem Start.</p>
+      <div class="tulist mcolist">${list.map(i => `<label class="tuopt" data-id="${esc(i.id)}"><span class="tuck ${onlyNew || i.optSync ? 'on' : ''}">${ico('check')}</span>${instIcon(i)}<div><b>${esc(i.name)}</b><small>${esc(instSub(i))}</small></div></label>`).join('')}</div>
+      <div class="act" style="justify-content:space-between"><button class="lnk" id="mcoAll">Alle umschalten</button><span class="row" style="gap:8px"><button class="btn" id="mcoNo">${onlyNew ? 'Keine' : 'Abbrechen'}</button><button class="btn p" id="mcoGo">${ico('check')}Übernehmen</button></span></div>`, 'form');
+    $$('.mcolist .tuopt').forEach(l => l.onclick = () => l.querySelector('.tuck').classList.toggle('on'));
+    $('#mcoAll').onclick = () => { const all = $$('.mcolist .tuck'), v = !all.every(x => x.classList.contains('on')); all.forEach(x => x.classList.toggle('on', v)); };
+    const send = async (ids, no) => { try { const r = await api('mcopt.apply', { ids, no }); await refreshInstances(); if (r.applied) toast('Eigene Einstellungen', `${r.applied} Instanz${r.applied === 1 ? '' : 'en'} machen mit`); } catch (e) { fail('Übernehmen', e); } closeModal(); };
+    $('#mcoNo').onclick = () => onlyNew ? send([], list.map(i => i.id)) : closeModal();
+    $('#mcoGo').onclick = () => { const r = $$('.mcolist .tuopt'); send(r.filter(l => l.querySelector('.tuck.on')).map(l => l.dataset.id), r.filter(l => !l.querySelector('.tuck.on')).map(l => l.dataset.id)); };
+  });
+}
+/** After turning it on or changing the rule: existing instances not asked yet. */
+async function mcoExisting() {
+  const ex = S.settings.mcOptionsExisting || 'ask';
+  const fresh = S.instances.filter(i => i.optModern !== false && i.optSync == null);
+  if (!fresh.length || ex === 'none') return;
+  if (ex === 'all') { try { const r = await api('mcopt.apply', { ids: fresh.map(i => i.id) }); await refreshInstances(); if (r.applied) toast('Eigene Einstellungen', `${r.applied} Instanzen machen mit`); } catch (e) { fail('Übernehmen', e); } return; }
+  await mcoPick(true);
+}
+/** Before a start: an instance that was never asked (rule "ask"). */
+async function mcoAskOne(i) {
+  const st = S.settings;
+  if (!st.mcOptionsOn || i.optSync != null || i.optModern === false || !st.mcOptions) return;
+  if ((st.mcOptionsExisting || 'ask') === 'none') return;
+  if (st.mcOptionsExisting === 'all') { try { await api('mcopt.apply', { ids: [i.id] }); i.optSync = true; } catch { } return; }
+  const yes = await confirmBox('Deine Einstellungen übernehmen?', `„${i.name}“ hat noch eigene Einstellungen. Sollen deine Grafik-Einstellungen und Tasten hier gelten? Du kannst es später in den Instanz-Einstellungen ändern.`, 'Übernehmen');
+  try { await api('mcopt.apply', yes ? { ids: [i.id] } : { no: [i.id] }); i.optSync = yes; } catch { }
+}
+window.mcOptSettings = mcOptSettings;
+
 /* ======================= SETTINGS ======================= */
 const setS = (key, value) => { S.settings[key] = value; return api('settings.set', { key, value }).catch(e => fail('Speichern fehlgeschlagen', e)); };
-const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
+const STABS = [['cloud', 'Orbit-Konto', 'cloud', 'Cloud-Sync auf allen PCs'], ['account', 'Microsoft', 'user', 'Minecraft-Konten'], ['design', 'Design', 'palette', 'Farben und Verhalten'], ['java', 'Java', 'coffee', 'Laufzeiten pro Version'], ['defaults', 'Standard-Instanz', 'cube', 'Speicher, Fenster, JVM'], ['mcopt', 'Spiel-Einstellungen', 'keyboard', 'Optionen und Tasten für alle'], ['storage', 'Speicher & Daten', 'hdd', 'Ordner und Cache'], ['about', 'Über', 'info', 'Version und Lizenzen']];
 PAGES.settings = (el, a) => {
   S.stab = a.tab || S.stab || 'account';
   crumbs([['Einstellungen']]);
@@ -3190,6 +3343,7 @@ async function setBody() {
     $('#sOnL').onclick = e => { const x = e.target.closest('[data-v]'); if (!x) return; setS('onLaunch', x.dataset.v); $$('#sOnL button').forEach(y => y.classList.toggle('on', y === x)); };
   }
   if (S.stab === 'cloud') return cloudSettings(b, card);
+  if (S.stab === 'mcopt') return mcOptSettings(b, card, tg);
   if (S.stab === 'sources') {
     let cfs = { ready: false }; try { cfs = await api('cf.status'); } catch { }
     if (S.stab !== 'sources') return;
@@ -4210,6 +4364,11 @@ const Mock = {
       }
       case 'instances.list': return M.instances;
       case 'settings.set': M.settings[a.key] = a.value; return {};
+      case 'mcopt.get': M.instances.forEach(i => { if (!('optModern' in i)) i.optModern = !/^(1\.([0-9]|1[0-2])(\.|$)|b|a)/.test(i.mcVersion); }); return { map: M.mco || (M.mco = {}) };
+      case 'mcopt.set': M.mco = M.mco || {}; for (const [k, v] of Object.entries(a.patch)) { if (v == null) delete M.mco[k]; else M.mco[k] = v; } M.settings.mcOptions = Object.keys(M.mco).length ? 'x' : null; return { map: M.mco };
+      case 'mcopt.import': M.mco = { renderDistance: '16', fov: '0.25', gamma: '1.0', guiScale: '3', lang: 'de_de', 'key_key.sprint': 'key.keyboard.r', 'key_key.drop': 'key.keyboard.g', 'key_key.swapOffhand': 'key.mouse.5', 'key_key.jei.showRecipe': 'key.keyboard.r', ...Object.fromEntries(Array.from({ length: 40 }, (_, n) => ['opt' + n, '1'])) }; M.settings.mcOptions = 'x'; return { map: M.mco };
+      case 'mcopt.reset': M.mco = {}; M.settings.mcOptions = null; return { map: {} };
+      case 'mcopt.apply': { let n = 0; for (const i of M.instances) { if ((a.ids || []).includes(i.id)) { i.optSync = true; n++; } else if ((a.no || []).includes(i.id)) i.optSync = false; } return { applied: n }; }
       case 'versions.list':
         if (!M.versions) {
           try { const m = await (await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')).json(); M.versions = { latest: m.latest, versions: m.versions.map(v => ({ id: v.id, type: v.type, released: v.releaseTime })) }; }

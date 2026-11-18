@@ -30,7 +30,7 @@ public partial class MainWindow : Window
     private readonly DiscordRpc _rpc = new("1571553631818219580");
     private List<Transfer.Found> _found = new();
     private int _syncing; private CancellationTokenSource? _syncDue;
-    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx", "Mode" };
+    private static readonly string[] SyncedSettings = { "Accent", "RamMb", "JvmArgs", "Width", "Height", "OnLaunch", "AutoUpdateMods", "ShowSnapshots", "DiscordRpc", "OrbitPacks", "PlayMode", "Fx", "Mode", "McOptions", "McOptionsOn", "McOptionsScope", "McOptionsExisting", "McOptionsLearn" };
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wp, IntPtr lp);
@@ -44,6 +44,8 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(S.CloudApi)) Cloud.Api = S.CloudApi!;
         Instances.Deleted += uid => { if (Cloud.LoggedIn) Cloud.MarkDeleted(uid); };
         Instances.Changed += _ => ScheduleSync();
+        Instances.NewOptSync = () => S.McOptionsOn ? true : null;
+        _runner.OptionsLearned += t => Dispatcher.Invoke(() => { SetOptions(t); Emit("settings", S); });
         if (Cloud.LoggedIn) _ = Task.Delay(3000).ContinueWith(_ => RunSync(false));
         CurseForge.Key = string.IsNullOrWhiteSpace(S.CurseForgeKey) ? CurseForge.BuiltInKey : S.CurseForgeKey!;
         OrbitClient.ModJar = () => Assembly.GetExecutingAssembly().GetManifestResourceStream("mod/orbitclient.jar");
@@ -288,7 +290,7 @@ public partial class MainWindow : Window
         {
             i.Id, i.Name, i.McVersion, i.Loader, i.LoaderVersion, i.VersionId, i.Kind, i.Icon, i.IconUrl, i.BannerUrl, i.RamMb, i.JavaPath, i.JvmArgs, i.Width, i.Height,
             i.PlaySeconds, i.LastPlayed, i.Created, i.Group, i.ModpackProject, i.ManualDownloads, mods, running = _runner.IsRunning(i.Id),
-            i.Fullscreen, i.AutoJoin, i.EnvVars, i.PreLaunch, i.Wrapper, i.PostExit, i.OnLaunch, i.Notes,
+            i.Fullscreen, i.AutoJoin, i.EnvVars, i.PreLaunch, i.Wrapper, i.PostExit, i.OnLaunch, i.Notes, i.OptSync, optModern = McOptions.Modern(i),
             content = i.Content.Select(c => new { c.ProjectId, c.Type, c.Source }),
         };
     }
@@ -331,6 +333,37 @@ public partial class MainWindow : Window
                     accounts = _auth.Accounts.Select(x => new { x.Uuid, x.Name, skin = x.SkinUrl?.Replace("http://", "https://") }),
                     active = _auth.Active?.Uuid, running = _runner.RunningIds.ToList(),
                 };
+            }
+            // ---------------- own Minecraft settings (template of options.txt lines)
+            case "mcopt.get": return new { map = McOptions.Parse(S.McOptions) };
+            case "mcopt.set":
+            {
+                // patch {key: value | null}
+                var d = McOptions.Parse(S.McOptions);
+                if (a["patch"] is JsonObject pt) foreach (var (k, v) in pt) { if (v is null) d.Remove(k); else d[k] = v is JsonValue jv && jv.TryGetValue<string>(out var sv) ? sv : v.ToJsonString(); }
+                SetOptions(McOptions.Write(d));
+                return new { map = d };
+            }
+            case "mcopt.import":
+            {
+                var t = McOptions.From(Inst(a)) ?? throw new InvalidOperationException("Diese Instanz hat noch keine Einstellungen. Starte sie einmal und stell dort alles ein.");
+                if (Bool(a, "merge")) { var d = McOptions.Parse(S.McOptions); foreach (var (k, v) in McOptions.Parse(t)) d[k] = v; t = McOptions.Write(d); }
+                SetOptions(t);
+                return new { map = McOptions.Parse(S.McOptions) };
+            }
+            case "mcopt.reset": SetOptions(null); return new { map = new Dictionary<string, string>() };
+            case "mcopt.apply":
+            {
+                // ids: instances that take the own settings from now on (also written right away); others: no
+                var yes = (a["ids"] as JsonArray ?? new()).Select(x => (string?)x).ToHashSet();
+                var no = (a["no"] as JsonArray ?? new()).Select(x => (string?)x).ToHashSet();
+                int n = 0;
+                foreach (var i in Instances.All())
+                {
+                    if (yes.Contains(i.Id)) { i.OptSync = true; if (!_runner.IsRunning(i.Id)) try { McOptions.ApplyTo(i, S.McOptions, S.McOptionsScope); } catch { } Instances.Save(i); n++; }
+                    else if (no.Contains(i.Id)) { i.OptSync = false; Instances.Save(i); }
+                }
+                return new { applied = n };
             }
             case "settings.set":
             {
@@ -409,6 +442,7 @@ public partial class MainWindow : Window
                     if (pt.ContainsKey("iconUrl")) { var iu = StrN(pt, "iconUrl"); if (iu == null || iu.StartsWith("data:image/") || iu.StartsWith("https://")) inst.IconUrl = iu; }
                     if (pt.ContainsKey("ramMb")) inst.RamMb = Int(pt, "ramMb");
                     if (pt.ContainsKey("ramNoAsk")) inst.RamNoAsk = Bool(pt, "ramNoAsk");
+                    if (pt.ContainsKey("optSync")) inst.OptSync = pt["optSync"] is null ? null : Bool(pt, "optSync");
                     if (pt.ContainsKey("javaPath")) inst.JavaPath = StrN(pt, "javaPath");
                     if (pt.ContainsKey("jvmArgs")) inst.JvmArgs = StrN(pt, "jvmArgs");
                     if (pt.ContainsKey("width")) inst.Width = Int(pt, "width");
@@ -1122,6 +1156,13 @@ public partial class MainWindow : Window
     };
 
     // ---- Orbit cloud sync: debounced after changes, plus on start and on demand
+    private void SetOptions(string? t)
+    {
+        S.McOptions = string.IsNullOrWhiteSpace(t) ? null : t;
+        S.SyncAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        S.Save(); ScheduleSync();
+    }
+
     private void ScheduleSync()
     {
         if (!Cloud.LoggedIn || _syncing > 0) return;
