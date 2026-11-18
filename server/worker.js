@@ -1,9 +1,12 @@
-// OrbitLauncher cloud API (Cloudflare Worker + D1).
+// OrbitLauncher cloud API (Cloudflare Worker + D1, files in R2).
 // Orbit accounts (name + password) and per-account storage of launcher data (instances, mod lists, settings),
 // so the same instances appear on every PC. Passwords never reach the server in clear text: the app sends
 // PBKDF2(password, "orbitlauncher:" + name, 150000) and the server hashes that again with a random salt.
 
 const MAX_VALUE = 1_000_000, MAX_KEYS = 600, MAX_BYTES = 40_000_000, SESSION_DAYS = 180;
+// files (configs, own mods, packs) live in R2: big per account, one upload at most 95 MB (Worker request limit)
+const MAX_FILE_BYTES = 2_000_000_000, MAX_FILE = 95_000_000, MAX_FILES = 2000;
+const FILE_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const err = (msg, status = 400) => json({ error: msg }, status);
@@ -29,6 +32,7 @@ async function ready(env) {
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, uid INTEGER NOT NULL, kind TEXT NOT NULL, exp INTEGER NOT NULL)').run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS passkeys (id TEXT PRIMARY KEY, uid INTEGER NOT NULL, cose TEXT NOT NULL, alg INTEGER NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, name TEXT, created INTEGER NOT NULL)').run();
   await env.DB.prepare('CREATE INDEX IF NOT EXISTS passkeys_uid ON passkeys(uid)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS files (uid INTEGER NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY (uid, name))').run();
   for (const sql of ['ALTER TABLE users ADD COLUMN totp TEXT', 'ALTER TABLE users ADD COLUMN totp_on INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE users ADD COLUMN totp_step INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE users ADD COLUMN recovery TEXT']) {
     try { await env.DB.prepare(sql).run(); } catch { /* column already there */ }
   }
@@ -286,7 +290,8 @@ export default {
         const dev = await env.DB.prepare('SELECT device, last FROM sessions WHERE uid = ? ORDER BY last DESC LIMIT 10').bind(me.uid).all();
         const u = await env.DB.prepare('SELECT totp_on FROM users WHERE id = ?').bind(me.uid).first();
         const keys = await env.DB.prepare('SELECT id, name, created FROM passkeys WHERE uid = ? ORDER BY created DESC').bind(me.uid).all();
-        return json({ name: me.name, created: me.created, items: st.c, bytes: st.s, maxBytes: MAX_BYTES, devices: dev.results, totp: !!u?.totp_on, passkeys: keys.results });
+        const fs = await env.DB.prepare('SELECT COUNT(*) c, COALESCE(SUM(size),0) s FROM files WHERE uid = ?').bind(me.uid).first();
+        return json({ name: me.name, created: me.created, items: st.c, bytes: st.s, maxBytes: MAX_BYTES, files: fs.c, fileBytes: fs.s, maxFileBytes: env.FILES ? MAX_FILE_BYTES : 0, devices: dev.results, totp: !!u?.totp_on, passkeys: keys.results });
       }
       if (p === '/v1/logout' && m === 'POST') { await env.DB.prepare('DELETE FROM sessions WHERE tok = ?').bind(me.tok).run(); return json({ ok: true }); }
 
@@ -306,6 +311,11 @@ export default {
         const u = await env.DB.prepare('SELECT pw, salt FROM users WHERE id = ?').bind(me.uid).first();
         if (!PH_RE.test(b.ph || '') || !safeEq(await pbkdf2(b.ph, u.salt), u.pw)) return err('Passwort falsch.', 401);
         await env.DB.prepare('DELETE FROM items WHERE uid = ?').bind(me.uid).run();
+        if (env.FILES) {
+          const fl = await env.DB.prepare('SELECT name FROM files WHERE uid = ?').bind(me.uid).all();
+          for (const f of fl.results) await env.FILES.delete(`${me.uid}/${f.name}`);
+        }
+        await env.DB.prepare('DELETE FROM files WHERE uid = ?').bind(me.uid).run();
         await env.DB.prepare('DELETE FROM sessions WHERE uid = ?').bind(me.uid).run();
         await env.DB.prepare('DELETE FROM passkeys WHERE uid = ?').bind(me.uid).run();
         await env.DB.prepare('DELETE FROM challenges WHERE uid = ?').bind(me.uid).run();
@@ -403,6 +413,39 @@ export default {
         if (!KEY_RE.test(k)) return err('Ungültiger Schlüssel');
         await env.DB.prepare('DELETE FROM items WHERE uid = ? AND k = ?').bind(me.uid, k).run();
         return json({ ok: true });
+      }
+      // ---- files (R2)
+      if (p === '/v1/files' && m === 'GET') {
+        const r = await env.DB.prepare('SELECT name, size, updated FROM files WHERE uid = ? ORDER BY name').bind(me.uid).all();
+        return json({ files: r.results, max: env.FILES ? MAX_FILE_BYTES : 0, maxFile: MAX_FILE });
+      }
+      if (p.startsWith('/v1/files/')) {
+        if (!env.FILES) return err('Dateispeicher nicht eingerichtet', 501);
+        const name = decodeURIComponent(p.slice(10));
+        if (!FILE_RE.test(name)) return err('Ungültiger Dateiname');
+        const key = `${me.uid}/${name}`;
+        if (m === 'GET') {
+          const o = await env.FILES.get(key);
+          if (!o) return err('Nicht gefunden', 404);
+          return new Response(o.body, { headers: { 'content-type': 'application/octet-stream', 'content-length': String(o.size), 'cache-control': 'no-store' } });
+        }
+        if (m === 'PUT') {
+          const len = +(req.headers.get('content-length') || 0);
+          if (!len) return err('Länge fehlt', 411);
+          if (len > MAX_FILE) return err('Zu groß', 413);
+          const cur = await env.DB.prepare('SELECT size FROM files WHERE uid = ? AND name = ?').bind(me.uid, name).first();
+          const st = await env.DB.prepare('SELECT COUNT(*) c, COALESCE(SUM(size),0) s FROM files WHERE uid = ?').bind(me.uid).first();
+          if (!cur && st.c >= MAX_FILES) return err('Zu viele Dateien', 413);
+          if (st.s - (cur?.size || 0) + len > MAX_FILE_BYTES) return err('Cloud-Speicher voll', 413);
+          const o = await env.FILES.put(key, req.body);
+          await env.DB.prepare('INSERT OR REPLACE INTO files (uid, name, size, updated) VALUES (?, ?, ?, ?)').bind(me.uid, name, o.size, now()).run();
+          return json({ ok: true, size: o.size });
+        }
+        if (m === 'DELETE') {
+          await env.FILES.delete(key);
+          await env.DB.prepare('DELETE FROM files WHERE uid = ? AND name = ?').bind(me.uid, name).run();
+          return json({ ok: true });
+        }
       }
       return err('Nicht gefunden', 404);
     } catch (e) {

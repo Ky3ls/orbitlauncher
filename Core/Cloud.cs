@@ -219,6 +219,12 @@ public static class Cloud
             // and its files, so they do not use up the account's space
             foreach (var fk in idx.Keys.Where(x => x == "fbm:" + uid || x.StartsWith($"fbp:{uid}_")).ToList())
                 try { await Call(HttpMethod.Delete, "/v1/sync?k=" + fk, null, ct); } catch { }
+            try
+            {
+                foreach (var f in (await Call(HttpMethod.Get, "/v1/files", null, ct))["files"]!.AsArray().Select(x => (string)x!["name"]!).Where(n => n.StartsWith($"fb-{uid}-")))
+                    try { await Call(HttpMethod.Delete, "/v1/files/" + f, null, ct); } catch { }
+            }
+            catch { }
             lock (L) { var s3 = Load(); s3.Bundles.Remove(uid); Save(s3); }
             lock (L) { st = Load(); st.PendingDeletes.Remove(uid); Save(st); }
             deleted++;
@@ -306,7 +312,7 @@ public static class Cloud
     // ("fbp:<uid>_<n>") plus a manifest ("fbm:<uid>"). Only uploaded when the files changed.
 
     private const int PartChars = 950_000;
-    private const long AccountBytes = 39_000_000;       // the server allows 40 MB per account
+    private const long AccountBytes = 39_000_000;       // item store (small values); bundles go to the file store (R2) when the server has one
     private static readonly string[] TreeDirs = { "config", "defaultconfigs", "kubejs", "scripts", "global_packs", "datapacks", "patchouli_books", "openloader", "paxi", "resources" };
     private static readonly HashSet<string> JunkFiles = new(StringComparer.OrdinalIgnoreCase) { ".gitignore", ".gitattributes", ".gitmodules", ".DS_Store", "Thumbs.db", "desktop.ini", ".editorconfig" };
     private static readonly HashSet<string> RootSkip = new(StringComparer.OrdinalIgnoreCase) { "instance.json", "usercache.json", "usernamecache.json", "options.txt", "servers.dat", "launcher_profiles.json", "minecraftinstance.json", "profile.json" };
@@ -367,6 +373,11 @@ public static class Cloud
     private static byte[] Zip(IEnumerable<(string rel, string full, long size, bool must)> files)
     {
         using var ms = new MemoryStream();
+        ZipTo(ms, files);
+        return ms.ToArray();
+    }
+    private static void ZipTo(Stream ms, IEnumerable<(string rel, string full, long size, bool must)> files)
+    {
         using (var z = new ZipArchive(ms, ZipArchiveMode.Create, true))
             foreach (var f in files)
             {
@@ -379,7 +390,23 @@ public static class Cloud
                 }
                 catch (IOException) { }
             }
-        return ms.ToArray();
+    }
+
+    // ---------------- file store (R2): bundles as zip parts "fb-<uid>-<n>.zip"
+    private const int FilePart = 40_000_000;
+    private static string FileName(string uid, int n) => $"fb-{uid}-{n}.zip";
+    private static async Task<HttpResponseMessage> Raw(HttpMethod m, string path, HttpContent? body, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(m, Api.TrimEnd('/') + path) { Content = body };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token() ?? throw new InvalidOperationException("Nicht bei Orbit angemeldet."));
+        var r = await Net.Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!r.IsSuccessStatusCode)
+        {
+            JsonNode? j = null; try { j = JsonNode.Parse(await r.Content.ReadAsStringAsync(ct)); } catch { }
+            r.Dispose();
+            throw new InvalidOperationException((string?)j?["error"] ?? $"Orbit-Cloud nicht erreichbar ({(int)r.StatusCode})");
+        }
+        return r;
     }
 
     private static async Task<(int up, int down)> SyncBundles(Dictionary<string, long> idx, List<Missing> restoring, List<string> tooBig, IProgress<Progress>? p, CancellationToken ct)
@@ -387,6 +414,15 @@ public static class Cloud
         int up = 0, down = 0;
         Store st; lock (L) st = Load();
         var sizes = (await Call(HttpMethod.Get, "/v1/sync", null, ct))["items"]!.AsArray().ToDictionary(x => (string)x!["k"]!, x => (long?)x!["size"] ?? 0);
+        // the big file store (R2); older servers have none, then bundles go into the small item store as before
+        long fileMax = 0; var fsizes = new Dictionary<string, long>();
+        try
+        {
+            var fl = await Call(HttpMethod.Get, "/v1/files", null, ct);
+            fileMax = (long?)fl["max"] ?? 0;
+            foreach (var f in fl["files"]!.AsArray()) fsizes[(string)f!["name"]!] = (long?)f["size"] ?? 0;
+        }
+        catch { }
         foreach (var i in Instances.All())
         {
             ct.ThrowIfCancellationRequested();
@@ -407,6 +443,31 @@ public static class Cloud
             {
                 p?.Report(new Progress("Dateien werden geladen", 0, 1, i.Name));
                 var parts = (int?)man!["parts"] ?? 0;
+                if ((string?)man["store"] == "files")
+                {
+                    var tmp = Path.Combine(Paths.Cache, $"fb-{i.Uid}.zip");
+                    Directory.CreateDirectory(Paths.Cache);
+                    try
+                    {
+                        await using (var o = File.Create(tmp))
+                            for (var n = 0; n < parts; n++)
+                            {
+                                p?.Report(new Progress("Dateien werden geladen", n, parts, i.Name));
+                                using var r = await Raw(HttpMethod.Get, "/v1/files/" + FileName(i.Uid, n), null, ct);
+                                await (await r.Content.ReadAsStreamAsync(ct)).CopyToAsync(o, ct);
+                            }
+                        string h; await using (var fs = File.OpenRead(tmp)) h = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct));
+                        if ((string?)man["hash"] == h)
+                        {
+                            await Task.Run(() => { using var fs = File.OpenRead(tmp); Extract(i, fs); }, ct);
+                            st.Bundles[i.Uid] = new BundleState { Id = remoteId, Sig = Signature(BundleFiles(i)) };
+                            lock (L) { var s2 = Load(); s2.Bundles = st.Bundles; Save(s2); }
+                            down++;
+                        }
+                    }
+                    finally { try { File.Delete(tmp); } catch { } }
+                    continue;
+                }
                 var sb = new StringBuilder();
                 var keys = Enumerable.Range(0, parts).Select(n => $"fbp:{i.Uid}_{n}").ToList();
                 var got = new Dictionary<string, string>();
@@ -431,6 +492,52 @@ public static class Cloud
 
             // push: everything that fits into the account; own mods/packs only while there is room
             p?.Report(new Progress("Dateien werden gesichert", 0, 1, i.Name));
+            if (fileMax > 0)
+            {
+                var mineF = fsizes.Where(x => x.Key.StartsWith($"fb-{i.Uid}-")).Sum(x => x.Value);
+                var roomF = fileMax - (fsizes.Values.Sum() - mineF);
+                var pickF = files.Where(f => f.must).ToList();
+                static string UnitF(string rel) { var parts = rel.Split('/'); return parts.Length > 2 ? parts[0] + "/" + parts[1] : rel; }
+                foreach (var u in files.Where(f => !f.must).GroupBy(f => UnitF(f.rel)).Select(g => (key: g.Key, files: g.ToList(), size: g.Sum(x => x.size))).OrderBy(u => u.size))
+                {
+                    if (pickF.Sum(x => x.size) + u.size + 2_000_000 < roomF) { pickF.AddRange(u.files); continue; }
+                    var kind = u.key.StartsWith("shaderpacks/") ? "Shader" : u.key.StartsWith("resourcepacks/") ? "Ressourcenpaket" : "Mod";
+                    tooBig.Add($"{i.Name}: {kind} „{Path.GetFileName(u.key)}“ ({u.size / 1048576.0:0.#} MB)");
+                }
+                var tmp = Path.Combine(Paths.Cache, $"fb-{i.Uid}-up.zip");
+                Directory.CreateDirectory(Paths.Cache);
+                try
+                {
+                    await Task.Run(() => { using var o = File.Create(tmp); ZipTo(o, pickF); }, ct);
+                    var len = new FileInfo(tmp).Length;
+                    if (len + 1_000_000 > roomF) { tooBig.Add($"{i.Name}: Configs und Skripte ({len / 1048576.0:0.#} MB)"); continue; }
+                    var cnt = (int)((len + FilePart - 1) / FilePart);
+                    var buf = new byte[(int)Math.Min(FilePart, Math.Max(1, len))];
+                    await using (var fs = File.OpenRead(tmp))
+                        for (var n = 0; n < cnt; n++)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            p?.Report(new Progress("Dateien werden gesichert", n, cnt, i.Name));
+                            var got = 0; int r0;
+                            while (got < buf.Length && (r0 = await fs.ReadAsync(buf.AsMemory(got, buf.Length - got), ct)) > 0) got += r0;
+                            using var res = await Raw(HttpMethod.Put, "/v1/files/" + FileName(i.Uid, n), new ByteArrayContent(buf, 0, got), ct);
+                            fsizes[FileName(i.Uid, n)] = got;
+                        }
+                    // leftovers: parts of an older, bigger bundle and the old copy in the small store
+                    foreach (var old in fsizes.Keys.Where(k => k.StartsWith($"fb-{i.Uid}-") && int.TryParse(k[(k.LastIndexOf('-') + 1)..^4], out var n) && n >= cnt).ToList())
+                    { try { await Call(HttpMethod.Delete, "/v1/files/" + old, null, ct); } catch { } fsizes.Remove(old); }
+                    foreach (var old in sizes.Keys.Where(k => k.StartsWith($"fbp:{i.Uid}_")).ToList())
+                    { try { await Call(HttpMethod.Delete, "/v1/sync?k=" + old, null, ct); } catch { } sizes.Remove(old); }
+                    string hashF; await using (var fs = File.OpenRead(tmp)) hashF = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct));
+                    var atF = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    await Put("fbm:" + i.Uid, new JsonObject { ["id"] = sig, ["store"] = "files", ["parts"] = cnt, ["hash"] = hashF, ["size"] = len, ["files"] = pickF.Count, ["at"] = atF }.ToJsonString(), atF, ct);
+                    st.Bundles[i.Uid] = new BundleState { Id = sig, Sig = sig };
+                    lock (L) { var s2 = Load(); s2.Bundles = st.Bundles; Save(s2); }
+                    up++;
+                }
+                finally { try { File.Delete(tmp); } catch { } }
+                continue;
+            }
             var mine = sizes.Where(x => x.Key.StartsWith($"fbp:{i.Uid}_") || x.Key == "fbm:" + i.Uid).Sum(x => x.Value);
             var room = AccountBytes - (sizes.Values.Sum() - mine);
             var pick = files.Where(f => f.must).ToList();
@@ -466,10 +573,11 @@ public static class Cloud
         return (up, down);
     }
 
-    private static void Extract(Instance i, byte[] zip)
+    private static void Extract(Instance i, byte[] zip) => Extract(i, new MemoryStream(zip));
+    private static void Extract(Instance i, Stream zip)
     {
         var root = Path.GetFullPath(i.Dir);
-        using var z = new ZipArchive(new MemoryStream(zip));
+        using var z = new ZipArchive(zip);
         foreach (var e in z.Entries)
         {
             if (e.FullName.EndsWith('/')) continue;

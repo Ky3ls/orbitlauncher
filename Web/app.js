@@ -3737,7 +3737,7 @@ function cloudEvent(d) {
   if (d.state === 'done' && d.tooBig?.length) {
     // tell once per set of files that did not fit, not on every sync
     const key = d.tooBig.join('|'); let seen = ''; try { seen = localStorage.getItem('cloudTooBig') || ''; } catch { }
-    if (seen !== key) { try { localStorage.setItem('cloudTooBig', key); } catch { } const n = d.tooBig.length; toast('Nicht alles passt in die Cloud', `${d.tooBig.slice(0, 2).join(' · ')}${n > 2 ? ` und ${n - 2} weitere` : ''} ${n === 1 ? 'passt' : 'passen'} nicht mehr in deine 40 MB Cloud und ${n === 1 ? 'bleibt' : 'bleiben'} nur auf diesem PC. Alles andere ist gesichert.`, false); }
+    if (seen !== key) { try { localStorage.setItem('cloudTooBig', key); } catch { } const n = d.tooBig.length; toast('Nicht alles passt in die Cloud', `${d.tooBig.slice(0, 2).join(' · ')}${n > 2 ? ` und ${n - 2} weitere` : ''} ${n === 1 ? 'passt' : 'passen'} nicht mehr in deine Cloud und ${n === 1 ? 'bleibt' : 'bleiben'} nur auf diesem PC. Alles andere ist gesichert.`, false); }
   }
   if (d.state === 'done') { S.cloud = { ...(S.cloud || {}), lastSync: d.at, syncing: false }; if (d.created) toast('Aus der Orbit-Cloud', `${d.created} Instanz${d.created > 1 ? 'en' : ''} von deinem Konto übernommen${d.restore ? ', Mods werden geladen' : ''}`); }
   if (d.state === 'restored') toast('Cloud-Instanzen bereit', `${d.ok} Inhalte geladen${d.failed?.length ? ' · nicht verfügbar: ' + d.failed.join(', ') : ''}`, !d.failed?.length);
@@ -4118,7 +4118,7 @@ async function cloudSettings(b, card) {
       <div class="row" style="justify-content:center;gap:10px"><button class="btn p lg" onclick="orbitLogin(true)">${ico('plus')}Konto erstellen</button><button class="btn lg" onclick="orbitLogin(false)">${ico('user')}Anmelden</button></div></div>`)
       + '<div class="mt"></div>' + card('Was wird gespeichert?', `<div class="srow"><div><b>Instanzen</b><p>Name, Symbol, Gruppe, Version, Mod-Loader, RAM, Fenster, Spielzeit, options.txt, Serverliste</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Configs, Skripte, Shader-Einstellungen</b><p>Kompletter config-Ordner, defaultconfigs, KubeJS und weitere Modpack-Ordner. Nur Geändertes wird übertragen.</p></div>${ico('check')}</div>
-      <div class="srow"><div><b>Eigene Mods und Pakete</b><p>Dateien, die es in keinem Katalog gibt, solange Platz ist (40 MB pro Konto).</p></div>${ico('check')}</div>
+      <div class="srow"><div><b>Eigene Mods und Pakete</b><p>Dateien, die es in keinem Katalog gibt, solange Platz ist (2 GB pro Konto).</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Mods, Shader, Ressourcenpakete</b><p>Als Liste mit exakter Version. Beim Wiederherstellen werden sie frisch aus dem Katalog geladen.</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Einstellungen, Orbit Client, Skins</b><p>Akzentfarbe, Standard-RAM, HUD-Layout, deine Skin-Bibliothek</p></div>${ico('check')}</div>
       <div class="srow"><div><b>Welten</b><p>Nicht automatisch (zu groß). Nutze Welt-Backups.</p></div>${ico('x')}</div>`);
@@ -4128,7 +4128,7 @@ async function cloudSettings(b, card) {
   if (S.stab !== 'cloud') return;
   b.innerHTML = card('', `<div class="srcrow"><span class="srclogo orb">${blockSvg('orbit')}</span><div class="tx"><b>${esc(c.name)}</b><p>Orbit-Konto · ${c.lastSync ? 'zuletzt synchronisiert ' + esc(ago(c.lastSync).toLowerCase()) : 'noch nicht synchronisiert'}${S.cloud.lastError ? ' · <span style="color:var(--bad)">' + esc(S.cloud.lastError) + '</span>' : ''}</p></div>
       <button class="btn p" onclick="cloudSyncNow(this)">${ico('refresh')}Jetzt synchronisieren</button></div>
-      ${me ? `<div class="mt"></div><div class="bar"><i style="width:${Math.max(1, me.bytes / me.maxBytes * 100)}%"></i></div><p class="fine">${bytes(me.bytes)} von ${bytes(me.maxBytes)} Cloud-Speicher · ${me.items} Einträge</p>` : ''}`)
+      ${me ? (() => { const used = me.bytes + (me.fileBytes || 0), max = me.maxFileBytes ? me.maxFileBytes : me.maxBytes; return `<div class="mt"></div><div class="bar"><i style="width:${Math.max(1, used / max * 100)}%"></i></div><p class="fine">${bytes(used)} von ${bytes(max)} Cloud-Speicher · ${me.items + (me.files || 0)} Einträge</p>`; })() : ''}`)
     + (me?.devices?.length ? '<div class="mt"></div>' + card('Angemeldete Geräte', me.devices.map(d => `<div class="srow"><div><b>${esc(d.device || 'Unbekannt')}</b><p>Zuletzt aktiv ${esc(ago(d.last).toLowerCase())}</p></div>${ico('monitor')}</div>`).join('')) : '')
     + '<div class="mt"></div>' + card('Schutz', `<div class="srow"><div><b>Zwei-Faktor</b><p>${me?.totp ? 'Aktiv. Nach dem Passwort kommt ein Code aus der App.' : 'Zusätzlich zum Passwort ein Code aus der Authenticator-App.'}</p></div><button class="btn sm" onclick="${me?.totp ? 'cloudTotpOff()' : 'cloudTotpOn()'}">${ico('shield')}${me?.totp ? 'Ausschalten' : 'Einschalten'}</button></div>
       ${(me?.passkeys || []).map(p => `<div class="srow"><div><b>${esc(p.name || 'Passkey')}</b><p>Hinzugefügt ${esc(ago(p.created).toLowerCase())}</p></div><button class="ib sm d" title="Entfernen" onclick="cloudPasskeyDel('${jsq(p.id)}')">${ico('trash')}</button></div>`).join('')}
@@ -4608,7 +4608,7 @@ const Mock = {
       case 'cloud.passkey.remove': M.passkeys = (M.passkeys || []).filter(p => p.id !== a.id); return {};
       case 'cloud.logout': M.cloud = null; return {};
       case 'cloud.sync': await sleep(900); return { pushed: 2, pulled: 1, created: 0, deleted: 0, restore: 0 };
-      case 'cloud.me': return { name: M.cloud, created: iso(DAY * 3), items: 14, bytes: 412e3, maxBytes: 40e6, totp: !!M.totpOn, passkeys: M.passkeys || [], devices: [{ device: 'GAMING-PC', last: iso(60e3) }, { device: 'LAPTOP', last: iso(DAY * 2) }] };
+      case 'cloud.me': return { name: M.cloud, created: iso(DAY * 3), items: 14, bytes: 412e3, maxBytes: 40e6, files: 3, fileBytes: 86e6, maxFileBytes: 2e9, totp: !!M.totpOn, passkeys: M.passkeys || [], devices: [{ device: 'GAMING-PC', last: iso(60e3) }, { device: 'LAPTOP', last: iso(DAY * 2) }] };
       case 'launch.official': await sleep(800); return { profile: 'Orbit · ' + inst().name, opened: true, found: true };
       case 'update.check': return /upd/.test(location.search) ? { configured: true, current: '0.3.0', latest: '0.3.1', available: true, date: '15.11.2026', size: 73e6, notes: ['Automatische Updates direkt im Launcher', 'Update-Hinweis mit Änderungen und Fortschritt', 'Updates warten, bis Minecraft beendet ist'] } : { configured: true, current: '0.3.0', latest: '0.3.0', available: false };
       case 'update.download': for (let k = 0; k <= 100; k += 10) { onEvent('update', { pct: k, done: k * 73e4, total: 73e6 }); await sleep(80); } return { ok: true };

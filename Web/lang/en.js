@@ -1411,7 +1411,8 @@ ORBIT_LANG.en = {
 "ZGC (Java 21+, viel RAM)": "ZGC (Java 21+, lots of RAM)",
 "(optional)": "(optional)",
 "neueste": "newest",
-"Orbit Client wird eingerichtet": "Setting up Orbit Client"
+"Orbit Client wird eingerichtet": "Setting up Orbit Client",
+"Dateien, die es in keinem Katalog gibt, solange Platz ist (2 GB pro Konto).": "Files that are in no catalog, as long as there is room (2 GB per account)."
 },
 "tpl": {
 "({0} weggelassen)": "({0} left out)",
@@ -1477,11 +1478,11 @@ ORBIT_LANG.en = {
 "Passend für {0} Mods auf diesem PC": "Fits {0} mods on this PC",
 "{0} (neueste)": "{0} (newest)",
 "Mehr RAM für {0}": "More RAM for {0}",
-"{0} und {1} weitere passen nicht mehr in deine 40 MB Cloud und bleiben nur auf diesem PC. Alles andere ist gesichert.": "{0} and {1} more no longer fit into your 40 MB cloud and stay on this PC only. Everything else is backed up.",
-"{0} passen nicht mehr in deine 40 MB Cloud und bleiben nur auf diesem PC. Alles andere ist gesichert.": "{0} no longer fit into your 40 MB cloud and stay on this PC only. Everything else is backed up.",
-"{0} passt nicht mehr in deine 40 MB Cloud und bleibt nur auf diesem PC. Alles andere ist gesichert.": "{0} no longer fits into your 40 MB cloud and stays on this PC only. Everything else is backed up.",
 "{0}: Shader „{1}“ ({2} MB)": "{0}: shader “{1}” ({2} MB)",
 "{0}: Ressourcenpaket „{1}“ ({2} MB)": "{0}: resource pack “{1}” ({2} MB)",
-"{0}: Mod „{1}“ ({2} MB)": "{0}: mod “{1}” ({2} MB)"
+"{0}: Mod „{1}“ ({2} MB)": "{0}: mod “{1}” ({2} MB)",
+"{0} und {1} weitere passen nicht mehr in deine Cloud und bleiben nur auf diesem PC. Alles andere ist gesichert.": "{0} and {1} more no longer fit into your cloud and stay on this PC only. Everything else is backed up.",
+"{0} passen nicht mehr in deine Cloud und bleiben nur auf diesem PC. Alles andere ist gesichert.": "{0} no longer fit into your cloud and stay on this PC only. Everything else is backed up.",
+"{0} passt nicht mehr in deine Cloud und bleibt nur auf diesem PC. Alles andere ist gesichert.": "{0} no longer fits into your cloud and stays on this PC only. Everything else is backed up."
 }
 };

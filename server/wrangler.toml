@@ -7,3 +7,7 @@ workers_dev = true
 binding = "DB"
 database_name = "orbitlauncher"
 database_id = "a9af4d31-b6d7-4234-9df6-09dffbab7cb3"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "orbitlauncher-files"

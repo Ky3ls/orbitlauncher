@@ -22,11 +22,18 @@ const DB = {
     return st;
   },
 };
+// fake R2: objects in memory
+const blobs = new Map();
+const FILES = {
+  async put(k, body) { const b = Buffer.from(await new Response(body).arrayBuffer()); blobs.set(k, b); return { size: b.length }; },
+  async get(k) { const b = blobs.get(k); return b ? { body: b, size: b.length } : null; },
+  async delete(k) { blobs.delete(k); },
+};
 const port = +(process.argv[2] || 8787);
 http.createServer(async (req, res) => {
   const chunks = []; for await (const c of req) chunks.push(c);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
-  const r = await worker.fetch(new Request(`http://127.0.0.1:${port}${req.url}`, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : body }), { DB });
+  const r = await worker.fetch(new Request(`http://127.0.0.1:${port}${req.url}`, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : body, duplex: 'half' }), { DB, FILES: process.env.NO_R2 ? undefined : FILES });
   res.writeHead(r.status, Object.fromEntries(r.headers));
   res.end(Buffer.from(await r.arrayBuffer()));
 }).listen(port, () => console.log('orbitlauncher-api dev on :' + port));

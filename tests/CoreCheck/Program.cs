@@ -138,6 +138,41 @@ switch (mode)
         Console.WriteLine("updates: " + ups.Count);
         break;
     }
+    case "cloudbig":
+    {
+        Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;
+        string rootA = Path.Combine(root, "bA"), rootB = Path.Combine(root, "bB");
+        void Use(string r) { Paths.Root = r; Directory.CreateDirectory(r); }
+        var user = "B_" + Random.Shared.Next(10000, 99999);
+        Use(rootA);
+        await Cloud.Login(user, "Passwort123", register: true);
+        var a = Instances.Create("Legendary Edition", "1.20.1", "forge", "47.4.0");
+        var rnd = new Random(3);
+        void W(string rel, int kb) { var f = Path.Combine(a.Dir, rel); Directory.CreateDirectory(Path.GetDirectoryName(f)!); var b = new byte[kb * 1024]; rnd.NextBytes(b); File.WriteAllBytes(f, b); }
+        for (var n = 0; n < 200; n++) W($"config/m{n}/c.toml", 60);                     // 12 MB of configs
+        W("resourcepacks/bottled-dye-e620.zip", 100);
+        W("resourcepacks/big-pack.zip", 28000);                                           // 28 MB own pack
+        W("mods/own-a.jar", 25000); W("mods/own-b.jar", 20000);                          // 45 MB own mods
+        for (var n = 0; n < 300; n++) W($"shaderpacks/MyShader/shaders/f{n}.glsl", 20);  // unpacked shader folder
+        W("shaderpacks/MyShader/.gitignore", 1);
+        var r1 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"A push: pushed={r1.Pushed} tooBig={string.Join("; ", r1.TooBig)}");
+        Use(rootB);
+        await Cloud.Login(user, "Passwort123", register: false);
+        var r2 = await Cloud.Sync(null, null, null);
+        var b = Instances.All().Single();
+        bool Same(string rel) { var x = Path.Combine(a.Dir, rel); var y = Path.Combine(b.Dir, rel); return File.Exists(y) && File.ReadAllBytes(x).AsSpan().SequenceEqual(File.ReadAllBytes(y)); }
+        var shader = Directory.Exists(Path.Combine(b.Dir, "shaderpacks", "MyShader")) ? Directory.GetFiles(Path.Combine(b.Dir, "shaderpacks", "MyShader"), "*", SearchOption.AllDirectories).Length : 0;
+        Console.WriteLine($"B pull: pulled={r2.Pulled} bigpack={Same("resourcepacks/big-pack.zip")} dye={Same("resourcepacks/bottled-dye-e620.zip")} modA={Same("mods/own-a.jar")} modB={Same("mods/own-b.jar")} config={Same("config/m77/c.toml")} shaderFiles={shader} gitignore={File.Exists(Path.Combine(b.Dir, "shaderpacks", "MyShader", ".gitignore"))}");
+        File.WriteAllText(Path.Combine(b.Dir, "config", "m5", "c.toml"), "from B");
+        var r3 = await Cloud.Sync(null, null, null);
+        Use(rootA);
+        var r4 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"B push={r3.Pushed} -> A pull={r4.Pulled} content={File.ReadAllText(Path.Combine(a.Dir, "config", "m5", "c.toml"))}");
+        var r5 = await Cloud.Sync(null, null, null);
+        Console.WriteLine($"no echo: pushed={r5.Pushed}");
+        break;
+    }
     case "cloudfiles":
     {
         Cloud.Api = args[2]; Cloud.Protect = x => x; Cloud.Unprotect = x => x;
