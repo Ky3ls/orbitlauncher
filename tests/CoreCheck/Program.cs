@@ -47,6 +47,14 @@ switch (mode)
         Console.WriteLine("ram: " + Ram.Check(inst, set));
         break;
     }
+    case "skinold":
+    {
+        Paths.Root = root; Directory.CreateDirectory(root);
+        Skins.Seen("abcd1234", "http://textures.minecraft.net/texture/eeee", "classic");
+        Console.WriteLine("importiert: " + Skins.ImportOld("abcd1234"));
+        foreach (var o in Skins.HistoryOf("abcd1234")) { var t = System.Text.Json.JsonSerializer.Serialize(o); Console.WriteLine(System.Text.RegularExpressions.Regex.Replace(t, "data:image/png;base64,[^\"]+", "data:…")); }
+        break;
+    }
     case "skinhist":
     {
         Paths.Root = root; Directory.CreateDirectory(root);

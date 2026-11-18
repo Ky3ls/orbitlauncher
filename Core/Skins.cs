@@ -174,6 +174,9 @@ public static class Skins
         public string Variant { get; set; } = "classic";
         public DateTime From { get; set; } = DateTime.UtcNow;
         public DateTime Last { get; set; } = DateTime.UtcNow;
+        /// <summary>Other launcher it was found in (null: seen on the account by OrbitLauncher).</summary>
+        public string? Source { get; set; }
+        public string? Name { get; set; }
     }
     private static readonly object HL = new();
     private static string HistoryFile => Path.Combine(Dir, "history.json");
@@ -198,7 +201,7 @@ public static class Skins
         lock (HL)
         {
             var l = Net.LoadJson<List<Worn>>(HistoryFile) ?? new();
-            var last = l.Where(x => x.Uuid == uuid).OrderByDescending(x => x.Last).FirstOrDefault();
+            var last = l.Where(x => x.Uuid == uuid && x.Source == null).OrderByDescending(x => x.Last).FirstOrDefault();
             if (last != null && last.Url == url) { last.Last = DateTime.UtcNow; last.Variant = v; }
             else l.Add(new Worn { Uuid = uuid, Url = url, Variant = v });
             Net.SaveJson(HistoryFile, l);
@@ -223,17 +226,112 @@ public static class Skins
     /// <summary>The history of one account, newest first, with a local copy of each texture when there is one.</summary>
     public static List<object> HistoryOf(string uuid)
     {
-        var l = History().Where(x => x.Uuid == uuid).OrderByDescending(x => x.Last).ToList();
+        // own sightings first (newest on top), then what other launchers had
+        var l = History().Where(x => x.Uuid == uuid).OrderBy(x => x.Source == null ? 0 : 1).ThenByDescending(x => x.Last).ToList();
         return l.Select((x, i) =>
         {
-            var f = Path.Combine(HistoryDir, Path.GetFileName(new Uri(x.Url).AbsolutePath) + ".png");
+            var f = Path.Combine(HistoryDir, HashOf(x.Url) + ".png");
             var url = File.Exists(f) ? "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(f)) : x.Url;
-            return (object)new { key = KeyOf(x), url, texture = x.Url, variant = x.Variant, from = x.From, last = x.Last, active = i == 0 };
+            return (object)new { key = KeyOf(x), url, texture = x.Url.StartsWith("local:") ? null : x.Url, variant = x.Variant, from = x.From, last = x.Last, active = i == 0 && x.Source == null, source = x.Source, name = x.Name };
         }).ToList();
     }
 
     // the same skin can be worn more than once: the key includes when
-    private static string KeyOf(Worn x) => Path.GetFileName(new Uri(x.Url).AbsolutePath) + "_" + x.From.Ticks;
+    private static string KeyOf(Worn x) => HashOf(x.Url) + "_" + x.From.Ticks;
+    private static string HashOf(string url) => url.StartsWith("local:") ? url[6..] : Path.GetFileName(new Uri(url).AbsolutePath);
+
+    // ---------------- older skins from other launchers on this PC (Mojang has no history API)
+    private static string ImportedFile => Path.Combine(Dir, "history-imported.json");
+
+    /// <summary>Adds skins from the Minecraft Launcher's skin library and the Modrinth App to the account's history.
+    /// Every skin is taken once; removed ones do not come back.</summary>
+    private static readonly HashSet<string> ImportRan = new();
+    public static int ImportOld(string uuid)
+    {
+        lock (ImportRan) if (!ImportRan.Add(uuid)) return 0;   // once per start: the Modrinth database can be large
+        var done = Net.LoadJson<HashSet<string>>(ImportedFile) ?? new();
+        var found = new List<(string hash, byte[] png, string variant, DateTime when, string source, string? name, string? texture)>();
+        try { found.AddRange(FromOfficial()); } catch { }
+        try { found.AddRange(FromModrinth(uuid)); } catch { }
+        var n = 0;
+        lock (HL)
+        {
+            var l = Net.LoadJson<List<Worn>>(HistoryFile) ?? new();
+            foreach (var f in found)
+            {
+                if (!done.Add(uuid + "|" + f.hash)) continue;
+                if (l.Any(x => x.Uuid == uuid && HashOf(x.Url) == f.hash)) continue;
+                try { Validate(f.png, f.variant); } catch { continue; }
+                try { var file = Path.Combine(HistoryDir, f.hash + ".png"); if (!File.Exists(file)) File.WriteAllBytes(file, f.png); } catch { continue; }
+                l.Add(new Worn { Uuid = uuid, Url = f.texture ?? "local:" + f.hash, Variant = f.variant, From = f.when, Last = f.when, Source = f.source, Name = f.name });
+                n++;
+            }
+            Net.SaveJson(HistoryFile, l);
+        }
+        Net.SaveJson(ImportedFile, done);
+        return n;
+    }
+
+    private static string Sha(byte[] b) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b))[..40].ToLowerInvariant();
+
+    /// <summary>launcher_custom_skins.json of the official launcher (normal and Microsoft Store install).</summary>
+    private static IEnumerable<(string, byte[], string, DateTime, string, string?, string?)> FromOfficial()
+    {
+        var dirs = new[]
+        {
+            OfficialLauncher.McDir,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.4297127D64EC6_8wekyb3d8bbwe", "LocalCache", "Roaming", ".minecraft"),
+        };
+        foreach (var d in dirs)
+        {
+            var f = Path.Combine(d, "launcher_custom_skins.json");
+            if (!File.Exists(f)) continue;
+            JsonNode? j; try { j = JsonNode.Parse(File.ReadAllText(f)); } catch { continue; }
+            if (j?["customSkins"] is not JsonObject all) continue;
+            foreach (var (_, s) in all)
+            {
+                var img = (string?)s?["skinImage"]; if (img == null || !img.Contains(',')) continue;
+                byte[] png; try { png = Convert.FromBase64String(img[(img.IndexOf(',') + 1)..]); } catch { continue; }
+                var tex = (string?)s!["textureId"];
+                var when = DateTime.TryParse((string?)s["updated"] ?? (string?)s["created"], null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var t) ? t : File.GetLastWriteTimeUtc(f);
+                var hash = !string.IsNullOrEmpty(tex) && System.Text.RegularExpressions.Regex.IsMatch(tex, "^[0-9a-f]{20,80}$") ? tex : Sha(png);
+                yield return (hash, png, s["slim"]?.GetValue<bool>() == true ? "slim" : "classic", when, "Minecraft Launcher", (string?)s["name"],
+                    hash == tex ? "https://textures.minecraft.net/texture/" + tex : null);
+            }
+        }
+    }
+
+    /// <summary>Skin library of the Modrinth App (app.db), read from a private copy.</summary>
+    private static List<(string, byte[], string, DateTime, string, string?, string?)> FromModrinth(string uuid)
+    {
+        var r = new List<(string, byte[], string, DateTime, string, string?, string?)>();
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var db = new[] { "ModrinthApp", "com.modrinth.theseus", "com.modrinth.app" }.Select(x => Path.Combine(roaming, x, "app.db")).FirstOrDefault(File.Exists);
+        if (db == null) return r;
+        var tmp = Path.Combine(Paths.Cache, "import-mr-skins"); Directory.CreateDirectory(tmp);
+        foreach (var ext in new[] { "", "-wal", "-shm" })
+        {
+            var dst = Path.Combine(tmp, "app.db" + ext);
+            try { File.Delete(dst); } catch { }
+            if (!File.Exists(db + ext)) continue;
+            using var src = new FileStream(db + ext, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var o = File.Create(dst); src.CopyTo(o);
+        }
+        SQLitePCL.Batteries.Init();
+        using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(tmp, "app.db")};Pooling=False");
+        c.Open();
+        var when = DateTime.MinValue;   // the app keeps no date: shown without one
+        var id = uuid.Replace("-", "").ToLowerInvariant();
+        foreach (var row in Importers.Rows(c, "SELECT s.minecraft_user_uuid AS u, s.texture_key AS k, s.variant AS v, t.texture AS png FROM custom_minecraft_skins s JOIN custom_minecraft_skin_textures t ON t.texture_key = s.texture_key"))
+        {
+            if (((row.GetValueOrDefault("u") as string) ?? "").Replace("-", "").ToLowerInvariant() is { Length: > 0 } u && u != id) continue;
+            if (row.GetValueOrDefault("png") is not byte[] png) continue;
+            var k = row.GetValueOrDefault("k") as string;
+            var hash = k != null && System.Text.RegularExpressions.Regex.IsMatch(k, "^[0-9a-f]{20,80}$") ? k : Sha(png);
+            r.Add((hash, png, string.Equals(row.GetValueOrDefault("v") as string, "slim", StringComparison.OrdinalIgnoreCase) ? "slim" : "classic", when, "Modrinth App", null, null));
+        }
+        return r;
+    }
 
     /// <summary>Removes one entry from the history.</summary>
     public static void Forget(string uuid, string key)

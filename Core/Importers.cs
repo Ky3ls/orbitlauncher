@@ -287,7 +287,7 @@ public static class Importers
     private static string? Env(JsonNode? n) => n is JsonArray a && a.Count > 0
         ? NonEmpty(string.Join("\n", a.Select(p => p is JsonArray kv && kv.Count == 2 ? $"{Str(kv[0])}={Str(kv[1])}" : null).Where(x => x != null))) : null;
 
-    private static List<Dictionary<string, object?>> Rows(SqliteConnection c, string sql, string? id = null)
+    internal static List<Dictionary<string, object?>> Rows(SqliteConnection c, string sql, string? id = null)
     {
         var r = new List<Dictionary<string, object?>>();
         try

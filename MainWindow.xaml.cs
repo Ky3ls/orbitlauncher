@@ -982,7 +982,9 @@ public partial class MainWindow : Window
             {
                 var acc = _auth.Active; if (acc == null) return Array.Empty<object>();
                 // the skin known from the last login counts too, even before the profile is loaded
-                if (!Skins.History().Any(x => x.Uuid == acc.Uuid)) Skins.Seen(acc.Uuid, acc.SkinUrl, null);
+                if (!Skins.History().Any(x => x.Uuid == acc.Uuid && x.Source == null)) Skins.Seen(acc.Uuid, acc.SkinUrl, null);
+                // older skins from the Minecraft Launcher and the Modrinth App, once per account
+                await Task.Run(() => Skins.ImportOld(acc.Uuid));
                 return Skins.HistoryOf(acc.Uuid);
             }
             case "skins.forget": Skins.Forget(_auth.Active?.Uuid ?? "", Str(a, "key")); return new { };
